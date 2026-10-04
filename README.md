@@ -10,6 +10,8 @@
 
 **当前状态：设计阶段。** 尚无代码，只有文档、契约与工程规范。
 
+**形态：第一版是 DSH 插件**（工具 + skill + 脚本），编排层是 DSH 主 agent。**只能在 DeepSeek Harness 内使用**——独立 CLI 与脱离 DSH 的用法推迟，是否做以后再评估（[ADR 0008](docs/decisions/0008-plugin-first.md)）。
+
 ---
 
 ## 它解决什么问题

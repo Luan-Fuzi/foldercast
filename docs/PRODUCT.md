@@ -6,11 +6,13 @@
 
 ## 一句话
 
-**foldercast 把任意一个人类可读的目录，变成一段（或多段）讲解视频。**
+**foldercast 把一个目录变成一份可传递的理解；视频是它的默认视图。**
 
 ```
-目录  ──►  视频
+目录  ──►  解读（foldercast.json）  ──►  讲稿（script.json）  ──►  视频 / HTML
 ```
+
+**形态**：第一版是 DSH 插件，由 DSH 主 agent 编排。不能在 DeepSeek Harness 之外使用（[ADR 0008](decisions/0008-plugin-first.md)）。
 
 ---
 

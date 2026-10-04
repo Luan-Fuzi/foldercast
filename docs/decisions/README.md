@@ -99,9 +99,10 @@ NNNN-<kebab-case-标题>.md
 | [0002](0002-json-as-intermediate.md) | 分镜 JSON 是单一事实来源，不做 HTML 中间层 | 已接受 | 2026-10-04 |
 | [0003](0003-remotion-as-renderer.md) | 用 Remotion 做渲染器 | 已接受 | 2026-10-04 |
 | [0004](0004-pipeline-order.md) | 管线顺序固定为「文案 → 视频 → 配音」 | 已接受 | 2026-10-04 |
-| [0005](0005-dsh-plugin-shape.md) | DSH 插件形态：工具提供方，shell 出去调 CLI | 已接受 | 2026-10-04 |
+| [0005](0005-dsh-plugin-shape.md) | DSH 插件形态：工具提供方，shell 出去调 CLI | **已废弃**（被 0008 取代） | 2026-10-04 |
 | [0006](0006-narration-layer-moves-up.md) | 叙事层下移给 Agent 集群，分析器只出事实 | 已接受 | 2026-10-04 |
 | [0007](0007-secret-file-exclusion.md) | 密钥类文件按文件名排除，判据只做一层 | 已接受 | 2026-10-04 |
+| [0008](0008-plugin-first.md) | 先做 DSH 插件，推迟独立 CLI | 已接受 | 2026-10-04 |
 
 ---
 

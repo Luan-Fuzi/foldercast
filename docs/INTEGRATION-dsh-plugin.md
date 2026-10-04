@@ -476,7 +476,84 @@ Slots 是 Web / Desktop 客户端的类型化 React 组合系统。插件用 `ct
 
 ---
 
-## 十一、官方文档索引
+## 十一、用户怎么触发插件（入口）
+
+插件能获得的入口有三类，成本差别很大。
+
+### 11.1 自动获得的（零成本）
+
+| 入口 | 机制 | 效果 |
+|---|---|---|
+| **模型自动调用** | 工具的 `description` 进模型上下文 | 用户说「把这个目录讲一遍」，模型自己判断该不该调 |
+| **`/foldercast`** | skill 出现在会话 skill 目录 | 用户在输入框打 `/foldercast`，把 skill 正文注入这一步 |
+| **插件管理页** | `locale/*.json` 的标题与描述 | 安装/启停时能看到这个插件是什么 |
+
+**注意**：`settings.plugins.tab` 里的插件分区是**只读清单**，不是我们的入口。
+
+### 11.2 可以注册的斜杠命令（**已实测机制**）
+
+`@deepseek-ai/dsh-commands` 让插件注册 `/command [input]`：
+
+```ts
+ctx.commands.register({
+  name: 'foldercast',                    // 必须小写
+  description: 'Cast a folder into a video',
+  input: { hint: '<folder>' },
+  handler: ({ agent, rawInput }) => {
+    // 直接对 agent 执行，不产生模型消息
+    return { kind: 'success', text: '…' }
+  },
+})
+```
+
+**三条限制，决定它适合做什么**：
+
+1. **handler 是插件里的 TypeScript，不能调模型**。所以它适合「跑脚本、出解读」这类确定性动作，不适合「写讲稿」。
+2. **只在有交互式 UI 时可用**。无 UI 的演示主干与 ACP 自动化**不提供命令适配器**。
+3. 每次执行记进会话日志，但 UI 在模型历史之外渲染结果。
+
+### 11.3 自建 UI（要客户端包）
+
+`settings.section`（设置页）、`sidebar.right.pane.tab`（右侧栏）、`conversation.session.header.actions`（会话头按钮）等，见 [第八节](#八ui-扩展点第一版不用记录备查)。**要另发客户端包，第一版不做。**
+
+### 11.4 foldercast 的选择
+
+| 入口 | 第一版 |
+|---|---|
+| 模型自动调用 | ✅ **主入口** |
+| `/foldercast`（skill） | ✅ 显式入口。但注意与 11.2 的斜杠命令**不是一回事**——skill 的 `/name` 是注入指令给模型，命令是直接执行插件代码 |
+| 斜杠命令（`ctx.commands`） | ⏸ **暂不做**。它不给模型消息，而「对目录出解读」需要模型参与（选材料、写讲稿） |
+| 自建 UI | ❌ 第一版不做 |
+
+**结论**：第一版**不做单独入口**，靠自然对话 + skill 的 `/foldercast`。等出现「只出解读不要视频」这类确定性动作时，再考虑加斜杠命令。
+
+---
+
+## 十二、DSH 有哪些形态（插件在哪里生效）
+
+插件随 profile 加载，所以**同一个插件在所有 profile 里都可用**，但每个形态给的「面」不同。
+
+| 形态 | 启动 | 有会话 | 有工具 | 有斜杠命令 | 有 UI 插槽 |
+|---|---|---|---|---|---|
+| **Web** | `dsh web` | ✅ | ✅ | ✅ | ✅ |
+| **Desktop** | Electron App | ✅ | ✅ | ✅ | ✅ |
+| **TUI** | `dsh tui` | ✅ | ✅ | ✅ | ❌ |
+| **Headless** | `dsh headless "任务"` | 一次性 | ✅ | ❌ | ❌ |
+| **SDK / ACP** | 程序驱动 | ✅（可持久） | ✅ | ❌ | ❌ |
+| **Rescue** | `dsh rescue --from-default-profile <name>` | 排障用 | ✅ | 视模板 | 视模板 |
+
+**依据**：[`dsh --help`](https://github.com/deepseek-ai/DeepSeek-Harness) 的用法说明（**已实测**）；`dsh-commands` 文档明写「无 UI 的演示与 ACP 自动化不提供此命令面」（**文档记载**）。
+
+**SDK 与 ACP 的区别**（**文档记载**）：
+
+- **ACP**（Agent Client Protocol）：JSON-RPC stdio 服务器，让程序创建/恢复会话、挂载 MCP、发提示词、接收语义更新、响应权限提示。面向编辑器与自动化。
+- **SDK**：按换行分帧的 JSON-RPC，从另一进程驱动完整运行时。有 TypeScript 客户端与 [Python SDK](https://github.com/deepseek-ai/DeepSeek-Harness/tree/master/python)。
+
+**对 foldercast 的意义**：这五条里，**SDK / ACP 是要不要脱离 DSH 那个问题的另一种答案**（ADR 0008 把它列为押后项）。如果将来要在别的程序里用 foldercast，SDK 是一条现成的路，未必需要自建独立 CLI。
+
+---
+
+## 十三、官方文档索引
 
 | 主题 | 链接 |
 |---|---|
@@ -491,6 +568,9 @@ Slots 是 Web / Desktop 客户端的类型化 React 组合系统。插件用 `ct
 | **插件管理（安装/启用/权限）** | [packages/boot/plugin-manager/README.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/boot/plugin-manager/README.zh.md) |
 | **沙箱模式定义** | [docs/subsystems/sandbox.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/sandbox.zh.md) |
 | **Agent 预设注册表** | [packages/preset/agent-preset-registry/README.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/preset/agent-preset-registry/README.zh.md) |
+| **滑块命令注册表** | [packages/interaction/commands/README.zh.md](https://github.com/deepseek-ai/DeepSeek-Harness/blob/master/packages/interaction/commands/README.zh.md) |
+| **ACP 自动化（JSON-RPC）** | [packages/acp/README.zh.md](https://github.com/deepseek-ai/DeepSeek-Harness/blob/master/packages/acp/README.zh.md) |
+| **SDK（从另一进程驱动）** | [packages/sdk/README.zh.md](https://github.com/deepseek-ai/DeepSeek-Harness/blob/master/packages/sdk/README.zh.md) |
 | Cordis 教程（7 章） | [docs/cordis-tutorial/](https://github.com/deepseek-ai/deepseek-harness/tree/master/docs/cordis-tutorial) |
 | 官方文档站 | https://deepseek-harness.github.io/deepseek-harness/ |
 

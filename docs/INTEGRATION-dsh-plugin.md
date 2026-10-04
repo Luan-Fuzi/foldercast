@@ -2,7 +2,15 @@
 
 把 foldercast 注册为 DeepSeek Harness 插件需要遵守的规范。
 
-**本文的每一条都经一手核实**：DSH 官方文档（`docs/user/develop/`、`docs/cookbook/`）+ 随 App 分发的包 README（`dsh-plugin-manager`、`dsh-app-boot`）+ npm registry 上的实际包元数据。核实日期 2026-10-04，本机 DSH 版本 `0.2.0-rc.2`。
+**本文的每一条都经一手核实**：DSH 官方文档（`docs/user/develop/`、`docs/develop/`）、随 App 分发的包 README（`dsh-plugin-manager`、`dsh-agent-preset-registry`、`dsh-client-ui-slots`、`dsh-client-ui-settings`、`dsh-skill-filesystem`、`dsh-tool-skill`）、npm registry 上的实际包元数据，以及本机实测（`dsh --help`、`dsh --profile web --dump-config`、读 `~/.dsh/profiles/desktop/`、解压会话日志核对 `agentPreset` 与权限事件）。核实日期 2026-10-04，本机 DSH 版本 `0.2.0-rc.2`。
+
+**每条都标了验证状态**：
+
+| 标记 | 含义 |
+|---|---|
+| **已实测** | 在本机跑过、读过实际产物 |
+| **文档记载** | 官方文档明写，本机未复现 |
+| **未验证** | 由结构推断，需实测确认 |
 
 ---
 
@@ -20,6 +28,23 @@ DSH 进程
 ```
 
 **插件进程内不做渲染、不做分析、不加载 Python 依赖。**
+
+### 1.1 插件能提供什么（四件事，不是一件）
+
+原本文档只写了「注册工具」。实际能力面更大：
+
+| 能力 | 机制 | 前置 | 验证状态 |
+|---|---|---|---|
+| 注册工具 | `ctx.tools.register(defineTool(...))` | 无 | 文档记载 |
+| 注册 Cordis 服务 | `ctx.plugin(SomeService)` | 无 | 文档记载 |
+| 暴露配置 schema | `Config`（`@deepseek-ai/schemastery`），放在 `dependencies` | 无 | 文档记载 |
+| **贡献 Web / Desktop UI** | `ctx.slots.register()` | 需另发客户端包 | 文档记载（本机未注册过插槽） |
+
+第四项是最重的一块：要写 TypeScript + React、要构建、要跟 `ui-renderer` 配合。**第一版不做**（见 [第十节](#十第一阶段的能力边界)）。
+
+### 1.2 我们第一版只用第一项
+
+理由是「无可配置空间」的判据（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)）：一个工具 + 对话触发就够，不需要设置页，也不需要侧边栏。
 
 ---
 
@@ -188,10 +213,7 @@ ctx.tools.register(defineTool({
   name: 'foldercast_cast',
   description: 'Cast a folder into an explainer video.',   // 模型看到的描述，主动语态 5–10 词
   parameters: {
-    path:      { type: 'string', required: true, description: 'Absolute path of the folder to cast' },
-    style:     { type: 'string', description: 'Style preset: swiss | deck | console | paper' },
-    targetSec: { type: 'number', description: 'Target video duration in seconds' },
-    exclude:   { type: 'array', items: { type: 'string' }, description: 'gitignore-style exclusions' },
+    path: { type: 'string', required: true, description: 'Absolute path of the folder to cast' },
   },
   output: {
     schema: { type: 'object', properties: { /* ... */ }, required: [/* ... */] },
@@ -203,6 +225,10 @@ ctx.tools.register(defineTool({
   },
 }))
 ```
+
+**参数按第一版判据收窄到一个。** `style` / `targetSec` / `exclude` 是设计里已有的维度，但第一版不暴露成参数（见 [ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)）。
+
+**已删除的旧参数**：`style`（多预设押后）、`targetSec`（时长软约束押后）、`exclude`（用户自定义筛选押后）。等第一版跑通、看到真实成片之后再逐个放开。
 
 ### 3.4 `execute()` 的硬性规则
 
@@ -314,36 +340,143 @@ foldercast_voice  — "Synthesize narration audio and burn subtitles"
 
 ---
 
-## 六、插件配置项
+## 六、插件配置项（第一版不做）
 
-插件可通过 `Config` 暴露设置，渲染在插件管理页面或设置页的 slot 中。
+插件可通过 `Config` 暴露设置，渲染在设置页的 slot 中。**第一版不暴露任何配置项**（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)），本节记录的是设计里已有、后续逐个放开的维度。
 
-计划暴露的配置：
-
-| 字段 | 类型 | 默认 | 说明 |
+| 字段 | 类型 | 默认 | 何时放开 |
 |---|---|---|---|
-| `cliPath` | string | 自动探测 | foldercast CLI 路径 |
-| `defaultStyle` | string | `swiss` | 默认风格预设 |
-| `defaultProvider` | string | `say` | 默认 TTS provider |
-| `renderTimeoutMs` | number | `900000` | 渲染超时 |
-| `outputDir` | string | `<源目录>/.foldercast` | 产物位置 |
+| `cliPath` | string | 自动探测 | 等真的出现探测失败的用户 |
+| `defaultStyle` | string | `swiss` | 等多预设解禁（R8/R9） |
+| `defaultProvider` | string | `say` | 等 TTS 适配层落地（R6） |
+| `renderTimeoutMs` | number | `900000` | 等出现真实超时案例 |
+| `outputDir` | string | `<源目录>/.foldercast` | 等有人要改产物位置 |
 
-**配置通过 `@deepseek-ai/schemastery` 声明** —— 这是官方运行时校验器，放在 `dependencies`（不是 `peerDependencies`），与 `dsh-agent-loop` 的做法一致。
+**配置通过 `@deepseek-ai/schemastery` 声明** —— 官方运行时校验器，放在 `dependencies`（不是 `peerDependencies`），与 `dsh-agent-loop` 的做法一致。
+
+**注意配置界面的归属**：`Config` schema 是声明层，界面是浏览器端代码（`settings.section` + `ctx.configForms`）。见 [8.1](#81-配置界面两个易错点)。
 
 ---
 
-## 七、待办
+## 七、安装、启用与权限
 
+### 7.1 三条安装路径
+
+| 路径 | 谁用 | 权限要求 | 验证状态 |
+|---|---|---|---|
+| Web 侧边栏「插件」页 | 人 | 无（界面操作） | 文档记载 |
+| `dsh plugin --profile <name> add <pkg>` | 人（终端） | 无（就是 pnpm） | 已实测（命令存在、行为如文档） |
+| 对话里让 agent 调 `plugin_manager` | 模型 | `danger-full-access` 或本次调用的批准 | 文档记载；**本机该工具默认关闭**，见 7.3 |
+
+**foldercast 的安装说明应该写前两条**，不要依赖第三条。
+
+启用/停用同样走前两条：Web 插件页管理组合包与「能唯一定位的行」，或直接改 profile 的 `cordis.patch.yml`。改动**影响该 profile 的所有会话**。开 HMR 时立即生效，否则等重启。
+
+### 7.2 权限是三层的，不是一层
+
+| 操作 | 门槛 | 为什么 |
+|---|---|---|
+| 读写文件 | 会话的沙箱档位（`read-only` / `workspace-write` / `danger-full-access`） | 高频，影响限于文件 |
+| 装 / 启用插件 | 基础默认**关闭**，要显式开 | 低频，影响是往 harness 进程注入代码 |
+| 运行依赖的构建脚本 | 再单独批准一次 | 以宿主用户权限执行命令 |
+
+**装插件等于在 harness 进程内跑宿主代码，不受工作区沙箱限制**（官方原话：「已安装的 Host 代码在宿主进程内运行，不受工作区沙箱限制」）。这是第二层单独设门槛的原因。
+
+沙箱模式与审批是**两档独立设置**，由 `dsh-permission-presets` 成对给出：
+
+```yaml
+presets:
+  read-only:          { sandbox: read-only,          approval: ask }
+  workspace-write:    { sandbox: workspace-write,    approval: ask }
+  danger-full-access: { sandbox: danger-full-access, approval: never }
+```
+
+沙箱模式来自 `DSH_PERMISSION_MODE`，默认 `workspace-write`。**`danger-full-access` 的字面意思是「绕过文件系统隔离」**，不是「最高权限」——官方明确网络与进程可见性不在这个词汇的定义范围内。
+
+### 7.3 `plugin_manager` 在本机默认关闭（**已实测**）
+
+从 `dsh --profile web --dump-config` 的根部（`@deepseek-ai/dsh-base` 层）：
+
+```yaml
+- id: tool-plugin-manager
+  name: '@deepseek-ai/dsh-plugin-manager/tools'
+  disabled: true
+```
+
+**基础默认关，不随预设选择而变。** 实测证据：本机一个 `agentPreset: standard` 的会话（从会话日志头读出），标准预设内部确实声明了 `tool-plugin-manager`（缩进 6 层，属 preset 的插件列表），但该会话的工具列表里没有 `plugin_manager`。
+
+「创造模式（`cordis` 预设）提供 `plugin_manager` 与两个 `cordis_inspect_*` 工具」是官方说法。**但这个部署根部的 `disabled: true` 是否被预设覆盖，未验证。** 要确认就切到 `cordis` 预设开一个新会话，看工具列表。
+
+### 7.4 注册依赖平台与客户端
+
+**Desktop profile 由 Electron 独占管理**，`dsh --profile desktop --dump-config` 直接报错 `profile "desktop" is managed exclusively by the Electron application`。当前桌面 App 用的就是它（`DSH_PROFILE=desktop`）。
+
+**CLI 里没有 UI 插槽。** `dsh web` / `dsh tui` / `dsh headless` 从同一 profile 加载同一套插件，工具都能用，但插槽是 Web 客户端机制，TUI 与 headless 不渲染。
+
+### 7.5 网络
+
+`plugin-manager` 的 `fallbackRegistries` **默认已含 `https://registry.npmmirror.com/`**，国内装包不用自己配镜像。注册表探测与 GitHub 连通性检查都在下载前完成（`inspectTimeoutMs` 20s、`githubConnectionTimeoutMs` 5s）。
+
+---
+
+## 八、UI 扩展点（第一版不用，记录备查）
+
+Slots 是 Web / Desktop 客户端的类型化 React 组合系统。插件用 `ctx.slots.register()` 把组件注册进父级已声明的插槽，**绝不 import 其他插件的组件**。
+
+**四种基数**：`single`（单个占位者）、`list`（有序条目，按 `order` 排）、`keyed`（owner 传 `entryKey` 分派）、`chain`（各条目提供 `select()`，第一个非 null 获选）。
+
+**与 foldercast 相关的插槽**（从 `docs/subsystems/slots.zh.md` 与包 README 提取，**未实测注册**）：
+
+| 插槽 | 位置 | 对 foldercast 的用途 |
+|---|---|---|
+| `tool.call.toolview` | 工具调用的自定义渲染 | 渲染进度、结果卡片、视频缩略图 |
+| `sidebar.right.pane.tab` / `sidebar.right.tab.menu` | 右侧栏标签页 | 播成片 / 展示目录解读 |
+| `conversation.session.header.actions` | 会话头部操作按钮 | 「把这个目录讲一遍」 |
+| `conversation.chat.node` | 会话流中的自定义节点 | 把成片作为消息插入对话 |
+| `settings.section` | 设置面板的功能页 | 插件自己的配置界面 |
+
+### 8.1 配置界面：两个易错点
+
+**一、设置里的「插件」分区不是我们的配置页。** `settings.plugins.tab` 承载的是**只读**的插件清单与页面；我们的配置要自己注册 `settings.section`。
+
+**二、`Config` schema 只是声明层，配置界面是浏览器端代码。** 存储走 `ctx.configForms` 的命名空间（原子更新多字段、schema 校验、防静默覆盖并发修改），持久化到 Host 设置文档。**CLI 用户看不到这个界面** —— 「插件有配置 UI」与「CLI 有配置」是两套东西。
+
+### 8.2 无关插槽（说明覆盖面）
+
+`sidebar.workspaces.*`、`sidebar.brand.mark` / `.name`、`sidebar.footer.action`、`settings.models.provider-card`、`conversation.input.activity`（模型选择器旁的位置）、`plugins.add.actions`、`plugins.bundle.config`、`tool.call.images`、`tool.view.cordis`。
+
+---
+
+## 九、待办
+
+- [ ] 确认 `cordis` 预设能否覆盖 `dsh-base` 根部的 `tool-plugin-manager.disabled: true`（见 7.3）
 - [ ] 确认 `@deepseek-ai/dsh-tools` 的 `defineTool` 是否支持数组类型参数的完整推导
 - [ ] 确定 CLI 可用性检测的具体方式（`which foldercast` vs `npx` vs 打包内相对路径）
-- [ ] 确认 Desktop profile 与 web profile 的安装差异（Desktop 由 Electron 独占管理，CLI 插件操作行为不一致，已实测）
 - [ ] 核实 `exec.agent.inject` 的 `MessageSourceMap` 声明方式（会话格式 V4 拒绝了旧的 `{ kind: 'plugin', plugin: '<name>' }` 包装）
 - [ ] 决定要不要做结果卡片（`presentationMeta`）—— 视频缩略图 + 时长
 - [ ] 插件与 CLI 的版本对齐策略：插件是否需要检查 CLI 版本
+- [ ] 若第一版之后要做 UI：确认 `tool.call.toolview` 的注册方式与客户端包结构
 
 ---
 
-## 八、官方文档索引
+## 十、第一阶段的能力边界
+
+**做**：
+
+- 一个工具（`foldercast_cast`），一个参数（目录路径）
+- CLI 探测、起子进程、结构化进度输出、`exec.signal` 取消
+- `locale/zh.json` + `locale/en.json` 的标题与描述（插件管理页要显示）
+
+**不做**：
+
+- 设置页与任何配置项（第一版没有可配置的东西）
+- UI 插槽（要另发客户端包，等有人真的要在对话旁边看视频）
+- Cordis 服务与 Service Definition（[ADR 0005](decisions/0005-dsh-plugin-shape.md) 已否决三件套；只有一种执行方式，没有可替换的实现方）
+- 中台化（没有下游消费者）
+
+---
+
+## 十一、官方文档索引
 
 | 主题 | 链接 |
 |---|---|
@@ -352,8 +485,12 @@ foldercast_voice  — "Synthesize narration audio and burn subtitles"
 | 插件配置 | `docs/user/develop/basic/config.zh.md` |
 | 打包与安装 | [docs/user/develop/basic/publish.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.zh.md) |
 | 工具编写参考（完整契约） | [docs/cookbook/adding-a-tool.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/adding-a-tool.md) |
-| 软件包清单清单 | [docs/cookbook/adding-a-package.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/adding-a-package.md) |
+| 软件包清单 | [docs/cookbook/adding-a-package.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/adding-a-package.md) |
 | 能力分层（Service/Provider/Consumer） | [docs/user/develop/practice/index.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/practice/index.zh.md) |
+| **UI 插槽子系统** | [docs/subsystems/slots.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/slots.zh.md) |
+| **插件管理（安装/启用/权限）** | [packages/boot/plugin-manager/README.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/boot/plugin-manager/README.zh.md) |
+| **沙箱模式定义** | [docs/subsystems/sandbox.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/sandbox.zh.md) |
+| **Agent 预设注册表** | [packages/preset/agent-preset-registry/README.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/preset/agent-preset-registry/README.zh.md) |
 | Cordis 教程（7 章） | [docs/cordis-tutorial/](https://github.com/deepseek-ai/deepseek-harness/tree/master/docs/cordis-tutorial) |
 | 官方文档站 | https://deepseek-harness.github.io/deepseek-harness/ |
 

@@ -516,6 +516,18 @@ ctx.commands.register({
 
 `settings.section`（设置页）、`sidebar.right.pane.tab`（右侧栏）、`conversation.session.header.actions`（会话头按钮）等，见 [第八节](#八ui-扩展点第一版不用记录备查)。**要另发客户端包，第一版不做。**
 
+**设置页也不例外**（这条容易误判）：设置外壳在 `ui-settings-general`，功能页面通过 **`settings.section` 插槽**注册——而插槽是浏览器端 React 组件。**声明 `Config` schema 不会自动产生设置界面。**
+
+所以「在设置页开一栏」的实际成本是：
+
+| 要做的事 | 内容 |
+|---|---|
+| 声明 schema | 插件包内用 `schemastery` 写 `Config`（**便宜**） |
+| 写设置界面 | 另建客户端包，React 组件，注册 `settings.section`（**贵**：构建、发布、与 `ui-renderer` 配合） |
+| 存取 | `ctx.configForms` 命名空间读写，持久化到 Host 设置文档（由外壳负责，不用自己写） |
+
+**中间方案**：只声明 `Config`。设置文件仍然生效、有 schema 校验、会出现在自动生成的配置目录里，**用户手改文件即可，只是没有图形界面**。等真的有人抱怨要手改 YAML，再补客户端包。
+
 ### 11.4 foldercast 的选择
 
 | 入口 | 第一版 |
@@ -524,8 +536,29 @@ ctx.commands.register({
 | `/foldercast`（skill） | ✅ 显式入口。但注意与 11.2 的斜杠命令**不是一回事**——skill 的 `/name` 是注入指令给模型，命令是直接执行插件代码 |
 | 斜杠命令（`ctx.commands`） | ⏸ **暂不做**。它不给模型消息，而「对目录出解读」需要模型参与（选材料、写讲稿） |
 | 自建 UI | ❌ 第一版不做 |
+| **设置页开一栏** | ⏸ **押后**，但**接口先留**：第一版就声明 `Config` schema，界面等真实需求 |
 
 **结论**：第一版**不做单独入口**，靠自然对话 + skill 的 `/foldercast`。等出现「只出解读不要视频」这类确定性动作时，再考虑加斜杠命令。
+
+### 11.5 计划暴露给用户的配置（日后）
+
+按「第一版无可配置空间」判据，这些都押后。记录在此是为了**先定 `Config` schema 的形状**，避免日后加字段时破坏兼容。
+
+| 配置 | 类型 | 落点 | 何时做 |
+|---|---|---|---|
+| `tts.provider` / `voice` / `style` / `format` | enum + string | `foldercast.config.json` | M5 之后 |
+| `style.preset` | enum | 同上 | M4 出片之后 |
+| `depth` | enum：`overview` / `normal` / `detailed` | 同上 | 见下 |
+
+**`depth` 是新维度，尚未进契约。** 它同时影响三件事：
+
+| 档 | 扫描 | 叙事 | 用途 |
+|---|---|---|---|
+| `overview` | 只读结构，不读内容 | 3–5 个场景，只讲骨架 | 快速看一个陌生目录 |
+| `normal` | 读入口与枢纽文件 | 8–15 个场景 | 默认 |
+| `detailed` | 读全部非排除文件，subagent 分工 | 20+ 场景 | 给别人看 |
+
+它控制的是**成本与深度**，不是纯风格——所以它比风格更早暴露（风格是审美，这个是钱）。
 
 ---
 

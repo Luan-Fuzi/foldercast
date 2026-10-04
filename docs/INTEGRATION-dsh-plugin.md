@@ -371,11 +371,41 @@ export const Config = z.object({
 | `cliPath` | string | 自动探测 | **不`volatile()`**：探测失败该走报错，不该让用户填 |
 | `outputDir` | string | `<源目录>/.foldercast` | 等有人要改产物位置 |
 
-**凭据不进配置项**：只放环境变量名（`apiKeyEnv` 引用），与 `dsh-usage` 一致——「API key 经宿主凭据缝解析……**永不进入浏览器**」。
+**凭据不进配置项**：只放**引用名**，值走 DSH 的凭据 seam（`@deepseek-ai/dsh-credentials`）。
+
+```ts
+ttsKeyRef: z.string().default('MIMO_API_KEY').volatile()   // 引用名，不是值
+```
+
+解析优先级由 `dsh-credentials-local` 固定（**已实测：本机 `~/.dsh/.credentials.yaml` 存在**）：
+
+| 顺序 | 位置 | 可写 |
+|---|---|---|
+| 1 | 启动环境（`MIMO_API_KEY=… dsh`） | ❌ 只读，产品内无法覆盖 |
+| 2 | 凭据存储 `$DSH_HOME/.credentials.yaml` | ✅ 界面或 `ctx.credentials.set` |
+| 3 | 项目 `.env` | 不在此处 |
+| 4 | `$DSH_HOME/.env` | 不在此处 |
+
+**三条硬约束**（来自 `credentials-local` 文档）：
+
+- 凭据文件权限必须是 **600**，否则拒绝加载
+- **空值等于"没有密钥"**，存储拒绝空字符串；移除靠删除
+- 文件**只放凭据**，任何其他内容都会被明确拒绝——**不能把配置塞进去**
+
+**界面能力标注**：
+
+| 事实 | 状态 |
+|---|---|
+| 凭据存储能存能读（`set` / `resolve` / `describe`） | **已实测**（文件存在） |
+| 界面能保存凭据 | **文档记载**（「你可以通过配置界面保存凭据」） |
+| 界面对**任意插件声明的引用名字段**自动渲染凭据控件 | **⚠️ 未确认** |
+| 凭据存储不隔离 agent | **文档记载**（「这是审慎，不是边界」） |
+
+第三行未确认，所以第一版的密钥配置途径**不依赖它**——见 [rd/TTS-适配调研.md](rd/TTS-适配调研.md#key-未配置时的行为) 的三层设计。
 
 **`@deepseek-ai/schemastery` 放在 `dependencies`**（不是 `peerDependencies`），与 `dsh-agent-loop`、`dsh-usage` 的做法一致。
 
-**与自建设置页的分工**：`Config` 管「配置表单」，`settings.section` 管「自定义内容」（数据面板、可视化）。两者可并存，见 [第十五节](#十五两种-ui-扩展机制)。
+**与自建设置页的分工**：`Config` 管「配置表单」，`settings.section` 管「自定义内容」（数据面板、可视化、**以及需要自定义控件的密钥保存**）。两者可并存，见 [第十三节](#十三两种-ui-扩展机制)。
 
 ---
 

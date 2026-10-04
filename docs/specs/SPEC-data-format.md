@@ -271,7 +271,8 @@ id_rsa  id_dsa  id_ecdsa  id_ed25519
 - **音色不做跨 provider 统一枚举**。MiMo 是 `白桦`，Edge 是 `zh-CN-YunxiNeural`，`say` 是 `Meijia` —— 强行统一会丢失各家的表达力。`provider` + `voice` 两个字段表达即可。
 - `style` 是「怎么读」的统一语义：MiMo 落在 `user` 消息，Edge 落在 `rate`/`pitch`，`say` 落在 `-r`。
 - **换 provider 或换音色只需重跑阶段③**，不改 `scenes`（见 [SPEC-pipeline.md](SPEC-pipeline.md#可重跑边界)）。
-- 本字段是**配置意图**；实际使用的 provider 与音色以阶段③产出的 `durations.json` 为准（见本文第四节）。密钥不放这里 —— 存放优先级见 [../rd/TTS-适配调研.md](../rd/TTS-适配调研.md#key-的存放)。
+- 本字段是**配置意图**；实际使用的 provider 与音色以阶段③产出的 `durations.json` 为准（见本文第四节）。
+- **密钥不放这里**。配置里只放引用名（`keyRef`，如 `MIMO_API_KEY`），值走 DSH 的凭据 seam，解析优先级与"未配置时的行为"见 [../rd/TTS-适配调研.md](../rd/TTS-适配调研.md#key-的存放)。
 
 ---
 

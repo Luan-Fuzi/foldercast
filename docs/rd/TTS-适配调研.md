@@ -181,13 +181,64 @@ foldercast voice ./out --list-voices
 
 ### key 的存放
 
-**不要经过聊天记录或命令行参数。** 按优先级：
+**不要经过聊天记录或命令行参数。** 复用 DSH 的凭据 seam（`dsh-credentials`），自己不实现查找逻辑。
 
-1. 环境变量（`MIMO_API_KEY` / `OPENAI_API_KEY` / …）
-2. 项目根的 `.<provider>_key` 文件（**必须写进 `.gitignore`**）
-3. 用户级配置 `~/.config/foldercast/credentials.json`
+解析优先级由 `dsh-credentials-local` 固定：
 
-⚠️ 参考项目 `lecture-videos` 把 `.mimo_api_key` 直接放在项目根目录。接入时务必确认它已被 git 忽略。
+| 顺序 | 位置 | 可写 | 说明 |
+|---|---|---|---|
+| 1 | 启动环境（`MIMO_API_KEY=… dsh`） | ❌ | 只读。按次覆盖代表本次运行的明确意图，**产品内无法修改**，保存会被拒 |
+| 2 | 凭据存储 `$DSH_HOME/.credentials.yaml` | ✅ | 文件权限 600；界面或 `ctx.credentials.set` 写入；变更自动重载、跨重启保留 |
+| 3 | 项目 `.env`（`<invocation cwd>/.env`） | 不在此处 | 项目级隔离靠这一层 |
+| 4 | `$DSH_HOME/.env` | 不在此处 | |
+
+**配置里只放引用名**，例如 `ttsKeyRef: "MIMO_API_KEY"`。
+
+**与旧设计的变化**：原设计写的是「项目根的 `.<provider>_key` 文件」，现改为 DSH 的项目 `.env` 层。`lecture-videos` 那种 `.mimo_api_key` 文件**不再需要**——不过它仍被 [ADR 0007](../decisions/0007-secret-file-exclusion.md) 的默认排除规则覆盖（`.*_key`），所以即使留着也不会被读进模型。
+
+**这不是隔离**：凭据文件只对 OS 用户可读，而 agent 的工具进程以同一用户身份运行。官方原话：「agent 不是另一个用户……这是审慎，不是边界。」
+
+### key 未配置时的行为
+
+用户可能先装插件、过一段时间才配 key。**所以"没有 key"必须是可用的正常状态，不是错误状态。**
+
+分三层处理：
+
+**第一层 · 零配置就能跑（降级到免密钥 provider）**
+
+| provider | 需要 key |
+|---|---|
+| `say`（macOS 原生） | ❌ |
+| `edge`（Edge TTS） | ❌ |
+| `mimo` / OpenAI 兼容 | ✅ |
+
+**默认 provider 是 `say`。** 装了插件不配任何东西就能出片，只是音色一般。用户满意就永远不用配 key——这与第一节「默认给三个就能覆盖绝大多数场景」的设计一致。
+
+**第二层 · 选了需要 key 的 provider 但没配 → 前置检查 + 结构化引导**
+
+调用 `ctx.credentials.describe(ref)`，**在发起合成之前**判断：
+
+```ts
+const info = await ctx.credentials.describe(ref)     // { configured, source?, writable }
+if (!info.configured) {
+  return { ok: false, reason: 'credential-missing', ref,
+           hint: '在设置里保存 MIMO_API_KEY，或设为环境变量；也可先用 say 出片' }
+}
+```
+
+**为什么必须前置**：等到 API 返回 401 才发现，错误信息是外部给的，措辞不受我们控制，用户看不出该怎么办。
+
+**第三层 · 给用户一个配置途径**
+
+| 方式 | 成本 | 状态 |
+|---|---|---|
+| 宿主为 `Config` 里的引用名字段自动渲染凭据控件 | 零 | **未确认**——官方文档说了"可以通过配置界面保存凭据"，但没写这个绑定对任意插件字段是否生效 |
+| 我们自己在设置页加一个保存控件的分区（`settings.section` + `ctx.credentials.set`） | 一个客户端包 | 确定能做，但要写 React |
+| **工具里加一个保存动作**，对话里让 agent 代为保存 | 很低 | **确定能做，零 UI。第一版用这条** |
+
+第三种的具体形态：一个 `foldercast_set_key` 动作，只收「存哪个引用名」，**值不进聊天记录**（由用户在本地那一步自己输入）。
+
+**若第一种后来被证实可用**，把它作为主路径、第三种作为 fallback；两者都不够时再补客户端包。
 
 ---
 

@@ -169,11 +169,32 @@ $ ffmpeg -filters | grep -xE 'subtitles|drawtext'
 
 ### 4.5 密钥处理（C6）
 
-优先级：环境变量 → 项目 `.<provider>_key` 文件 → 用户级 `~/.config/foldercast/credentials.json`。
+**复用 DSH 的凭据 seam，自己不实现密钥查找。**
 
-**绝不经由命令行参数或聊天记录。** `.gitignore` 已含 `.*_api_key` / `.*_key` / `credentials.json` / `.env*`。
+配置里只放**引用名**，不放值：
 
-**分析器同样不读这些文件的内容**，即使叙事层已经可以通读目录。判据与审计见 [ADR 0007](decisions/0007-secret-file-exclusion.md)。
+```jsonc
+"ttsProvider": "mimo",
+"ttsKeyRef": "MIMO_API_KEY"     // 引用名；值在凭据存储里
+```
+
+解析优先级由 `dsh-credentials-local` 固定，**我们不用写代码**：
+
+| 顺序 | 位置 | 可写 |
+|---|---|---|
+| 1 | 启动环境（`MIMO_API_KEY=… dsh`） | ❌ 只读，**无法从产品内覆盖** |
+| 2 | 凭据存储 `$DSH_HOME/.credentials.yaml` | ✅ 界面或 `ctx.credentials.set` |
+| 3 | 项目 `.env`（`<cwd>/.env`） | 不在此处 |
+| 4 | `$DSH_HOME/.env` | 不在此处 |
+
+**绝不经由命令行参数或聊天记录。**
+
+**两处仍是我们的责任**：
+
+- `.gitignore` 已含 `.*_api_key` / `.*_key` / `credentials.json` / `.env*`
+- **分析器不读这些文件的内容**，判据与审计见 [ADR 0007](decisions/0007-secret-file-exclusion.md)
+
+**注意这不是隔离**：凭据文件只对 OS 用户可读，而 agent 的工具进程以同一用户身份运行。官方原话：「这是审慎，不是边界。」
 
 ---
 

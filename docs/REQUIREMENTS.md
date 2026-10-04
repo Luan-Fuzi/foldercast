@@ -157,7 +157,7 @@
 | C3 | **时长必须实测**。不同 TTS 引擎读同一段文字，时长差异可达 30% | 工程推导 | [SPEC-pipeline.md](specs/SPEC-pipeline.md) | 已设计 |
 | C4 | **渲染需指定本机 Chrome**。当前网络下不了 Chrome Headless Shell | `lecture-videos/remotion.config.ts` 的现成处理 | [ROADMAP.md](ROADMAP.md#已识别的坑) | 待验证 |
 | C5 | **两遍渲染是设计的一部分**。阶段②用预估时长（调画面），阶段③用实测时长（出成片） | 由 C3 推导 | [SPEC-pipeline.md](specs/SPEC-pipeline.md) | 已设计 |
-| C6 | **密钥不进聊天记录与命令行**。优先级：环境变量 > 项目 `.*_key` 文件 > 用户级配置 | 旧项目把 key 放项目根，有误提交风险 | [rd/TTS-适配调研.md](rd/TTS-适配调研.md#key-的存放) | 已设计 |
+| C6 | **密钥不进配置、聊天记录与命令行**。复用 DSH 的凭据 seam（`ctx.credentials`），配置里只放**引用名**。解析优先级由 DSH 固定：启动环境 → 凭据存储 → 项目 `.env` → `$DSH_HOME/.env` | 旧项目把 key 放项目根，有误提交风险；DSH 已提供凭据 seam，自己实现没有收益 | [rd/TTS-适配调研.md](rd/TTS-适配调研.md#key-的存放) | 已设计 |
 | C7 | **叙事层必须能读文件内容**。只看摘要写不出内容层的语义，混杂资料目录会失效 | 设计过程中发现循环依赖 | [ADR 0006](decisions/0006-narration-layer-moves-up.md) | 已设计 |
 | C8 | **密钥类文件按文件名排除，不做内容检测，且必须声明边界**。判据只做一层：零成本、确定、无误报 | 作者提问「不读它怎么知道它是密钥文件」；调研后否决内容检测（同类工具无一实现，实测上限不可靠） | [ADR 0007](decisions/0007-secret-file-exclusion.md) | 已设计 |
 

@@ -81,7 +81,7 @@
 
 **1. 不得调用模型。** `analyzer` 是纯确定性模块（见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#44-分析器不调用模型)）。任何 LLM 调用都属于 `packages/cli` 的编排层。
 
-**2. 密钥不得经过命令行参数。** 按优先级读环境变量 → 项目 `.<provider>_key` → 用户级配置。见 [TTS-适配调研.md](../rd/TTS-适配调研.md#key-的存放)。
+**2. 密钥不得经过命令行参数，也不得写进配置。** 复用 DSH 的凭据 seam（`ctx.credentials`），配置里只放引用名；派生优先级为启动环境 → 凭据存储 → 项目 `.env` → `$DSH_HOME/.env`。见 [TTS-适配调研.md](../rd/TTS-适配调研.md#key-的存放)。
 
 ---
 

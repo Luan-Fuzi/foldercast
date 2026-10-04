@@ -27,3 +27,7 @@ credentials.json
 # 系统
 .DS_Store
 Thumbs.db
+
+# 分析器夹具：里面故意有命中密钥判据的**文件名**与被排除的目录，
+# 用来验证判据本身。内容都是占位文本，没有任何真凭据。
+!packages/plugin/scripts/analyzer/tests/fixtures/**

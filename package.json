@@ -14,6 +14,8 @@
     "check:json": "node scripts/check-json.ts",
     "check:styles": "node scripts/check-styles.ts",
     "check:examples": "node scripts/check-examples.ts",
+    "analyze": "node packages/plugin/scripts/analyzer/main.ts",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
@@ -21,6 +23,7 @@
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "jsonc-parser": "^3.3.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
   }
 }

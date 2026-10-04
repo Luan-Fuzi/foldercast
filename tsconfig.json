@@ -17,5 +17,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["scripts/**/*.ts"]
+  "include": ["scripts/**/*.ts", "packages/plugin/scripts/**/*.ts"],
+  "exclude": ["**/node_modules", "**/tests/fixtures/**"]
 }

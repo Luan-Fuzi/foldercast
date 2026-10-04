@@ -1,0 +1,17 @@
+{
+  "name": "dsh-foldercast",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "把任意人类可读的目录变成讲解视频。M1 阶段只有分析器（scripts/analyzer）；工具注册、Config schema、locale 与 skill 在 M4 补上。",
+  "engines": {
+    "node": ">=22.19"
+  },
+  "scripts": {
+    "analyze": "node scripts/analyzer/main.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "ignore": "^7.0.5"
+  }
+}

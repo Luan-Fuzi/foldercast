@@ -9,8 +9,9 @@ import { fileURLToPath } from 'node:url';
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * 遍历时跳过的目录名：依赖、生成物、版本库。
+ * 遍历时跳过的目录名：依赖、生成物、版本库、测试夹具。
  * `assets/` 与 `.foldercast/` 是可重算的产物（见 .gitignore），不参与检查。
+ * `fixtures/` 是分析器的输入样本，里面**故意**有坏链接与密钥文件名，不能按仓库文档检查。
  */
 export const SKIP_DIRS: ReadonlySet<string> = new Set([
   '.git',
@@ -18,6 +19,7 @@ export const SKIP_DIRS: ReadonlySet<string> = new Set([
   'out',
   'assets',
   '.foldercast',
+  'fixtures',
 ]);
 
 /**

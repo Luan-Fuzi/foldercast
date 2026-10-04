@@ -6,9 +6,11 @@
  *   node scripts/check-links.ts -v     # 打印所有检查过的链接
  *
  * 这是 docs/conventions/docs.md 里那条规范的可执行版本：文档重组后必须跑。
+ * 链接抽取（跳过代码块、目标含括号）在 ./lib/markdown.ts 里，单独有测试。
  */
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { extractLinks } from './lib/markdown.ts';
 import { readText, rel, walkFiles } from './lib/repo.ts';
 
 /** 不检查的目标：外链、纯锚点、mailto。 */
@@ -23,23 +25,20 @@ function main(): number {
   let total = 0;
 
   for (const doc of docs) {
-    const lines = readText(doc).split('\n');
-    lines.forEach((text, index) => {
-      for (const match of text.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
-        const target = (match[1] ?? '').trim();
-        if (EXTERNAL_PREFIXES.some((prefix) => target.startsWith(prefix))) continue;
+    for (const link of extractLinks(readText(doc))) {
+      const target = link.target.trim();
+      if (EXTERNAL_PREFIXES.some((prefix) => target.startsWith(prefix))) continue;
 
-        const pathPart = target.split('#')[0] ?? '';
-        if (pathPart === '') continue;
+      const pathPart = target.split('#')[0] ?? '';
+      if (pathPart === '') continue;
 
-        total += 1;
-        if (existsSync(join(dirname(doc), pathPart))) {
-          if (verbose) console.log(`  ok   ${rel(doc)}:${index + 1}  ->  ${target}`);
-        } else {
-          broken.push({ doc: rel(doc), line: index + 1, target });
-        }
+      total += 1;
+      if (existsSync(join(dirname(doc), pathPart))) {
+        if (verbose) console.log(`  ok   ${rel(doc)}:${link.line}  ->  ${target}`);
+      } else {
+        broken.push({ doc: rel(doc), line: link.line, target });
       }
-    });
+    }
   }
 
   console.log(`检查了 ${total} 条相对链接，覆盖 ${docs.length} 个文档。`);

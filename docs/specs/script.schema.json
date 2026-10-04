@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foldercast.dev/schema/script-1.json",
+  "title": "foldercast 讲稿",
+  "description": "目录解读的讲稿（分镜）。由叙事层或人产出，是创作产物。字段语义见 docs/specs/SPEC-data-format.md 第二节；它引用的解读见 foldercast.schema.json。",
+  "type": "object",
+  "required": ["foldercast", "source", "scenes"],
+  "additionalProperties": false,
+
+  "$defs": {
+    "kind": {
+      "description": "文件内容类别。场景引用文件时用于说明类型。",
+      "enum": ["code", "text", "markup", "data", "office", "pdf", "image", "video", "audio", "archive", "binary", "other"]
+    },
+
+    "sceneType": {
+      "description": "开放枚举：渲染器遇到不认识的类型应跳过并警告，而非崩溃。",
+      "enum": ["cover", "tree", "inventory", "file", "gallery", "clip", "document", "outro"]
+    },
+
+    "scene": {
+      "type": "object",
+      "required": ["id", "type", "narration"],
+      "properties": {
+        "id": { "type": "string", "description": "场景唯一标识，用于配音产物命名与对齐" },
+        "type": { "$ref": "#/$defs/sceneType" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "narration": {
+          "type": "string",
+          "description": "既是配音文本，也是字幕来源。字幕块由阶段③按标点与字数切分。"
+        },
+        "durationSec": {
+          "type": ["number", "null"],
+          "description": "null 表示由阶段③按实测音频回填"
+        },
+
+        "highlight": {
+          "type": "array", "items": { "type": "string" },
+          "description": "tree 场景：需要强调的子路径"
+        },
+        "groups": {
+          "type": "array",
+          "description": "inventory 场景：内容分组盘点",
+          "items": {
+            "type": "object",
+            "required": ["kind", "count"],
+            "properties": {
+              "kind": { "$ref": "#/$defs/kind" },
+              "count": { "type": "integer", "minimum": 0 },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "file": {
+          "type": "string",
+          "description": "file 场景：相对 source.root 的路径。必须存在于解读的 manifest 里"
+        },
+        "asset": { "type": "string", "description": "file 场景：已生成的素材路径" },
+        "focusLines": {
+          "type": "array", "items": { "type": "integer", "minimum": 1 },
+          "minItems": 2, "maxItems": 2,
+          "description": "file 场景：高亮行区间 [起, 止]"
+        },
+        "items": {
+          "type": "array", "items": { "type": "string" },
+          "description": "gallery 场景：图片素材路径列表"
+        },
+        "source": { "type": "string", "description": "clip/document 场景：源文件路径" },
+        "poster": { "type": "string", "description": "clip 场景：封面图" },
+        "clipRange": {
+          "type": "array", "items": { "type": "number", "minimum": 0 },
+          "minItems": 2, "maxItems": 2,
+          "description": "clip 场景：片段区间 [起秒, 止秒]"
+        },
+        "pages": {
+          "type": "array", "items": { "type": "string" },
+          "description": "document 场景：逐页转图后的素材路径"
+        }
+      }
+    }
+  },
+
+  "properties": {
+    "foldercast": {
+      "type": "integer", "const": 1,
+      "description": "所引用的解读格式版本。解读与讲稿各自独立版本化。"
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+
+    "source": {
+      "type": "object",
+      "required": ["root"],
+      "properties": {
+        "root": { "type": "string", "description": "被讲解目录的绝对路径，须与解读一致" },
+        "label": { "type": "string", "description": "展示用名称，默认取目录名" }
+      }
+    },
+
+    "title": { "type": "string", "description": "整片标题，可选" },
+
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "分镜。只能引用解读里存在的路径，生成后必须校验，幻觉路径要拦截。",
+      "items": { "$ref": "#/$defs/scene" }
+    }
+  }
+}

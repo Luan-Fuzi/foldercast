@@ -19,22 +19,34 @@ MVP 范围已收敛为**单一路径**：文案 → 视频 → 配音。不做 `
 
 ## M1 · 分析器（analyze）
 
-目标：**目录 → `foldercast.json` 的 `sources` / `stats` / `manifest` 三节**（不含 scenes）。
+目标：**目录 → `foldercast.json` 的 `sources` / `stats` / `manifest` / `graph` 四节**（不含讲稿，讲稿在 `script.json`）。
 
 不调用模型，纯确定性程序。
 
 - [ ] 目录遍历 + 结构树
 - [ ] 文件类型分类（12 类：code / text / markup / data / office / pdf / image / video / audio / archive / binary / other）
-- [ ] 角色识别（readme / entry / config / test / doc / license）
+- [ ] 角色识别（readme / entry / config / test / doc / asset / license / build）
 - [ ] 语言与行数统计
 - [ ] `sources` 三级筛选（include / exclude / kinds）
 - [ ] 默认排除规则
+- [ ] **引用依赖图**：`manifest[].imports` / `importedBy` + `graph` 的 roots / hubs / leaves / dangling
+- [ ] **密钥类文件的三层判据与 `stats.secrets` 审计**（[ADR 0007](decisions/0007-secret-file-exclusion.md)）
 - [ ] 各类型的 `preview` 提取（代码注释、文本首段、文档大纲、媒体元数据）
 - [ ] `maxFiles` / `maxFileSizeMb` / `maxDepth` 规模保护
 
 **验收**：对三个真实目录跑通并人工核对 —— 一个 TS 项目、一个混杂资料目录、一个含 Office 的汇报目录。分类与排除结果无错判，大体量目录不 OOM。
 
-**为什么先做这个**：它是唯一不依赖模型、不依赖渲染、不依赖网络的阶段，风险最低，且产物（目录分析结果）本身就有价值。
+**引用图的验收**：对本仓库自身跑一次，`roots` 应含 `README.md`，`hubs` 应含 `docs/specs/SPEC-pipeline.md`（被 10 个文档引用），`dangling` 应为空。
+
+**为什么先做这个**：它是唯一不依赖模型、不依赖渲染、不依赖网络的阶段，风险最低，且产物（目录解读）本身就有价值。
+
+### 第一版的规模判据：无可配置空间
+
+**判据：除了「指向哪个目录」，不需要任何其他输入。**
+
+风格预设、自然语言风格解析、`sources` 的用户自定义、多视频切分、多 TTS provider —— **全部押后**。先做零参数的版本，理由是没看到真实成片之前，无法判断哪些东西值得暴露。
+
+**必需 vs 可选**要分清：默认排除规则、`maxFiles` 等规模保护是**必需**的（否则 21 万文件的目录跑不动），但它们的**值先写死成常量**，不做成配置项。
 
 ---
 
@@ -142,6 +154,14 @@ const lectures = [lec00, ..., lec06];
 - 阶段③ 用实测时长重渲染（准，用于成片）
 
 两遍渲染是**设计的一部分**，不是浪费。
+
+### 5. 叙事质量没有指标（M3 的最大空白）
+
+事实层可以断言「分类无错判」，叙事层没有对应的判据。
+「讲稿好不好」「重点选得对不对」目前只能人工评审。
+
+这不是可以绕过的工程问题，它决定了 M3 的验收标准怎么写。
+在它解决之前，M3 的进度只能按「能跑通」衡量，不能按「跑得好」衡量。
 
 ---
 

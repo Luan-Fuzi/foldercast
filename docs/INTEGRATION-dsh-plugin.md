@@ -64,7 +64,7 @@ DSH 进程
 }
 ```
 
-### 2.2 `dsh.bundle` —— 声明这是一个组合包
+### 2.2 `dsh.bundle` —— 声明这是一个组合包（**必需**）
 
 ```json
 { "dsh": { "bundle": { "patch": "./cordis.patch.yml" } } }
@@ -81,6 +81,8 @@ DSH 进程
 ```
 
 **没有 `dsh.bundle` 声明的包仍可安装，但只作为普通依赖** —— `dsh plugin` 会打印警告且不激活任何层。这种情况下插件不会被加载。
+
+**所以 `dsh.bundle` 不是可选项，是必需的。** 漏掉它，插件装上了但不生效，且失败方式是"静默不激活"而非报错。
 
 ### 2.3 版本约束：靠 `peerDependencies`，**不是** `engines.dsh`
 

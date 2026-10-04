@@ -55,7 +55,7 @@ jobs:
           sys.exit(0 if ok else 1)
           PY
 
-      - name: 校验示例分镜符合 schema
+      - name: 校验示例符合 schema
         run: |
           pip install jsonschema
           python3 -c "
@@ -64,5 +64,10 @@ jobs:
               json.load(open('examples/foldercast.example.json')),
               json.load(open('docs/specs/foldercast.schema.json')),
           )
-          print('示例分镜通过 schema 校验')
+          print('解读示例通过 foldercast.schema.json')
+          jsonschema.validate(
+              json.load(open('examples/script.example.json')),
+              json.load(open('docs/specs/script.schema.json')),
+          )
+          print('讲稿示例通过 script.schema.json')
           "

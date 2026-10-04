@@ -1,9 +1,12 @@
 # 数据格式
 
-定义两样东西：
+定义三样东西：
 
-1. `foldercast.json` —— 分镜稿，项目的**单一事实来源**
-2. `assets/` —— 素材目录，可重算的缓存
+1. `foldercast.json` —— **目录解读**，由程序产出，可重算
+2. `script.json` —— **讲稿**，由叙事层或人产出，是创作，重跑会得到不同结果
+3. `assets/` —— 素材目录，可重算的缓存
+
+**为什么解读与讲稿分成两份文件**：一份理解可以对应多种讲法（讲给同事的、讲给三个月后自己的），共用同一份分析结果。而且两者性质不同——`foldercast.json` 删了能重建，`script.json` 删了就丢了创作。合在一个文件里，重跑分析就会覆盖讲稿。
 
 ---
 
@@ -26,14 +29,15 @@
   "sources": { /* 内容筛选，见下 */ },
   "stats":   { /* 分析统计，见下 */ },
   "manifest": [ /* 文件清单，见下 */ ],
+  "graph":   { /* 引用依赖图，见下 */ },
 
   "video": { /* 输出规格，见下 */ },
   "voice": { /* 配音配置，见下 */ },
-  "style": { /* 风格，见下 */ },
-
-  "scenes": [ /* 分镜，见下 */ ]
+  "style": { /* 风格，见下 */ }
 }
 ```
+
+**讲稿不在这个文件里** —— 它是独立的 `script.json`（见第七节）。同一份解读可以配多份讲稿。
 
 ---
 
@@ -64,7 +68,10 @@
   // 4. 规模保护
   "maxFiles": 200,             // 分析上限，超出按重要性截断
   "maxFileSizeMb": 5,          // 单文件超过则不读取内容（仍计入结构树）
-  "maxDepth": 6                // 结构树展示深度
+  "maxDepth": 6,               // 结构树展示深度
+
+  // 5. 覆盖密钥判据（误拦时用，见 stats.secrets）
+  "rescan": ["docs/tutorial.md"]
 }
 ```
 
@@ -113,7 +120,9 @@ dist/**  build/**  out/**  target/**
     "asset": ["public/img/math01_eig.png"],
     "license": ["LICENSE"],
     "build": ["scripts/tts.py"]
-  }
+  },
+
+  "secrets": { /* 密钥文件的排除审计，见下 */ }
 }
 ```
 
@@ -134,6 +143,59 @@ dist/**  build/**  out/**  target/**
 
 ---
 
+### `graph` —— 引用依赖图（理解的组成部分）
+
+只放**骨架**，边挂在上面的 `manifest` 里。这样图很大时不必整体读入。
+
+```jsonc
+"graph": {
+  "nodes": 128,
+  "edges": 274,
+  "roots": ["README.md", "src/index.ts"],           // 无入边 = 入口
+  "hubs": [                                          // 入度最高 = 最该先讲的
+    { "path": "docs/SPEC-pipeline.md", "in": 10, "out": 2 },
+    { "path": "docs/SYSTEM-DESIGN.md", "in": 8, "out": 9 }
+  ],
+  "leaves": ["docs/conventions/git.md"],             // 无出边 = 末端
+  "dangling": ["src/missing-util.ts"]                // 指向不存在的路径，可能是坏引用
+}
+```
+
+**这节回答的问题**：哪些文件是入口、哪些是枢纽、依赖方向是什么。靠文件大小和数量看不出来。写稿时按 `roots` → `hubs` → 其余的顺序讲，比按目录树字母顺序讲更接近真实的阅读顺序。
+
+依赖的识别按 `kind` 分：
+
+| kind | 识别方式 |
+|---|---|
+| `code` / `markup` | `import` / `require` / `from` 语句，按语言语法 |
+| `text` / `data` | Markdown 链接与图片引用；JSON/YAML 里的相对路径字符串 |
+| `office` / `pdf` | 文档里出现的其他文件名（弱信号，记入但不计入度数） |
+| 其他 | 不识别 |
+
+---
+
+### `stats.secrets` —— 密钥文件的排除审计
+
+被拦下的文件**仍进结构树与计数**（"这里有个 `.env`"本身有信息量），但内容不读、不出现在 `manifest[].preview`、不生成素材。
+
+```jsonc
+"secrets": {
+  "excluded": [
+    { "path": ".env",          "reason": "filename", "match": ".env" },
+    { "path": "src/legacy.py", "reason": "entropy",  "match": "api_key" },
+    { "path": ".mimo_api_key", "reason": "filename", "match": "*_key" }
+  ],
+  "scanned": 33,                                    // 实际读过头部的文件数
+  "rescanned": ["docs/tutorial.md"]                 // 用户显式覆盖判据的文件
+}
+```
+
+`reason` 取值：`filename`（比对文件名模式）／`signature`（比对已知密钥格式）／`entropy`（赋值语句 + 高熵值）。
+
+**判据与理由见 [ADR 0007](../decisions/0007-secret-file-exclusion.md)。** 这一节必须存在且必须打印——判据不可能完备，用户靠它发现被误拦的文件。覆盖方式：`sources.rescan`。
+
+---
+
 ### `manifest` —— 文件清单
 
 每个文件一条。**这是写稿阶段模型看到的主要内容**。
@@ -149,7 +211,11 @@ dist/**  build/**  out/**  target/**
     "language": "TypeScript",      // 代码/标记文件才有
     "title": "主入口",              // 从首个注释或标题提取，可缺省
     "preview": "export function main() { ... }",  // 截断预览，≤200 字
-    "asset": "assets/src_index_thumb.png"         // 若已生成素材
+    "asset": "assets/src_index_thumb.png",        // 若已生成素材
+    "imports": ["src/util.ts", "src/types.ts"],   // 它引用了谁（≤40 条，超出记 importsCount）
+    "importsCount": 2,
+    "importedBy": ["src/app.ts", "src/cli.ts"],   // 谁引用它：按引用方出度排序取前 5
+    "importedByCount": 7                          // 真实入度，反映枢纽地位
   }
 ]
 ```
@@ -196,7 +262,7 @@ dist/**  build/**  out/**  target/**
 - **音色不做跨 provider 统一枚举**。MiMo 是 `白桦`，Edge 是 `zh-CN-YunxiNeural`，`say` 是 `Meijia` —— 强行统一会丢失各家的表达力。`provider` + `voice` 两个字段表达即可。
 - `style` 是「怎么读」的统一语义：MiMo 落在 `user` 消息，Edge 落在 `rate`/`pitch`，`say` 落在 `-r`。
 - **换 provider 或换音色只需重跑阶段③**，不改 `scenes`（见 [SPEC-pipeline.md](SPEC-pipeline.md#可重跑边界)）。
-- 本字段是**配置意图**；实际使用的 provider 与音色以阶段③产出的 `durations.json` 为准（见本文第三节）。密钥不放这里 —— 存放优先级见 [../rd/TTS-适配调研.md](../rd/TTS-适配调研.md#key-的存放)。
+- 本字段是**配置意图**；实际使用的 provider 与音色以阶段③产出的 `durations.json` 为准（见本文第四节）。密钥不放这里 —— 存放优先级见 [../rd/TTS-适配调研.md](../rd/TTS-适配调研.md#key-的存放)。
 
 ---
 
@@ -220,6 +286,20 @@ dist/**  build/**  out/**  target/**
 token 清单见 [../rd/风格预设系统.md](../rd/风格预设系统.md)。
 
 ---
+
+## 二、`script.json` —— 讲稿（创作）
+
+放在 `foldercast.json` 旁边。**这是 M3 的产物，可以被重写而不影响解读。**
+
+```jsonc
+{
+  "foldercast": 1,                    // 引用的是哪一版解读格式
+  "source": { "root": "/abs/path/to/target" },
+  "generatedAt": "2026-10-04T18:10:00+08:00",
+  "title": "我的项目 · 导览",           // 可选：整片的标题
+  "scenes": [ /* 见下 */ ]
+}
+```
 
 ### `scenes` —— 分镜
 
@@ -301,7 +381,7 @@ token 清单见 [../rd/风格预设系统.md](../rd/风格预设系统.md)。
 
 ---
 
-## 二、`assets/` 素材目录
+## 三、`assets/` 素材目录
 
 ```
 assets/
@@ -331,7 +411,7 @@ assets/
 
 ---
 
-## 三、`durations.json`（阶段③产物）
+## 四、`durations.json`（阶段③产物）
 
 ```jsonc
 {
@@ -360,8 +440,9 @@ assets/
 
 ---
 
-## 四、版本与兼容
+## 五、版本与兼容
 
 - `foldercast` 字段是整数版本号。新增可选字段不递增；**破坏性变更**（改字段语义、删字段）递增。
+- `foldercast.json` 与 `script.json` **各自独立版本化**。解读格式升版不必要求讲稿同步升版，只要 `script.json` 声明的版本仍被支持。
 - 读取方遇到未知版本应报错而非猜测。
 - 场景 `type` 是开放枚举：遇到不认识的 type，渲染器应跳过并警告，而不是崩溃。

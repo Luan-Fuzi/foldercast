@@ -100,6 +100,8 @@ NNNN-<kebab-case-标题>.md
 | [0003](0003-remotion-as-renderer.md) | 用 Remotion 做渲染器 | 已接受 | 2026-10-04 |
 | [0004](0004-pipeline-order.md) | 管线顺序固定为「文案 → 视频 → 配音」 | 已接受 | 2026-10-04 |
 | [0005](0005-dsh-plugin-shape.md) | DSH 插件形态：工具提供方，shell 出去调 CLI | 已接受 | 2026-10-04 |
+| [0006](0006-narration-layer-moves-up.md) | 叙事层下移给 Agent 集群，分析器只出事实 | 已接受 | 2026-10-04 |
+| [0007](0007-secret-file-exclusion.md) | 密钥类文件保持不读，判据分三层且必须可审计 | 已接受 | 2026-10-04 |
 
 ---
 

@@ -43,10 +43,12 @@ docs/
 
 | 事实 | 唯一来源 |
 |---|---|
-| `foldercast.json` 的字段与语义 | `../specs/SPEC-data-format.md` + `specs/foldercast.schema.json` |
+| `foldercast.json`（目录解读）的字段与语义 | `../specs/SPEC-data-format.md` 第一节 + `specs/foldercast.schema.json` |
+| `script.json`（讲稿）的字段与语义 | `../specs/SPEC-data-format.md` 第二节 |
 | 三步管线的顺序与职责 | `../specs/SPEC-pipeline.md` |
 | 风格 token 清单 | `rd/风格预设系统.md` + `styles/*.json` |
 | TTS 供应商能力 | `rd/TTS-适配调研.md` |
+| 密钥文件的判据 | `decisions/0007-secret-file-exclusion.md` |
 | 技术选型 | `SYSTEM-DESIGN.md`（理由在 `decisions/`） |
 | 里程碑与验收 | `ROADMAP.md` |
 
@@ -94,9 +96,9 @@ docs/
 
 ## 五、契约与文档的同步
 
-`foldercast.json` 有三处表示，**必须同时更新**：
+`foldercast.json`（解读）与 `script.json`（讲稿）各有三处表示，**必须同时更新**：
 
-1. `specs/foldercast.schema.json` —— 机器可读的 JSON Schema
+1. `specs/foldercast.schema.json` + `script.schema.json` —— 机器可读的 JSON Schema
 2. `../specs/SPEC-data-format.md` —— 人读的字段说明
 3. `packages/renderer` 里的 TypeScript 类型（有代码后）
 

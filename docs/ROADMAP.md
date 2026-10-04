@@ -28,9 +28,9 @@ MVP 范围已收敛为**单一路径**：文案 → 视频 → 配音。不做 `
 - [ ] 角色识别（readme / entry / config / test / doc / asset / license / build）
 - [ ] 语言与行数统计
 - [ ] `sources` 三级筛选（include / exclude / kinds）
-- [ ] 默认排除规则
+- [ ] 默认排除规则（含**密钥类文件名**，见 [ADR 0007](decisions/0007-secret-file-exclusion.md)）
 - [ ] **引用依赖图**：`manifest[].imports` / `importedBy` + `graph` 的 roots / hubs / leaves / dangling
-- [ ] **密钥类文件的三层判据与 `stats.secrets` 审计**（[ADR 0007](decisions/0007-secret-file-exclusion.md)）
+- [ ] **`stats.secrets` 审计输出**（只按文件名匹配，必须打印）
 - [ ] 各类型的 `preview` 提取（代码注释、文本首段、文档大纲、媒体元数据）
 - [ ] `maxFiles` / `maxFileSizeMb` / `maxDepth` 规模保护
 

@@ -22,7 +22,11 @@
 现有工具（`paperview`、`gitreel`、`explainmyrepo`）都只吃 **git 仓库**。foldercast 的输入是**任何目录**。
 赛道盘点见 [docs/PRIOR-ART.md](docs/PRIOR-ART.md)。
 
-**要知道的一点**：叙事阶段会把文件内容送进模型上下文 —— 这是设计的一部分，不是缺陷。唯一的读取例外是密钥类文件（[ADR 0007](docs/decisions/0007-secret-file-exclusion.md)）。
+**要说清的一件事**：foldercast 会读取目录里的文件内容用于理解，**这些内容会进入模型上下文**。这是功能本身，不是缺陷。
+
+我们默认排除 `.env`、`credentials.json`、`*.pem` 等密钥文件名（[清单](docs/specs/SPEC-data-format.md#sources--内容筛选维度-2)），但**这个列表不可能完备** —— 硬编码在源码里的密钥、自定义命名的密钥文件都会被读到。请自行确认目录里没有不该外传的内容。
+
+不做内容检测是刻意的选择：同类工具（Cursor / Copilot / Claude Code）没有一家做，而实测显示模式匹配在真实上下文里会成片失效。一个漏掉一半密钥的检测器比没有检测器更糟 —— 它让人以为有保护。理由见 [ADR 0007](docs/decisions/0007-secret-file-exclusion.md)。
 
 ---
 

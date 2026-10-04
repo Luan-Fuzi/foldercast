@@ -162,24 +162,22 @@
         },
         "secrets": {
           "type": "object",
-          "description": "密钥文件的排除审计（ADR 0007）。必须打印，用户靠它发现被误拦的文件。",
+          "description": "密钥类文件的排除审计（ADR 0007）。只按文件名匹配，不可能完备；必须打印，用户靠它确认命中了什么。",
           "properties": {
             "excluded": {
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["path", "reason"],
+                "required": ["path", "match"],
                 "properties": {
                   "path": { "type": "string" },
-                  "reason": { "enum": ["filename", "signature", "entropy"] },
-                  "match": { "type": "string", "description": "命中的模式或关键词" }
+                  "match": { "type": "string", "description": "命中的文件名模式" }
                 }
               }
             },
-            "scanned": { "type": "integer", "minimum": 0, "description": "实际读过头部的文件数" },
             "rescanned": {
               "type": "array", "items": { "type": "string" },
-              "description": "用户用 sources.rescan 显式覆盖判据的文件"
+              "description": "用户用 sources.rescan 显式放回的文件"
             }
           }
         }

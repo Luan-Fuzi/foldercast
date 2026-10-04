@@ -78,13 +78,23 @@
 **默认排除**（无需用户配置，开箱即用）：
 
 ```
+# 生成物与依赖 —— 讲它们没有信息量，且会把文件数撑爆
 .git/**  node_modules/**  .venv/**  venv/**  __pycache__/**
 dist/**  build/**  out/**  target/**
 *.min.js  *.min.css  *.map  *.lock  package-lock.json  pnpm-lock.yaml
 .DS_Store  Thumbs.db
+
+# 密钥类文件名 —— 不读内容（见 ADR 0007）
+.env  .env.*  *.env
+credentials.json  secrets.json  .netrc
+*.pem  *.key  *.p12  *.pfx  *.keystore
+id_rsa  id_dsa  id_ecdsa  id_ed25519
+.*_key  *_api_key  *_token  *_secret
 ```
 
-理由：这些是**生成物或依赖**，讲它们没有信息量，且会把文件数撑爆。
+理由：前一组是**生成物或依赖**，讲它们没有信息量，且会把文件数撑爆。
+
+后一组按**文件名**排除，不做内容检测 —— 理由与代价见 [ADR 0007](../decisions/0007-secret-file-exclusion.md)。这条规则**不可能完备**：硬编码在源码里的密钥、用户自定义命名的密钥文件都会被读到。用户可用 `sources.exclude` / `sources.include` 覆盖。
 
 **筛选是否好做**：好做。本质是一次 glob 匹配，`pathspec` / `micromatch` 级别的库就能覆盖，不需要模型参与。唯一要小心的是默认排除规则不要误伤（比如把 `build.gradle` 当成 `build/**` 排除掉 —— 所以规则要按**目录**匹配而非子串匹配）。
 
@@ -176,23 +186,22 @@ dist/**  build/**  out/**  target/**
 
 ### `stats.secrets` —— 密钥文件的排除审计
 
-被拦下的文件**仍进结构树与计数**（"这里有个 `.env`"本身有信息量），但内容不读、不出现在 `manifest[].preview`、不生成素材。
+被排掉的密钥类文件**仍进结构树与计数**（"这里有个 `.env`"本身有信息量），但内容不读、不出现在 `manifest[].preview`、不生成素材。
 
 ```jsonc
 "secrets": {
   "excluded": [
-    { "path": ".env",          "reason": "filename", "match": ".env" },
-    { "path": "src/legacy.py", "reason": "entropy",  "match": "api_key" },
-    { "path": ".mimo_api_key", "reason": "filename", "match": "*_key" }
+    { "path": ".env",            "match": ".env" },
+    { "path": ".mimo_api_key",   "match": "*_key" },
+    { "path": "config/prod.pem", "match": "*.pem" }
   ],
-  "scanned": 33,                                    // 实际读过头部的文件数
-  "rescanned": ["docs/tutorial.md"]                 // 用户显式覆盖判据的文件
+  "rescanned": ["docs/tutorial.md"]     // 用户用 sources.rescan 显式放回的文件
 }
 ```
 
-`reason` 取值：`filename`（比对文件名模式）／`signature`（比对已知密钥格式）／`entropy`（赋值语句 + 高熵值）。
+**这一节必须打印出来。** 判据只按文件名匹配，不可能完备 —— 用户靠这份清单确认命中了什么、有没有该排除却没排除的。放回方式：`sources.rescan`。
 
-**判据与理由见 [ADR 0007](../decisions/0007-secret-file-exclusion.md)。** 这一节必须存在且必须打印——判据不可能完备，用户靠它发现被误拦的文件。覆盖方式：`sources.rescan`。
+判据范围与已知短板见 [ADR 0007](../decisions/0007-secret-file-exclusion.md)。**明确不做**：内容签名比对、熵检测。
 
 ---
 

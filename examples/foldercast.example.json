@@ -41,9 +41,9 @@
     },
     "secrets": {
       "excluded": [
-        { "path": ".mimo_api_key", "reason": "filename", "match": "*_key" }
+        { "path": ".mimo_api_key", "match": "*_key" },
+        { "path": ".env.local", "match": ".env.*" }
       ],
-      "scanned": 23,
       "rescanned": []
     }
   },

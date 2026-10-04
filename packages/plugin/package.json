@@ -12,6 +12,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "ignore": "^7.0.5"
+    "ignore": "^7.0.5",
+    "officeparser": "^8.1.0",
+    "shiki": "^4.5.0"
+  },
+  "optionalDependencies": {
+    "@deepseek-ai/libreoffice-kit": "^0.1.5"
   }
 }

@@ -15,6 +15,7 @@
     "check:styles": "node scripts/check-styles.ts",
     "check:examples": "node scripts/check-examples.ts",
     "analyze": "node packages/plugin/scripts/analyzer/main.ts",
+    "assets": "node packages/plugin/scripts/assets/main.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

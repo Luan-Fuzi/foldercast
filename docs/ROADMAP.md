@@ -32,35 +32,45 @@
 
 ---
 
-## M1 · 分析器（解读）
+## M1 · 分析器（解读）（已完成）
 
 目标：**目录 → `foldercast.json`**。纯确定性程序，TypeScript，不调用模型。
 
 这是整个项目的地基：**「理解」是核心产物**，而解读就是它的载体。
 
-- [ ] 目录遍历 + 结构树
-- [ ] 文件类型分类（12 类：code / text / markup / data / office / pdf / image / video / audio / archive / binary / other）
-- [ ] 角色识别（readme / entry / config / test / doc / asset / license / build）
-- [ ] 语言与行数统计
-- [ ] `sources` 三级筛选（include / exclude / kinds）
-- [ ] 默认排除规则（含**密钥类文件名**，见 [ADR 0007](decisions/0007-secret-file-exclusion.md)）
-- [ ] **引用依赖图**：`manifest[].imports` / `importedBy` + `graph` 的 roots / hubs / leaves / dangling
-- [ ] **`stats.secrets` 审计输出**（只按文件名匹配，必须打印）
-- [ ] 各类型的 `preview` 提取（代码注释、文本首段、文档大纲、媒体元数据）
-- [ ] `maxFiles` / `maxFileSizeMb` / `maxDepth` 规模保护
+- [x] 目录遍历 + 结构树（**结构树即 `manifest` 的路径集合 + `stats.topDirs`**；契约里没有单独的树结构，见 SPEC-data-format.md）
+- [x] 文件类型分类（12 类：code / text / markup / data / office / pdf / image / video / audio / archive / binary / other）
+- [x] 角色识别（readme / entry / config / test / doc / asset / license / build）
+- [x] 语言与行数统计
+- [x] `sources` 三级筛选（include / exclude / kinds）
+- [x] 默认排除规则（含**密钥类文件名**，见 [ADR 0007](decisions/0007-secret-file-exclusion.md)）
+- [x] **引用依赖图**：`manifest[].imports` / `importedBy` + `graph` 的 roots / hubs / leaves / dangling
+- [x] **`stats.secrets` 审计输出**（只按文件名匹配，必须打印）
+- [x] 各类型的 `preview` 提取 —— 代码/文本/数据/标记/图片已做；**office / pdf / video 的深化提取视同 M2**（要 `dsoffice`、`officeparser`、`ffprobe`，M1 不引入这些依赖，留空而不是编一个）
+- [x] `maxFiles` / `maxFileSizeMb` / `maxDepth` 规模保护
 
-**验收**
+**验收（2026-10-04 实测）**
 
-1. 三个真实目录跑通并人工核对：一个 TS 项目、一个混杂资料目录、一个含 Office 的汇报目录
-2. **对本仓库自身跑一次**：`roots` 应含 `README.md`，`hubs` 应含 `docs/specs/SPEC-pipeline.md`（被 10 个文档引用），`dangling` 为空
-3. **脚本能脱离 DSH 直接跑**（`node packages/plugin/scripts/analyzer/main.ts <目录>`）——Node 22.19+ 直接运行 TS，不需要构建步骤，与仓库工具（`scripts/`）同一套做法。没有 CLI 时，CI 靠这条
-4. 大体量目录不 OOM
+1. ✅ 三个真实目录跑通并人工核对：
+
+   | 目录 | 结果 |
+   |---|---|
+   | `qiuzhao202608/lecture-videos`（TS + Remotion） | 94 文件；audio 68 / data 10 / code 9 / image 4；**命中 `.mimo_api_key`**（真实密钥文件名，审计如实打印）；枢纽 `src/components.tsx`、`src/types.ts` 与人工判断一致 |
+   | `qiuzhao202608/resume`（Office 汇报） | 22 文件；office 8 / pdf 7 / text 7，无错判；无引用关系时不编造入口（roots 为空） |
+   | `qiuzhao202608`（混杂资料） | 1040 文件 → 按重要性保留 200；枢纽是「智能体开发」系列的 5 篇八股文档，符合实际阅读顺序 |
+
+   验收过程中修掉三类误判（都写进了测试）：Markdown 链接目标含括号被截断、代码块里的 `[name](arg)` 被当成链接、JSON 里的裸文件名被当成路径。
+
+2. ✅ 对本仓库自身：`roots` 含 `README.md`，`hubs` 含 `docs/specs/SPEC-pipeline.md`（入 10），`dangling` 为空
+3. ✅ 脱离 DSH 直接跑：`node packages/plugin/scripts/analyzer/main.ts <目录>`，无需构建步骤
+4. ✅ 大体量不 OOM：对 `/Users/scliang/work`（21.3 万文件）跑完 **0.34 秒、峰值内存 124 MB**；按重要性截断到 200 个文件，截断数量如实打印
 
 **语言**：TypeScript（Node 22.19+），与插件、渲染器同栈。**项目无 Python 依赖**——当初选 Python 是为了 Office/PDF 库，那两块现在都在 Node 侧。
 
 **为什么排第一**：唯一不依赖模型、不依赖渲染、不依赖网络的阶段，风险最低，产物本身有价值。
 
 **注意**：本阶段**不含**插件骨架。骨架与技能放在 M4，因为它只服务于「让 agent 调用脚本」这一件事。
+
 
 ---
 

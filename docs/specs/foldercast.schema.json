@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://foldercast.dev/schema/foldercast-1.json",
-  "title": "foldercast 分镜稿",
-  "description": "把任意目录变成讲解视频的分镜稿格式。字段语义见 docs/specs/SPEC-data-format.md。",
+  "title": "foldercast 目录解读",
+  "description": "对一个目录的结构化解读：结构、统计、文件清单、引用依赖图。由分析器产出，可重算。字段语义见 docs/specs/SPEC-data-format.md。",
   "type": "object",
   "required": ["foldercast", "source"],
   "additionalProperties": false,
@@ -16,72 +16,6 @@
     "kind": {
       "description": "文件内容类别。对应需求 (a)-(e) 及其余。",
       "enum": ["code", "text", "markup", "data", "office", "pdf", "image", "video", "audio", "archive", "binary", "other"]
-    },
-
-    "sceneType": {
-      "description": "开放枚举：渲染器遇到不认识的类型应跳过并警告，而非崩溃。场景定义在 script.json。",
-      "enum": ["cover", "tree", "inventory", "file", "gallery", "clip", "document", "outro"]
-    },
-
-    "scene": {
-      "type": "object",
-      "required": ["id", "type", "narration"],
-      "properties": {
-        "id": { "type": "string", "description": "场景唯一标识，用于配音产物命名与对齐" },
-        "type": { "$ref": "#/$defs/sceneType" },
-        "title": { "type": "string" },
-        "subtitle": { "type": "string" },
-        "narration": {
-          "type": "string",
-          "description": "既是配音文本，也是字幕来源。字幕块由阶段③按标点与字数切分。"
-        },
-        "durationSec": {
-          "type": ["number", "null"],
-          "description": "null 表示由阶段③按实测音频回填"
-        },
-
-        "highlight": {
-          "type": "array", "items": { "type": "string" },
-          "description": "tree 场景：需要强调的子路径"
-        },
-        "groups": {
-          "type": "array",
-          "description": "inventory 场景：内容分组盘点",
-          "items": {
-            "type": "object",
-            "required": ["kind", "count"],
-            "properties": {
-              "kind": { "$ref": "#/$defs/kind" },
-              "count": { "type": "integer", "minimum": 0 },
-              "note": { "type": "string" }
-            },
-            "additionalProperties": false
-          }
-        },
-        "file": { "type": "string", "description": "file 场景：相对 source.root 的路径" },
-        "asset": { "type": "string", "description": "file 场景：已生成的素材路径" },
-        "focusLines": {
-          "type": "array", "items": { "type": "integer", "minimum": 1 },
-          "minItems": 2, "maxItems": 2,
-          "description": "file 场景：高亮行区间 [起, 止]"
-        },
-        "items": {
-          "type": "array", "items": { "type": "string" },
-          "description": "gallery 场景：图片素材路径列表"
-        },
-        "source": { "type": "string", "description": "clip/document 场景：源文件路径" },
-        "poster": { "type": "string", "description": "clip 场景：封面图" },
-        "clipRange": {
-          "type": "array", "items": { "type": "number", "minimum": 0 },
-          "minItems": 2, "maxItems": 2,
-          "description": "clip 场景：片段区间 [起秒, 止秒]"
-        },
-        "pages": {
-          "type": "array", "items": { "type": "string" },
-          "description": "document 场景：逐页转图后的素材路径"
-        }
-      },
-      "additionalProperties": false
     }
   },
 

@@ -1,0 +1,35 @@
+# 依赖
+node_modules/
+
+# 渲染产物
+out/
+*.mp4
+*.webm
+*.srt
+*.vtt
+
+# TTS 产物
+public/audio/
+audio/
+durations.json
+
+# 素材缓存（可重算，不必入库）
+assets/
+.foldercast/
+
+# 密钥 —— 绝不能提交
+.*_api_key
+.*_key
+credentials.json
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 系统
+.DS_Store
+Thumbs.db

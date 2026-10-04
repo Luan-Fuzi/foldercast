@@ -1,0 +1,155 @@
+# 代码规范
+
+**当前项目处于设计阶段，尚无代码。** 本文预先定下规范，避免代码落地时各写一套。
+
+---
+
+## 一、语言与运行时
+
+| 模块 | 语言 | 运行时 | 理由 |
+|---|---|---|---|
+| `packages/analyzer` | Python | 3.11+ | 办公文档与 PDF 库都在 Python 生态（见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md)） |
+| `packages/renderer` | TypeScript | Node 22+ | Remotion 要求 |
+| `packages/cli` | TypeScript | Node 22+ | 与 renderer 同生态，便于共享类型 |
+
+**Node 版本下限 22** —— DSH 插件生态的普遍要求，且 Remotion 4.x 需要。
+
+### Python 依赖策略
+
+优先使用**已装的库**（本机实测）：
+
+| 库 | 用途 | 状态 |
+|---|---|---|
+| `python-docx` | `.docx` 文本提取 | ✅ 已装 |
+| `python-pptx` | `.pptx` 文本提取 | ✅ 已装 |
+| `PyMuPDF`(fitz) | PDF 逐页转图 + 文本 | ✅ 已装 |
+| `Pillow` | 图片处理 | ✅ 已装 |
+| `openpyxl` | `.xlsx` 读取 | 需用 DSH 捆绑 Python |
+
+**新增第三方依赖需要理由。** 能用标准库或已装库解决的，不引入新依赖。外部命令（`ffmpeg`/`ffprobe`/`sips`）优先于 Python 包。
+
+---
+
+## 二、TypeScript
+
+### 风格
+
+- **缩进 2 空格**，单引号，**必须分号**
+- 仅用 ESM（`"type": "module"`）
+- `strict: true`，不用 `any`（用 `unknown` + 类型守卫）
+- 导出优先**具名导出**，避免 default export
+
+### 命名
+
+| 种类 | 约定 | 例 |
+|---|---|---|
+| 类型 / 接口 | PascalCase | `SceneSpec` `FoldercastDocument` |
+| 变量 / 函数 | camelCase | `loadStoryboard` `sceneIndex` |
+| 常量 | SCREAMING_SNAKE | `MAX_SUB_LENGTH` |
+| 文件（模块） | kebab-case | `scene-view.tsx` `load-storyboard.ts` |
+| React 组件 | PascalCase | `Caption` `TreeScene` |
+
+### 类型定义的位置
+
+`foldercast.json` 的 TypeScript 类型是**契约**，放在 renderer 里但**必须与 `docs/specs/foldercast.schema.json` 一致**。
+
+改任何一边，另一边必须同步，且要在同一个提交里。
+
+### 禁止
+
+- ❌ `enum`（用 union type 或 `as const` 对象）
+- ❌ 非空断言 `!`（除非紧邻处有显式检查并注释说明）
+- ❌ `@ts-ignore`（用 `@ts-expect-error` 并写明原因）
+- ❌ 循环依赖（`analyzer` 与 `renderer` 互不依赖，见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#三模块边界)）
+
+---
+
+## 三、Python
+
+### 风格
+
+- **缩进 4 空格**
+- 遵循 PEP 8，行宽 **100**
+- 类型注解**必须**（参数与返回值）
+- 用 `pathlib.Path`，不用 `os.path` 字符串拼接
+
+### 命名
+
+遵循 PEP 8：模块 `snake_case`、类 `PascalCase`、函数与变量 `snake_case`、常量 `SCREAMING_SNAKE`。
+
+### 必须遵守的两条
+
+**1. 不得调用模型。** `analyzer` 是纯确定性模块（见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#44-分析器不调用模型)）。任何 LLM 调用都属于 `packages/cli` 的编排层。
+
+**2. 密钥不得经过命令行参数。** 按优先级读环境变量 → 项目 `.<provider>_key` → 用户级配置。见 [TTS-适配调研.md](../rd/TTS-适配调研.md#key-的存放)。
+
+---
+
+## 四、测试
+
+### 分层
+
+| 层 | 范围 | 要求 |
+|---|---|---|
+| 单元 | 纯函数：分类器、glob 匹配、字幕切分 | 必须有 |
+| 集成 | 分析器对固定 fixture 目录的完整输出 | 必须有 |
+| 快照 | 分析结果 JSON 的结构稳定性 | 推荐 |
+| 渲染 | 同分镜渲染两次逐帧比对 | 必须有（验证确定性） |
+| 端到端 | 真实目录全流程 | 手动，不进 CI |
+
+### 关键测试用例
+
+这些是已知的坑，必须有对应用例：
+
+- **glob 匹配必须按目录而非子串** —— `build/**` 不应匹配 `build.gradle`
+- **字幕切分**：超长句在逗号处二次切分；相邻短句合并避免孤行；每块 ≤ 24 字
+- **时长分配**：按字符数占比分配，各块之和等于实测总时长
+- **确定性**：同一输入渲染两次，逐帧一致
+- **幻觉拦截**：分镜引用了 `manifest` 里不存在的路径时必须报错
+
+### 测试数据
+
+`packages/analyzer/tests/fixtures/` 下放小型目录样本，**提交进仓库**。不要用真实大目录做单元测试。
+
+---
+
+## 五、Lint 与格式化
+
+| 模块 | 工具 | 状态 |
+|---|---|---|
+| TypeScript | `oxlint` + `prettier` | 待接入（`lecture-videos` 用的是默认工具链） |
+| Python | `ruff` | 待接入 |
+
+**提交前必须本地跑过。** 不依赖 CI 兜底。
+
+---
+
+## 六、错误处理
+
+- **分析器**：单个文件读取失败不应中断整体。记录进 `stats.errors` 并继续。
+- **渲染器**：遇到不认识的场景 `type` 应**跳过并警告**，不崩溃（见 [SPEC-data-format.md](../specs/SPEC-data-format.md#四版本与兼容)）。
+- **CLI**：面向用户的错误信息必须**可操作** —— 说清哪个文件、什么问题、怎么修。不打印裸 stack trace。
+
+---
+
+## 七、注释
+
+- 只在**为什么**不明显时写注释。不复述代码在做什么。
+- 借鉴外部实现时，**注释标注来源**。例如从 `lecture-videos` 复制的字幕切分逻辑：
+
+```python
+# Subtitle chunking follows lecture-videos/scripts/tts.py (same author),
+# verified on 7 produced episodes.
+def split_subs(text: str, maxlen: int = 24) -> list[tuple[str, int]]:
+    ...
+```
+
+- 不用注释掉的代码。要就留着，不要就删 —— git 记着。
+
+---
+
+## 参见
+
+- [git.md](git.md) —— 提交规范
+- [docs.md](docs.md) —— 文档规范
+- [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md) —— 技术选型与模块边界

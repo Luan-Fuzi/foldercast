@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foldercast.dev/schema/foldercast-1.json",
+  "title": "foldercast 分镜稿",
+  "description": "把任意目录变成讲解视频的分镜稿格式。字段语义见 docs/specs/SPEC-data-format.md。",
+  "type": "object",
+  "required": ["foldercast", "source", "scenes"],
+  "additionalProperties": false,
+
+  "$defs": {
+    "kind": {
+      "description": "文件内容类别。对应需求 (a)-(e) 及其余。",
+      "enum": ["code", "text", "markup", "data", "office", "pdf", "image", "video", "audio", "archive", "binary", "other"]
+    },
+
+    "role": {
+      "description": "文件角色。一个文件最多一个角色，无法判定时缺省。定义见 docs/specs/SPEC-data-format.md。",
+      "enum": ["readme", "entry", "config", "test", "doc", "asset", "license", "build"]
+    },
+
+    "sceneType": {
+      "description": "开放枚举：渲染器遇到不认识的类型应跳过并警告，而非崩溃。",
+      "enum": ["cover", "tree", "inventory", "file", "gallery", "clip", "document", "outro"]
+    },
+
+    "scene": {
+      "type": "object",
+      "required": ["id", "type", "narration"],
+      "properties": {
+        "id": { "type": "string", "description": "场景唯一标识，用于配音产物命名与对齐" },
+        "type": { "$ref": "#/$defs/sceneType" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "narration": {
+          "type": "string",
+          "description": "既是配音文本，也是字幕来源。字幕块由阶段③按标点与字数切分。"
+        },
+        "durationSec": {
+          "type": ["number", "null"],
+          "description": "null 表示由阶段③按实测音频回填"
+        },
+
+        "highlight": {
+          "type": "array", "items": { "type": "string" },
+          "description": "tree 场景：需要强调的子路径"
+        },
+        "groups": {
+          "type": "array",
+          "description": "inventory 场景：内容分组盘点",
+          "items": {
+            "type": "object",
+            "required": ["kind", "count"],
+            "properties": {
+              "kind": { "$ref": "#/$defs/kind" },
+              "count": { "type": "integer", "minimum": 0 },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "file": { "type": "string", "description": "file 场景：相对 source.root 的路径" },
+        "asset": { "type": "string", "description": "file 场景：已生成的素材路径" },
+        "focusLines": {
+          "type": "array", "items": { "type": "integer", "minimum": 1 },
+          "minItems": 2, "maxItems": 2,
+          "description": "file 场景：高亮行区间 [起, 止]"
+        },
+        "items": {
+          "type": "array", "items": { "type": "string" },
+          "description": "gallery 场景：图片素材路径列表"
+        },
+        "source": { "type": "string", "description": "clip/document 场景：源文件路径" },
+        "poster": { "type": "string", "description": "clip 场景：封面图" },
+        "clipRange": {
+          "type": "array", "items": { "type": "number", "minimum": 0 },
+          "minItems": 2, "maxItems": 2,
+          "description": "clip 场景：片段区间 [起秒, 止秒]"
+        },
+        "pages": {
+          "type": "array", "items": { "type": "string" },
+          "description": "document 场景：逐页转图后的素材路径"
+        }
+      }
+    }
+  },
+
+  "properties": {
+    "foldercast": {
+      "type": "integer", "const": 1,
+      "description": "格式版本。破坏性变更时递增；读取方遇到未知版本应报错而非猜测。"
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+
+    "source": {
+      "type": "object",
+      "required": ["root"],
+      "properties": {
+        "root": { "type": "string", "description": "被讲解目录的绝对路径" },
+        "label": { "type": "string", "description": "展示用名称，默认取目录名" },
+        "focus": {
+          "type": "array", "items": { "type": "string" },
+          "description": "只讲这些子路径"
+        }
+      }
+    },
+
+    "sources": {
+      "type": "object",
+      "description": "内容筛选（需求维度 2）。三级筛选按顺序生效。",
+      "properties": {
+        "include": {
+          "type": "array", "items": { "type": "string" },
+          "description": "白名单 glob，空数组表示全目录"
+        },
+        "exclude": {
+          "type": "array", "items": { "type": "string" },
+          "description": "gitignore 风格。前缀 ! 表示重新包含；后出现的规则覆盖前面的。"
+        },
+        "kinds": {
+          "type": "object",
+          "description": "类型级开关，false 表示整类内容不参与",
+          "additionalProperties": { "type": "boolean" }
+        },
+        "maxFiles": { "type": "integer", "minimum": 1, "default": 200 },
+        "maxFileSizeMb": { "type": "number", "minimum": 0, "default": 5 },
+        "maxDepth": { "type": "integer", "minimum": 1, "default": 6 }
+      }
+    },
+
+    "stats": {
+      "type": "object",
+      "description": "由程序产出的分析统计，供写稿阶段引用",
+      "properties": {
+        "totalFiles": { "type": "integer", "minimum": 0 },
+        "totalBytes": { "type": "integer", "minimum": 0 },
+        "maxDepth": { "type": "integer", "minimum": 0 },
+        "kindCounts": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "languages": {
+          "type": "object",
+          "description": "语言 → 代码行数",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "topDirs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "files"],
+            "properties": {
+              "path": { "type": "string" },
+              "files": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "roles": {
+          "type": "object",
+          "description": "角色 → 文件路径列表",
+          "additionalProperties": {
+            "type": "array", "items": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "manifest": {
+      "type": "array",
+      "description": "文件清单。这是写稿阶段模型看到的主要内容。",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind"],
+        "properties": {
+          "path": { "type": "string", "description": "相对 source.root" },
+          "kind": { "$ref": "#/$defs/kind" },
+          "role": { "$ref": "#/$defs/role" },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "lines": { "type": "integer", "minimum": 0 },
+          "language": { "type": "string" },
+          "title": { "type": "string", "description": "从首个注释或标题提取" },
+          "preview": {
+            "type": "string", "maxLength": 200,
+            "description": "截断预览，提取策略按 kind 分（见 docs/specs/SPEC-data-format.md）"
+          },
+          "asset": { "type": "string", "description": "已生成的素材路径" }
+        }
+      }
+    },
+
+    "video": {
+      "type": "object",
+      "properties": {
+        "width": { "type": "integer", "minimum": 1, "default": 1920 },
+        "height": { "type": "integer", "minimum": 1, "default": 1080 },
+        "fps": { "type": "integer", "minimum": 1, "default": 30 },
+        "targetDurationSec": {
+          "type": ["integer", "null"],
+          "description": "期望时长，软约束。null 表示由内容决定。写稿阶段用它反推字数上限。"
+        },
+        "language": { "type": "string", "default": "zh-CN" }
+      }
+    },
+
+    "voice": {
+      "type": "object",
+      "description": "配音配置（需求 R6）。provider 与 voice 是 provider 内的字符串，不做跨 provider 统一枚举。实际使用的 provider 与音色以阶段③产出的 durations.json 为准。",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "TTS 供应商标识，如 mimo / edge / say / openai-compatible"
+        },
+        "voice": {
+          "type": "string",
+          "description": "provider 内的音色标识。MiMo 是「白桦」这样的字符串 ID，Edge 是 zh-CN-YunxiNeural 这样的枚举，say 是系统音色名"
+        },
+        "style": {
+          "type": "string",
+          "description": "怎么读：风格指令、语速、情绪。各 provider 自行翻译（MiMo 的 user 消息 / Edge 的 rate / say 的 -r）"
+        },
+        "format": {
+          "type": "string",
+          "enum": ["wav", "mp3"],
+          "description": "音频格式。默认 wav；MiMo 需显式传 mp3 才输出 mp3"
+        }
+      }
+    },
+
+    "style": {
+      "type": "object",
+      "required": ["preset"],
+      "properties": {
+        "preset": {
+          "type": "string",
+          "description": "内置预设名（swiss/deck/console/paper）或预设文件路径"
+        },
+        "overrides": {
+          "type": "object",
+          "description": "覆盖预设里的任意 token。键为点分路径，如 palette.bg。只允许覆盖已存在的 token。",
+          "additionalProperties": { "type": ["string", "number", "boolean"] }
+        },
+        "natural": {
+          "type": "string",
+          "description": "用户的自然语言风格描述。由写稿阶段解析成 overrides，解析后回写。"
+        },
+        "unresolved": {
+          "type": "array", "items": { "type": "string" },
+          "description": "无法映射到 token 的描述片段。不静默丢弃。"
+        },
+        "resolvedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/scene" }
+    }
+  }
+}

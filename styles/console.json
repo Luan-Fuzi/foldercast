@@ -1,0 +1,51 @@
+{
+  "$comment": "终端质感：全局等宽字体、打字机入场、高信息密度。适合代码库导览。",
+  "name": "console",
+  "label": "终端风",
+  "description": "终端质感，等宽字体，打字机入场，代码优先",
+  "canvas": {
+    "aspect": "16:9",
+    "width": 1920,
+    "height": 1080,
+    "safeMargin": 64
+  },
+  "palette": {
+    "bg": "#0C0C0C",
+    "ink": "#D4D4D4",
+    "muted": "#7A7A7A",
+    "line": "#2A2A2A",
+    "accent": "#4EC9B0",
+    "panel": "#141414",
+    "codeBg": "#0C0C0C"
+  },
+  "typography": {
+    "title": "\"SF Mono\", Menlo, Consolas, monospace",
+    "body": "\"SF Mono\", Menlo, Consolas, monospace",
+    "mono": "\"SF Mono\", Menlo, Consolas, monospace",
+    "titleWeight": 500,
+    "scale": "compact"
+  },
+  "layout": {
+    "density": "compact",
+    "rule": "none",
+    "numbering": "none",
+    "header": "none"
+  },
+  "motion": {
+    "pace": "fast",
+    "in": "type",
+    "easing": "linear",
+    "transition": "cut"
+  },
+  "texture": {
+    "grain": 0.03,
+    "shadow": "none",
+    "radius": 6
+  },
+  "narration": {
+    "tone": "tour",
+    "person": "second",
+    "density": "concise",
+    "opening": "context"
+  }
+}

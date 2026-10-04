@@ -1,0 +1,214 @@
+# TTS 适配调研
+
+对应需求维度 1：**让用户自定义选择使用什么样的 TTS**。
+
+调研日期：2026-10-04。API 细节以官方文档一手核实为准，标注来源。
+
+---
+
+## 一、结论先行
+
+1. **不做单一引擎绑定。** 适配层统一接口，provider 可插拔。
+2. **默认给三个就能覆盖绝大多数场景**：macOS `say`（零配置兜底）、Edge-TTS（免费、音色好）、小米 MiMo（官方推荐，中文自然）。
+3. **小米 MiMo 值得作为一等公民**：它有**三个模型变体**——预置音色、**声音克隆**、**音色设计**。后两个是我们之前没注意到的能力：用户上传一段音频就能克隆音色，或用一句话描述设计全新音色。
+4. **接口设计要点：把「音色」抽象成 provider 内的参数，而不是顶层概念。** 因为 MiMo 的音色是字符串 ID，Edge 的是 `zh-CN-YunxiNeural` 这样的枚举，而 `say` 的是系统音色名 —— 三者形态不同，硬统一会别扭。
+
+---
+
+## 二、候选供应商
+
+| Provider | 类型 | 需要 key | 声音克隆 | 音色设计 | 备注 |
+|---|---|---|---|---|---|
+| **小米 MiMo** | 云端 API | 是 | ✅ | ✅ | 中文自然，模型分三档 |
+| **Edge-TTS** | 云端（微软，走 edge-tts 库） | 否 | ❌ | ❌ | 免费，音色多，社区最常用 |
+| **macOS `say`** | 系统原生 | 否 | ❌ | ❌ | 零安装兜底，音质一般 |
+| **OpenAI 兼容端点** | 云端 | 是 | 视实现 | ❌ | 覆盖面最广，一个适配吃下很多家 |
+| **Kokoro** | 本地 | 否 | ❌ | ❌ | `paperview`/`gitreel` 用的，模型约 80M |
+| **GSV-TTS-Lite** | 本地 | 否 | ✅ | ❌ | DSH 生态有插件，中文克隆 |
+
+**关于 OpenAI 兼容**：大量服务商（含 MiMo 自己的 Chat 接口）都兼容 OpenAI 的 `/v1/chat/completions` 形态。做一个 OpenAI 兼容 provider，等于一次性接上多家。优先级应高于逐个对接。
+
+---
+
+## 三、小米 MiMo TTS —— 一手核实
+
+来源：[官方 API 文档 · 语音合成](https://mimo.mi.com/docs/zh-CN/api/audio/tts)
+
+### 端点
+
+```
+POST https://api.xiaomimimo.com/v1/chat/completions
+```
+
+### 鉴权（两种，任选其一）
+
+```
+api-key: $MIMO_API_KEY          # 方式一
+Authorization: Bearer $MIMO_API_KEY   # 方式二
+```
+
+### 三个模型变体（这是关键）
+
+| model | 用途 | `audio.voice` 字段 |
+|---|---|---|
+| `mimo-v2.5-tts` | **预置音色**合成 | 可选，仅支持预置音色 ID，默认 `mimo_default` |
+| `mimo-v2.5-tts-voiceclone` | **声音克隆** | **必填**，传音频样本的 base64（仅 `mp3` / `wav`） |
+| `mimo-v2.5-tts-voicedesign` | **音色设计** | 不支持该字段；靠 `user` 消息里的描述文本指定音色 |
+
+### 预置音色 ID
+
+`mimo_default`、`冰糖`、`茉莉`、`苏打`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`
+
+### 请求体要点
+
+```jsonc
+{
+  "model": "mimo-v2.5-tts",
+  "messages": [
+    // 【必填】用 user 消息承载「风格指令」，控制语气/语速/情绪
+    { "role": "user", "content": "请用自然、清晰、适合知识讲解视频的旁白语气朗读。" },
+    // 【必填】用 assistant 消息承载「要读的正文」
+    { "role": "assistant", "content": "这是要被朗读的文本。" }
+  ],
+  "audio": {
+    "format": "wav",              // wav | mp3 | pcm | pcm16（stream 时只能 pcm）
+    "voice": "白桦"                // 仅 mimo-v2.5-tts 用
+  },
+  "stream": false
+}
+```
+
+### 三个必须注意的点
+
+1. **`assistant` 消息是「要读的文本」，不是普通的对话轮次。** 这是这个 API 最容易踩的坑 —— 它借用 chat 结构，其中 `user` = 风格指令，`assistant` = 正文。传错位置会得到空的或不相关的结果。
+2. **`audio.format` 默认 `wav`。** 若要 `mp3` 需显式传入。我们之前用 wav 是对的。
+3. **`optimize_text_preview`**（仅 voicedesign 支持）设为 `true` 时，模型会智能润色文本，此时可省略 `assistant` 消息。
+
+### 响应
+
+非流式时音频以 base64 放在 `choices[0].message.audio.data`。实测代码：
+
+```python
+audio = data["choices"][0]["message"]["audio"]["data"]
+out.write_bytes(base64.b64decode(audio))
+```
+
+### 完整可运行参考
+
+```python
+def mimo_synth(text: str, out: Path, voice: str, api_key: str) -> None:
+    body = json.dumps({
+        "model": "mimo-v2.5-tts",
+        "messages": [
+            {"role": "user", "content": STYLE_INSTRUCTION},
+            {"role": "assistant", "content": text},
+        ],
+        "audio": {"format": "wav", "voice": voice},
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.xiaomimimo.com/v1/chat/completions",
+        data=body,
+        headers={"Content-Type": "application/json", "api-key": api_key},
+    )
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        data = json.loads(resp.read())
+    out.write_bytes(base64.b64decode(data["choices"][0]["message"]["audio"]["data"]))
+```
+
+> 该实现参考自同作者的 `lecture-videos/scripts/tts.py`（已在真实项目中验证可用）。
+
+### 其他信息
+
+- MiMo 官网另有 **Token Plan** 订阅与按量计费两种模式，价格页：[mimo.mi.com/docs/zh-CN/price](https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go)
+- 已发布 **MiMo-V2.6 系列**，接入时需确认 TTS 模型是否也随之更新（当前文档仍为 V2.5）
+- 社区已有 ComfyUI 节点封装（含预置音色、音色设计、声音克隆），可作为参数用法的旁证：[ComfyUI-MiMo-TTS](https://github.com/TimekeeperXY/ComfyUI-MiMo-TTS)
+
+---
+
+## 四、适配层接口设计
+
+### 核心思路
+
+统一「合成一段文本成音频」这一个动作，其余差异交给 provider 自己处理。
+
+```python
+class Provider(Protocol):
+    name: str
+    requires_key: bool
+
+    def voices(self) -> list[Voice]:        # 可选能力，不支持则返回 []
+        ...
+
+    def synth(self, text: str, out: Path, **opts) -> None:
+        ...
+
+    def caps(self) -> set[str]:
+        """能力声明：{'clone', 'design', 'instruct', 'ssml'}"""
+```
+
+### 关键决策
+
+**1. 音色是 provider 内的字符串，不做跨 provider 统一枚举。**
+MiMo 是 `白桦`，Edge 是 `zh-CN-YunxiNeural`，`say` 是 `Meijia`。强行统一会丢失各家的表达力。配置里写 `provider` + `voice` 两个字段即可。
+
+**2. 能力用 `caps()` 声明，不做能力探测。**
+调用方按能力分支，而不是 try/except。比如声音克隆只在 `'clone' in caps()` 时暴露。
+
+**3. 风格指令（instruct）是一等参数。**
+MiMo 的 `user` 消息、Edge 的 `rate`/`pitch` 参数、`say` 的 `-r` 语速，都归到同一个语义下：**"怎么读"**。配置里是 `style` 字段，各 provider 自行翻译。
+
+**4. 断点续跑是适配层外的职责。**
+已存在的音频文件跳过（`--force` 覆盖）。这与 provider 无关，放在调度层。
+
+### 配置形态
+
+```jsonc
+// foldercast.json
+"voice": {
+  "provider": "mimo",
+  "voice": "白桦",
+  "style": "自然、清晰、适合知识讲解的旁白语气",
+  "format": "wav"
+}
+```
+
+```bash
+# CLI 覆盖
+foldercast voice ./out --provider say
+foldercast voice ./out --provider mimo --voice 冰糖
+foldercast voice ./out --list-voices
+```
+
+### key 的存放
+
+**不要经过聊天记录或命令行参数。** 按优先级：
+
+1. 环境变量（`MIMO_API_KEY` / `OPENAI_API_KEY` / …）
+2. 项目根的 `.<provider>_key` 文件（**必须写进 `.gitignore`**）
+3. 用户级配置 `~/.config/foldercast/credentials.json`
+
+⚠️ 参考项目 `lecture-videos` 把 `.mimo_api_key` 直接放在项目根目录。接入时务必确认它已被 git 忽略。
+
+---
+
+## 五、字幕与时长
+
+字幕**不由 TTS 负责**，与 provider 无关。流程：
+
+1. TTS 合成 → 音频文件
+2. `ffprobe` 实测每段真实时长
+3. 按标点切分字幕块（`。！？；：` 优先，超 24 字再在 `，、` 切）
+4. 按字符数把实测时长分配到各块
+
+**为什么必须实测**：不同引擎、不同语速下，同一段文字时长差异可达 30%。用预估字数配时会累积漂移，到视频后半段字幕与配音完全对不上。
+
+---
+
+## 六、待办
+
+- [ ] 确认 MiMo-V2.6 是否提供新版 TTS 模型
+- [ ] 核实 MiMo Token Plan 与按量计费的额度上限，评估长视频成本
+- [ ] 声音克隆的音频样本要求（时长下限、采样率、文件大小上限）
+- [ ] 音色设计（voicedesign）的实际效果与稳定性
+- [ ] 是否接入本地 provider（Kokoro / GSV-TTS）—— 决定要不要引入模型下载
+- [ ] 是否提供「试听」功能：合成一句样本供用户选音色

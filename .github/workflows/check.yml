@@ -1,0 +1,68 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  docs:
+    name: 文档与契约
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 检查相对链接
+        run: python3 scripts/check-links.py
+
+      - name: 校验 JSON 合法性
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f"; then
+              echo "::error file=$f::JSON 语法非法"
+              fail=1
+            fi
+          done < <(find . -name '*.json' -not -path './node_modules/*' -not -path './.git/*')
+          exit $fail
+
+      - name: 校验风格预设 token 一致性
+        run: |
+          python3 - <<'PY'
+          import json, glob, sys
+          sets = {}
+          for f in sorted(glob.glob('styles/*.json')):
+              d = json.load(open(f))
+              keys = set()
+              for group, vals in d.items():
+                  if group in ('$comment', 'name', 'label', 'description'):
+                      continue
+                  if isinstance(vals, dict):
+                      keys |= {f"{group}.{k}" for k in vals}
+              sets[d['name']] = keys
+          names = list(sets)
+          base = sets[names[0]]
+          ok = True
+          for n in names[1:]:
+              if sets[n] != base:
+                  print(f"::error::风格预设 {n} 的 token 与 {names[0]} 不一致")
+                  ok = False
+          print(f"四套预设 token 一致（{len(base)} 个）" if ok else "存在不一致")
+          sys.exit(0 if ok else 1)
+          PY
+
+      - name: 校验示例分镜符合 schema
+        run: |
+          pip install jsonschema
+          python3 -c "
+          import json, jsonschema
+          jsonschema.validate(
+              json.load(open('examples/foldercast.example.json')),
+              json.load(open('docs/specs/foldercast.schema.json')),
+          )
+          print('示例分镜通过 schema 校验')
+          "

@@ -1,0 +1,51 @@
+{
+  "$comment": "纸质杂志：衬线体、纸张噪点、粗分隔线、罗马数字。适合长文与资料整理。",
+  "name": "paper",
+  "label": "纸质风",
+  "description": "米白纸质，衬线字体，杂志感，适合长文与资料整理",
+  "canvas": {
+    "aspect": "16:9",
+    "width": 1920,
+    "height": 1080,
+    "safeMargin": 140
+  },
+  "palette": {
+    "bg": "#FBF8F1",
+    "ink": "#2B2620",
+    "muted": "#8A8074",
+    "line": "#E0D8C8",
+    "accent": "#9C5B34",
+    "panel": "#FFFFFF",
+    "codeBg": "#F5F0E4"
+  },
+  "typography": {
+    "title": "\"Songti SC\", \"Source Han Serif SC\", \"Noto Serif CJK SC\", serif",
+    "body": "\"Songti SC\", \"Source Han Serif SC\", \"Noto Serif CJK SC\", serif",
+    "mono": "\"SF Mono\", Menlo, Consolas, monospace",
+    "titleWeight": 600,
+    "scale": "normal"
+  },
+  "layout": {
+    "density": "normal",
+    "rule": "bold",
+    "numbering": "roman",
+    "header": "title"
+  },
+  "motion": {
+    "pace": "slow",
+    "in": "fade",
+    "easing": "easeInOutSine",
+    "transition": "fade"
+  },
+  "texture": {
+    "grain": 0.06,
+    "shadow": "none",
+    "radius": 2
+  },
+  "narration": {
+    "tone": "expository",
+    "person": "first-plural",
+    "density": "detailed",
+    "opening": "context"
+  }
+}

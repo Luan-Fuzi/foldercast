@@ -1,0 +1,51 @@
+{
+  "$comment": "瑞士国际主义排版。视觉体系沿用 lecture-videos 已验证的 theme.ts。适合知识讲解与技术汇报。",
+  "name": "swiss",
+  "label": "瑞士风",
+  "description": "国际主义排版：大留白、单一强调红、无圆角无阴影、发丝分隔线",
+  "canvas": {
+    "aspect": "16:9",
+    "width": 1920,
+    "height": 1080,
+    "safeMargin": 120
+  },
+  "palette": {
+    "bg": "#F7F6F1",
+    "ink": "#141414",
+    "muted": "#8C8C88",
+    "line": "#D9D7D0",
+    "accent": "#E33122",
+    "panel": "#FFFFFF",
+    "codeBg": "#F2F1EC"
+  },
+  "typography": {
+    "title": "\"PingFang SC\", \"Helvetica Neue\", Helvetica, \"Microsoft YaHei\", sans-serif",
+    "body": "\"PingFang SC\", \"Helvetica Neue\", Helvetica, \"Microsoft YaHei\", sans-serif",
+    "mono": "\"SF Mono\", Menlo, Consolas, \"PingFang SC\", monospace",
+    "titleWeight": 700,
+    "scale": "airy"
+  },
+  "layout": {
+    "density": "airy",
+    "rule": "hairline",
+    "numbering": "decimal",
+    "header": "chapter-progress"
+  },
+  "motion": {
+    "pace": "normal",
+    "in": "fade",
+    "easing": "easeOutCubic",
+    "transition": "cut"
+  },
+  "texture": {
+    "grain": 0,
+    "shadow": "none",
+    "radius": 0
+  },
+  "narration": {
+    "tone": "expository",
+    "person": "second",
+    "density": "normal",
+    "opening": "question"
+  }
+}

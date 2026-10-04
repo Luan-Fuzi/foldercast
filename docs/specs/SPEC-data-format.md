@@ -1,0 +1,367 @@
+# 数据格式
+
+定义两样东西：
+
+1. `foldercast.json` —— 分镜稿，项目的**单一事实来源**
+2. `assets/` —— 素材目录，可重算的缓存
+
+---
+
+## 一、`foldercast.json`
+
+放在输出目录下（默认 `./foldercast.json`，或 `.foldercast/` 内）。
+
+### 顶层结构
+
+```jsonc
+{
+  "foldercast": 1,              // 格式版本，整数，破坏性变更时递增
+  "generatedAt": "2026-10-04T17:30:00+08:00",
+  "source": {
+    "root": "/abs/path/to/target",   // 被讲解的目录（绝对路径）
+    "label": "我的项目",              // 展示用名称，默认取目录名
+    "focus": ["src", "docs"]         // 可选：只讲这些子路径
+  },
+
+  "sources": { /* 内容筛选，见下 */ },
+  "stats":   { /* 分析统计，见下 */ },
+  "manifest": [ /* 文件清单，见下 */ ],
+
+  "video": { /* 输出规格，见下 */ },
+  "voice": { /* 配音配置，见下 */ },
+  "style": { /* 风格，见下 */ },
+
+  "scenes": [ /* 分镜，见下 */ ]
+}
+```
+
+---
+
+### `sources` —— 内容筛选（维度 2）
+
+三级筛选，按顺序生效：
+
+```jsonc
+"sources": {
+  // 1. 只考虑这些子路径（空 = 全目录）
+  "include": ["src/**", "docs/**", "README.md"],
+
+  // 2. 排除匹配项，gitignore 风格，后面的规则覆盖前面的
+  "exclude": [
+    "node_modules/**",
+    "**/*.min.js",
+    "*.lock",
+    "!docs/important.lock"     // 前缀 ! 表示重新包含
+  ],
+
+  // 3. 类型级开关：整类内容不参与
+  "kinds": {
+    "video": false,            // 不讲视频文件
+    "audio": false,
+    "archive": false
+  },
+
+  // 4. 规模保护
+  "maxFiles": 200,             // 分析上限，超出按重要性截断
+  "maxFileSizeMb": 5,          // 单文件超过则不读取内容（仍计入结构树）
+  "maxDepth": 6                // 结构树展示深度
+}
+```
+
+**默认排除**（无需用户配置，开箱即用）：
+
+```
+.git/**  node_modules/**  .venv/**  venv/**  __pycache__/**
+dist/**  build/**  out/**  target/**
+*.min.js  *.min.css  *.map  *.lock  package-lock.json  pnpm-lock.yaml
+.DS_Store  Thumbs.db
+```
+
+理由：这些是**生成物或依赖**，讲它们没有信息量，且会把文件数撑爆。
+
+**筛选是否好做**：好做。本质是一次 glob 匹配，`pathspec` / `micromatch` 级别的库就能覆盖，不需要模型参与。唯一要小心的是默认排除规则不要误伤（比如把 `build.gradle` 当成 `build/**` 排除掉 —— 所以规则要按**目录**匹配而非子串匹配）。
+
+---
+
+### `stats` —— 分析统计
+
+由程序产出，供写稿阶段引用。
+
+```jsonc
+"stats": {
+  "totalFiles": 128,
+  "totalBytes": 2451233,
+  "maxDepth": 4,
+  "kindCounts": {              // 与 kinds 枚举对应
+    "code": 74, "text": 21, "image": 12,
+    "video": 3, "office": 4, "pdf": 2,
+    "data": 8, "archive": 0, "other": 4
+  },
+  "languages": {               // 按代码行数排序，Top 10
+    "TypeScript": 4200, "Python": 1800, "CSS": 900
+  },
+  "topDirs": [                 // 文件数最多的子目录，Top 8
+    { "path": "src/components", "files": 34 },
+    { "path": "docs", "files": 18 }
+  ],
+  "roles": {                   // 按识别出的角色
+    "readme": ["README.md"],
+    "entry": ["src/index.ts", "package.json"],
+    "config": ["tsconfig.json"],
+    "test": ["src/index.test.ts"],
+    "doc": ["docs/SPEC-pipeline.md"],
+    "asset": ["public/img/math01_eig.png"],
+    "license": ["LICENSE"],
+    "build": ["scripts/tts.py"]
+  }
+}
+```
+
+8 个角色（与 schema 的 `$defs.role` 一致）：
+
+| role | 判据 | 例 |
+|---|---|---|
+| `readme` | 根或子目录的说明文件 | `README.md` |
+| `entry` | 主入口 | `src/index.ts`、`src/Root.tsx`、`package.json` |
+| `config` | 配置 | `tsconfig.json`、`remotion.config.ts` |
+| `test` | 测试 | `src/index.test.ts` |
+| `doc` | 文档 | `docs/SPEC-pipeline.md` |
+| `asset` | 被引用的素材 | 图片、音频、`public/**` 下的文件 |
+| `license` | 许可证 | `LICENSE` |
+| `build` | 构建产物与构建脚本 | `dist/**`、`scripts/build.py` |
+
+一个文件**最多一个角色**，无法判定则缺省。统计里某角色没有文件时，该键不出现。
+
+---
+
+### `manifest` —— 文件清单
+
+每个文件一条。**这是写稿阶段模型看到的主要内容**。
+
+```jsonc
+"manifest": [
+  {
+    "path": "src/index.ts",        // 相对 source.root
+    "kind": "code",                // 见 kinds 枚举
+    "role": "entry",               // 见 roles，无则缺省
+    "bytes": 2048,
+    "lines": 78,
+    "language": "TypeScript",      // 代码/标记文件才有
+    "title": "主入口",              // 从首个注释或标题提取，可缺省
+    "preview": "export function main() { ... }",  // 截断预览，≤200 字
+    "asset": "assets/src_index_thumb.png"         // 若已生成素材
+  }
+]
+```
+
+`preview` 的提取策略按类型分：
+
+| kind | preview 来源 |
+|---|---|
+| `code` | 首个块注释，或前 10 行 |
+| `text` | 首个标题 + 首段 |
+| `office` | 文档标题 + 大纲/工作表名/幻灯片标题 |
+| `pdf` | 元数据标题 + 首页文本前 200 字 |
+| `image` | 尺寸 + EXIF 摘要 |
+| `video` | 时长 + 分辨率 + 编码 |
+| `data` | 表头 + 行数 |
+
+---
+
+### `video` —— 输出规格
+
+```jsonc
+"video": {
+  "width": 1920, "height": 1080, "fps": 30,
+  "targetDurationSec": 180,      // 期望时长；null = 由内容决定
+  "language": "zh-CN"            // 旁白与字幕语言
+}
+```
+
+`targetDurationSec` 是**软约束**：写稿阶段用它反推字数上限（中文按约 4.3 字/秒估算），不硬截断。
+
+---
+
+### `voice` —— 配音配置（维度 1）
+
+```jsonc
+"voice": {
+  "provider": "mimo",                            // mimo | edge | say | openai-compatible …
+  "voice": "白桦",                                // provider 内的音色标识
+  "style": "自然、清晰、适合知识讲解的旁白语气",     // 「怎么读」，各 provider 自行翻译
+  "format": "wav"                                // wav | mp3，默认 wav
+}
+```
+
+- **音色不做跨 provider 统一枚举**。MiMo 是 `白桦`，Edge 是 `zh-CN-YunxiNeural`，`say` 是 `Meijia` —— 强行统一会丢失各家的表达力。`provider` + `voice` 两个字段表达即可。
+- `style` 是「怎么读」的统一语义：MiMo 落在 `user` 消息，Edge 落在 `rate`/`pitch`，`say` 落在 `-r`。
+- **换 provider 或换音色只需重跑阶段③**，不改 `scenes`（见 [SPEC-pipeline.md](SPEC-pipeline.md#可重跑边界)）。
+- 本字段是**配置意图**；实际使用的 provider 与音色以阶段③产出的 `durations.json` 为准（见本文第三节）。密钥不放这里 —— 存放优先级见 [../rd/TTS-适配调研.md](../rd/TTS-适配调研.md#key-的存放)。
+
+---
+
+### `style` —— 风格（维度 3）
+
+```jsonc
+"style": {
+  "preset": "swiss",             // 预设名，见 styles/
+  "overrides": {                 // 覆盖预设里的任意 token
+    "palette.bg": "#0B1B2B",
+    "typography.title": "\"Songti SC\", serif",
+    "motion.pace": "slow"
+  },
+  "natural": "把背景换成深蓝，标题用衬线体，节奏放慢",  // 可选：自然语言描述
+  "resolvedAt": "2026-10-04T17:30:00+08:00"
+}
+```
+
+`natural` 由模型解析成 `overrides`，解析结果**回写进 overrides**，这样渲染阶段不需要再调用模型。
+
+token 清单见 [../rd/风格预设系统.md](../rd/风格预设系统.md)。
+
+---
+
+### `scenes` —— 分镜
+
+```jsonc
+"scenes": [
+  {
+    "id": "cover",
+    "type": "cover",
+    "title": "我的项目",
+    "subtitle": "一个用来做 X 的工具",
+    "narration": "这是……",       // 配音文本 + 字幕来源
+    "durationSec": null           // null = 阶段③按实测音频回填
+  },
+  {
+    "id": "structure",
+    "type": "tree",               // 结构树
+    "title": "目录结构",
+    "narration": "整个目录分成三块……",
+    "highlight": ["src", "docs", "tests"]
+  },
+  {
+    "id": "inventory",
+    "type": "inventory",          // 内容盘点：多少块、各是什么
+    "title": "这里面有什么",
+    "narration": "……",
+    "groups": [
+      { "kind": "code",  "count": 74, "note": "TypeScript 为主" },
+      { "kind": "text",  "count": 21, "note": "文档与说明" }
+    ]
+  },
+  {
+    "id": "code-demo",
+    "type": "file",               // 单文件展示
+    "title": "主入口",
+    "narration": "……",
+    "file": "src/index.ts",
+    "asset": "assets/src_index_code.png",
+    "focusLines": [1, 20]         // 高亮行区间
+  },
+  {
+    "id": "image-demo",
+    "type": "gallery",            // 图片墙
+    "narration": "……",
+    "items": ["assets/a.png", "assets/b.png"]
+  },
+  {
+    "id": "video-demo",
+    "type": "clip",               // 视频片段（关键帧 + 片段播放）
+    "narration": "……",
+    "source": "demo.mp4",
+    "poster": "assets/demo_poster.png",
+    "clipRange": [12.0, 20.0]
+  },
+  {
+    "id": "office-demo",
+    "type": "document",           // Office/PDF 展示
+    "narration": "……",
+    "source": "report.docx",
+    "pages": ["assets/report_p1.png", "assets/report_p2.png"]
+  },
+  { "id": "outro", "type": "outro", "title": "完", "narration": "……" }
+]
+```
+
+### 场景类型清单（MVP）
+
+| type | 用途 | 必需字段 |
+|---|---|---|
+| `cover` | 封面 | `title` |
+| `tree` | 组织结构（需求 1） | `highlight` |
+| `inventory` | 内容盘点：分几块、各是什么（需求 2） | `groups` |
+| `file` | 单个文件展示（代码/文本） | `file`，可选 `asset`/`focusLines` |
+| `gallery` | 图片墙 | `items` |
+| `clip` | 视频片段 | `source`，可选 `poster`/`clipRange` |
+| `document` | Office/PDF 分页 | `source`、`pages` |
+| `outro` | 结尾 | `title` |
+
+后续可扩展：`timeline`（时序）、`compare`（对比）、`metrics`（数据卡）。
+
+---
+
+## 二、`assets/` 素材目录
+
+```
+assets/
+  thumbs/        每个文件的缩略图（图片直接缩放，视频抽首帧）
+  pages/         Office/PDF 逐页转图
+  frames/        视频关键帧
+  code/          语法高亮的代码截图
+  posters/       视频封面图
+  manifest.json  素材清单：{源文件 → 产物路径 + 尺寸 + 生成时间}
+```
+
+`manifest.json` 记录**源文件的 mtime 与 hash**，用于增量重算：源文件没变就跳过。
+
+### 各类内容的提取方式（零新系统依赖）
+
+| kind | 提取方法 | 依赖 |
+|---|---|---|
+| `image` | 缩放 + 生成缩略图 | `sips`（macOS 原生）或 ffmpeg |
+| `video` | 抽关键帧 / 首帧封面 | `ffmpeg` `select`/`thumbnail`/`tile` |
+| `pdf` | 逐页转 PNG | **`PyMuPDF`(fitz)** —— 已装，不需要 `pdftoppm` |
+| `office` `.docx/.pptx` | 文本直接提取；转图走 PDF | `python-docx` / `python-pptx` 已装 |
+| `office` `.xlsx` | 表格转 CSV/图 | `openpyxl`（用 DSH 捆绑 Python） |
+| `code` | 语法高亮截图 | `shiki`（npm，可装） |
+| `text` | 无需素材，直接排版 | — |
+
+**注**：本机 ffmpeg **未编译 libass/freetype**，`subtitles` 与 `drawtext` 滤镜不可用。因此字幕不走 ffmpeg 烧录，而是由渲染阶段（Remotion）绘制。这与 [SPEC-pipeline.md](SPEC-pipeline.md) 的「字幕由渲染层负责」一致。
+
+---
+
+## 三、`durations.json`（阶段③产物）
+
+```jsonc
+{
+  "provider": "mimo",               // 实际使用的 provider，覆盖 foldercast.json 的 voice 配置
+  "voice": "白桦",
+  "scenes": [
+    {
+      "id": "cover",
+      "audio": "audio/scene-0.wav",
+      "duration": 12.48,          // ffprobe 实测
+      "subs": [                   // [文本, 该块时长秒]
+        ["这是……", 6.2],
+        ["……", 6.28]
+      ]
+    }
+  ]
+}
+```
+
+字幕切分规则（沿用 `lecture-videos` 已验证的做法）：
+
+1. 先按句末标点切：`。！？；：`
+2. 超过 24 字的块，再在 `，、` 处二次切分
+3. 相邻块若合并后仍 ≤24 字则合并（避免孤行）
+4. 每块时长按**字符数**占比分配实测总时长
+
+---
+
+## 四、版本与兼容
+
+- `foldercast` 字段是整数版本号。新增可选字段不递增；**破坏性变更**（改字段语义、删字段）递增。
+- 读取方遇到未知版本应报错而非猜测。
+- 场景 `type` 是开放枚举：遇到不认识的 type，渲染器应跳过并警告，而不是崩溃。

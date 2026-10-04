@@ -1,0 +1,175 @@
+{
+  "foldercast": 1,
+  "generatedAt": "2026-10-04T17:30:00+08:00",
+
+  "source": {
+    "root": "/Users/scliang/work/qiuzhao202608/lecture-videos",
+    "label": "lecture-videos",
+    "focus": []
+  },
+
+  "sources": {
+    "include": [],
+    "exclude": ["node_modules/**", "out/**", "public/audio/**", "package-lock.json"],
+    "kinds": { "archive": false, "binary": false },
+    "maxFiles": 200,
+    "maxFileSizeMb": 5,
+    "maxDepth": 5
+  },
+
+  "stats": {
+    "totalFiles": 24,
+    "totalBytes": 486233,
+    "maxDepth": 3,
+    "kindCounts": {
+      "code": 6, "text": 2, "markup": 0, "data": 10,
+      "office": 0, "pdf": 0, "image": 4, "video": 0,
+      "audio": 0, "archive": 0, "binary": 0, "other": 2
+    },
+    "languages": { "TypeScript": 1018, "JSON": 420, "Python": 210 },
+    "topDirs": [
+      { "path": "content", "files": 7 },
+      { "path": "src", "files": 6 },
+      { "path": "public/img", "files": 4 }
+    ],
+    "roles": {
+      "readme": ["README.md"],
+      "entry": ["src/index.ts", "package.json"],
+      "config": ["remotion.config.ts", "tsconfig.json"],
+      "doc": ["README.md"]
+    }
+  },
+
+  "manifest": [
+    {
+      "path": "README.md",
+      "kind": "text",
+      "role": "readme",
+      "bytes": 2350,
+      "lines": 62,
+      "title": "lecture-videos · 数学基础讲解视频管线",
+      "preview": "把 autumn-recruitment/00-数学基础 的 7 讲 notebook 做成 Remotion 讲解视频样片，管线三步：配音、预览、渲染。",
+      "asset": "assets/thumbs/README_md.png"
+    },
+    {
+      "path": "src/Root.tsx",
+      "kind": "code",
+      "role": "entry",
+      "bytes": 4820,
+      "lines": 123,
+      "language": "TypeScript",
+      "title": "组合注册与时序",
+      "preview": "导出 RemotionRoot，注册 7 个 Composition，用 calculateMetadata 从 durations.json 累加总帧数。",
+      "asset": "assets/code/src_Root_tsx.png"
+    },
+    {
+      "path": "scripts/tts.py",
+      "kind": "code",
+      "role": "build",
+      "bytes": 6100,
+      "lines": 210,
+      "language": "Python",
+      "title": "TTS 适配器",
+      "preview": "读取 content/*.json，为每个场景合成音频，实测时长并生成 durations.json。支持 edge 与 mimo 两个 provider。",
+      "asset": "assets/code/scripts_tts_py.png"
+    },
+    {
+      "path": "public/img/math01_eig.png",
+      "kind": "image",
+      "role": "asset",
+      "bytes": 48200,
+      "title": "单位圆经矩阵变换为椭圆",
+      "preview": "1320×880 PNG，特征向量方向不变仅被拉伸",
+      "asset": "assets/thumbs/math01_eig.png"
+    }
+  ],
+
+  "video": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "targetDurationSec": 150,
+    "language": "zh-CN"
+  },
+
+  "style": {
+    "preset": "swiss",
+    "overrides": {
+      "palette.accent": "#E33122",
+      "motion.pace": "normal"
+    },
+    "natural": "用瑞士风格，但节奏可以稍慢一点，方便看清公式",
+    "unresolved": [],
+    "resolvedAt": "2026-10-04T17:30:00+08:00"
+  },
+
+  "scenes": [
+    {
+      "id": "cover",
+      "type": "cover",
+      "title": "lecture-videos",
+      "subtitle": "数学基础讲解视频管线",
+      "narration": "这是一个把数学讲义变成讲解视频的项目。它用 Remotion 渲染画面，用 TTS 生成旁白，目前已经产出了七讲样片。",
+      "durationSec": null
+    },
+    {
+      "id": "structure",
+      "type": "tree",
+      "title": "目录结构",
+      "narration": "整个目录分成四块。content 放讲稿，scripts 放配音脚本，src 是渲染工程，public 存放图片和音频素材。",
+      "highlight": ["content", "scripts", "src", "public"],
+      "durationSec": null
+    },
+    {
+      "id": "inventory",
+      "type": "inventory",
+      "title": "这里面有什么",
+      "narration": "一共二十四个文件。其中 TypeScript 源码六个，讲稿和数据十个，图片四张，还有两个说明文档。",
+      "groups": [
+        { "kind": "code", "count": 6, "note": "Remotion 工程与 TTS 脚本" },
+        { "kind": "data", "count": 10, "note": "七讲讲稿与时长清单" },
+        { "kind": "image", "count": 4, "note": "notebook 跑出的结果图" },
+        { "kind": "text", "count": 2, "note": "README 与说明" }
+      ],
+      "durationSec": null
+    },
+    {
+      "id": "entry",
+      "type": "file",
+      "title": "主入口：Root.tsx",
+      "narration": "Root.tsx 是整个渲染工程的入口。它注册了七个组合，每个组合对应一讲。注意它用 calculateMetadata 从时长清单里累加总帧数，所以改文案不需要手动对时间轴。",
+      "file": "src/Root.tsx",
+      "asset": "assets/code/src_Root_tsx.png",
+      "focusLines": [40, 62],
+      "durationSec": null
+    },
+    {
+      "id": "tts",
+      "type": "file",
+      "title": "配音：tts.py",
+      "narration": "配音脚本支持两个供应商，Edge TTS 和 MiMo TTS，可以随时切换。它还做了断点续跑，已经合成过的音频会跳过。",
+      "file": "scripts/tts.py",
+      "asset": "assets/code/scripts_tts_py.png",
+      "durationSec": null
+    },
+    {
+      "id": "results",
+      "type": "gallery",
+      "title": "notebook 跑出的结果图",
+      "narration": "这些是讲稿里引用的结果图，由 numpy 跑出来，直接嵌进视频。",
+      "items": [
+        "assets/thumbs/math01_eig.png",
+        "assets/thumbs/math02_clt.png",
+        "assets/thumbs/math04_gd_traj.png"
+      ],
+      "durationSec": null
+    },
+    {
+      "id": "outro",
+      "type": "outro",
+      "title": "完",
+      "narration": "这就是这个目录的全貌。它是一条完整的管线：讲稿进，成片出。",
+      "durationSec": null
+    }
+  ]
+}

@@ -110,6 +110,7 @@ MVP 范围已收敛为**单一路径**：文案 → 视频 → 配音。不做 `
 
 - [ ] Remotion 工程骨架（`scripts/renderer/`）
 - [ ] 运行时加载讲稿（**不能静态 import**，见下方「已识别的坑」）
+- [ ] 浏览器获取与检查（优先系统 Chrome，退路 `remotion browser ensure`，缺失时结构化引导 —— 见「已识别的坑」第 3 条）
 - [ ] 样式 token 应用层
 - [ ] 八种场景组件
 - [ ] 字幕渲染组件（由渲染层绘制，不走 ffmpeg）
@@ -124,7 +125,7 @@ MVP 范围已收敛为**单一路径**：文案 → 视频 → 配音。不做 `
 目标：**成片配音 + 字幕对齐**。
 
 - [ ] TTS 适配层（统一接口 + provider 注册）
-- [ ] 第一版一个 provider 够用（多 provider 押后）
+- [ ] 第一版一个 provider 够用（多 provider 押后）。**默认 `say`**（免密钥，装了就能跑）
 - [ ] `ffprobe` 实测时长
 - [ ] 字幕块时长分配
 - [ ] `durations.json` 输出
@@ -174,7 +175,7 @@ MVP 范围已收敛为**单一路径**：文案 → 视频 → 配音。不做 `
 | 多视频切分（R2 容器型目录） | M3 的切分规则 | 切分判据定下来之后 |
 | 用户自定义筛选（R7）与规模参数 | M1 | 默认规则不够用时 |
 | **`depth` 粒度开关**（`overview` / `normal` / `detailed`）：同时控制扫描深度与叙事详略 | 分析器 + M3 | 见 [INTEGRATION §11.5](INTEGRATION-dsh-plugin.md#115-计划暴露给用户的配置日后)。**它控制成本，比风格更早该暴露** |
-| **设置页开一栏**（`settings.section`） | 另发客户端包 | 先只声明 `Config` schema，等有人抱怨要手改文件 |
+| **设置页里的自定义内容**（`settings.section`，如解读概要图表） | 另发客户端包 | 配置表单不用它——那走 `Config` schema（[ADR 0009](decisions/0009-settings-via-config-schema.md)）。第一版已声明 schema 但无字段 |
 | TTS 多 provider（R6） | M5 | 先跑通一个 |
 | 插件配置项 | 全部 | 出现第一个真实需求时 |
 | **独立 CLI** | — | 第一版之后评估是否脱离 DSH（ADR 0008） |

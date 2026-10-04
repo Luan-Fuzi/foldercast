@@ -198,9 +198,20 @@ const lectures = [lec00, ..., lec06];
 
 `subtitles` 和 `drawtext` 滤镜都不可用，**ffmpeg 无法烧字幕**。字幕必须在渲染层画。这决定了 M4 的字幕组件是必做项，不是可选项。
 
-### 3. 渲染需要本机 Chrome
+### 3. 渲染需要浏览器（C4）
 
-`lecture-videos` 的 `remotion.config.ts` 里显式指定了本机 Chrome，因为当前网络访问不到 Google 存储、下不了 Chrome Headless Shell。foldercast 需要沿用这个处理，或在文档里说明。
+**为什么需要**：Remotion ≈ 无头浏览器 + 帧驱动 + 编码。React 只描述结构，**布局必须靠排版引擎**——见 [SYSTEM-DESIGN.md §4.6](SYSTEM-DESIGN.md#46-为什么必须有浏览器c4)。
+
+**怎么获取**：
+
+| 顺序 | 来源 |
+|---|---|
+| ① | 系统已有的 Chrome / Chromium（本机已实测：`/Applications/Google Chrome.app`） |
+| ② | `npx remotion browser ensure` 下载 Chrome Headless Shell |
+
+`lecture-videos` 的 `remotion.config.ts` 显式指定本机 Chrome，因为当前网络访问不到 Google 存储。foldercast 沿用"优先系统 Chrome"，把下载作为退路。
+
+**失败处理**：首次渲染前检查，缺失时返回结构化引导，**不崩溃**。**这不是插件加载的硬条件**——缺浏览器时分析、素材、写稿都能跑，只有渲染不能。完整设计见 [SYSTEM-DESIGN.md §4.7](SYSTEM-DESIGN.md#47-浏览器运行时的获取与失败处理)。
 
 ### 4. 时长必须实测
 

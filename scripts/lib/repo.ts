@@ -2,7 +2,7 @@
  * 仓库遍历与读取的公共部分。四个检查脚本共用，避免各写一套跳过规则。
  */
 import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** 仓库根目录。本文件在 `scripts/lib/`，所以上溯两级。 */
@@ -47,6 +47,17 @@ export function walkFiles(extension: string): string[] {
 /** 相对仓库根的路径，用于打印。 */
 export function rel(absolute: string): string {
   return relative(REPO_ROOT, absolute);
+}
+
+/**
+ * 路径是否在仓库之内。
+ *
+ * 文档里允许引用仓库之外的东西（比如同作者的兄弟仓库），但那种链接在 CI 的全新检出里
+ * 必然不存在，不能按「失效链接」处理。判据与分析器对「跨出根目录的引用」一致。
+ */
+export function isInsideRepo(absolute: string): boolean {
+  const path = relative(REPO_ROOT, absolute);
+  return path === '' || (!path.startsWith('..') && !isAbsolute(path));
 }
 
 /** 读取文本文件（UTF-8）。 */

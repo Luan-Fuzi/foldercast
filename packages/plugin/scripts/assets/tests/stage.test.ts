@@ -213,7 +213,7 @@ describe.skipIf(!hasDsoffice)('素材阶段（office / pdf）', () => {
 });
 
 describe('临时目录清理', () => {
-  it.skipIf(!hasDsoffice)('dsoffice 的临时目录不留在工作根里', async () => {
+  it.skipIf(!hasDsoffice)('dsoffice 的临时目录不留在工作根里', { timeout: 120_000 }, async () => {
     const root = makeSourceDir();
     await runAssetsStage({ root, only: new Set(['office']) });
     expect(existsSync(join(root, '.foldercast/tmp'))).toBe(false);

@@ -9,5 +9,8 @@ export default defineConfig({
       'packages/plugin/scripts/assets/tests/*.test.ts',
       'scripts/**/*.test.ts',
     ],
+    // 集成测试要起 LibreOffice / ffmpeg 这类外部进程，CI runner 上比本机慢得多
+    // （实测单次 dsoffice 转换本机 3.7 秒、GitHub runner 上 8 秒），默认 5 秒不够用。
+    testTimeout: 30_000,
   },
 });

@@ -54,7 +54,8 @@
               "kind": { "$ref": "#/$defs/kind" },
               "count": { "type": "integer", "minimum": 0 },
               "note": { "type": "string" }
-            }
+            },
+            "additionalProperties": false
           }
         },
         "file": { "type": "string", "description": "file 场景：相对 source.root 的路径" },
@@ -79,7 +80,8 @@
           "type": "array", "items": { "type": "string" },
           "description": "document 场景：逐页转图后的素材路径"
         }
-      }
+      },
+      "additionalProperties": false
     }
   },
 
@@ -100,7 +102,8 @@
           "type": "array", "items": { "type": "string" },
           "description": "只讲这些子路径"
         }
-      }
+      },
+      "additionalProperties": false
     },
 
     "sources": {
@@ -122,8 +125,13 @@
         },
         "maxFiles": { "type": "integer", "minimum": 1, "default": 200 },
         "maxFileSizeMb": { "type": "number", "minimum": 0, "default": 5 },
-        "maxDepth": { "type": "integer", "minimum": 1, "default": 6 }
-      }
+        "maxDepth": { "type": "integer", "minimum": 1, "default": 6 },
+        "rescan": {
+          "type": "array", "items": { "type": "string" },
+          "description": "按文件名命中密钥判据、但用户判定该读的文件。列在这里的路径即使命中密钥判据也会被读取，并出现在 stats.secrets.rescanned 里。"
+        }
+      },
+      "additionalProperties": false
     },
 
     "stats": {
@@ -150,7 +158,8 @@
             "properties": {
               "path": { "type": "string" },
               "files": { "type": "integer", "minimum": 0 }
-            }
+            },
+            "additionalProperties": false
           }
         },
         "roles": {
@@ -172,16 +181,19 @@
                 "properties": {
                   "path": { "type": "string" },
                   "match": { "type": "string", "description": "命中的文件名模式" }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "rescanned": {
               "type": "array", "items": { "type": "string" },
               "description": "用户用 sources.rescan 显式放回的文件"
             }
-          }
+          },
+          "additionalProperties": false
         }
-      }
+      },
+      "additionalProperties": false
     },
 
     "graph": {
@@ -204,7 +216,8 @@
               "path": { "type": "string" },
               "in": { "type": "integer", "minimum": 0 },
               "out": { "type": "integer", "minimum": 0 }
-            }
+            },
+            "additionalProperties": false
           }
         },
         "leaves": {
@@ -215,7 +228,8 @@
           "type": "array", "items": { "type": "string" },
           "description": "指向不存在的路径，可能是坏引用"
         }
-      }
+      },
+      "additionalProperties": false
     },
 
     "manifest": {
@@ -247,41 +261,8 @@
             "description": "谁引用它：按引用方出度排序取前 5"
           },
           "importedByCount": { "type": "integer", "minimum": 0, "description": "真实入度，反映枢纽地位" }
-        }
-      }
-    },
-
-    "graph": {
-      "type": "object",
-      "description": "引用依赖图骨架。边挂在 manifest 里，此处只放结论，便于大图不必整体读入。",
-      "properties": {
-        "nodes": { "type": "integer", "minimum": 0 },
-        "edges": { "type": "integer", "minimum": 0 },
-        "roots": {
-          "type": "array", "items": { "type": "string" },
-          "description": "无入边 = 入口文件"
         },
-        "hubs": {
-          "type": "array",
-          "description": "入度最高 = 最该先讲的枢纽",
-          "items": {
-            "type": "object",
-            "required": ["path", "in"],
-            "properties": {
-              "path": { "type": "string" },
-              "in": { "type": "integer", "minimum": 0 },
-              "out": { "type": "integer", "minimum": 0 }
-            }
-          }
-        },
-        "leaves": {
-          "type": "array", "items": { "type": "string" },
-          "description": "无出边"
-        },
-        "dangling": {
-          "type": "array", "items": { "type": "string" },
-          "description": "指向不存在的路径，可能是坏引用"
-        }
+        "additionalProperties": false
       }
     },
 
@@ -296,7 +277,8 @@
           "description": "期望时长，软约束。null 表示由内容决定。写稿阶段用它反推字数上限。"
         },
         "language": { "type": "string", "default": "zh-CN" }
-      }
+      },
+      "additionalProperties": false
     },
 
     "voice": {
@@ -320,7 +302,8 @@
           "enum": ["wav", "mp3"],
           "description": "音频格式。默认 wav；MiMo 需显式传 mp3 才输出 mp3"
         }
-      }
+      },
+      "additionalProperties": false
     },
 
     "style": {
@@ -345,7 +328,8 @@
           "description": "无法映射到 token 的描述片段。不静默丢弃。"
         },
         "resolvedAt": { "type": "string", "format": "date-time" }
-      }
+      },
+      "additionalProperties": false
     }
   }
 }

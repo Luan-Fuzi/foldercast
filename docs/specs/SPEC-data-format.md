@@ -10,9 +10,36 @@
 
 ---
 
+## 工作目录（所有产物的落点）
+
+所有产物写进源目录下的隐藏目录 `<源目录>/.foldercast/`。它是**唯一的工作根，第一版不可配置**：
+
+```
+<源目录>/.foldercast/
+├── foldercast.json     解读（可重算）
+├── script.json         讲稿（创作）
+├── assets/             素材（可重算）
+├── audio/scene-N.wav   逐场景音频（阶段③）
+├── durations.json      实测时长（阶段③）
+└── out/                成片
+```
+
+**为什么放在源目录下**：源目录只多一个隐藏目录，不散落文件；解读、讲稿、素材同处一处，重跑分析不会碰到讲稿。
+
+**两条路径基准，不要混用**：
+
+| 字段 | 相对于 |
+|---|---|
+| `manifest[].path`、场景的 `file` / `source` | **源目录**（被讲解的目录） |
+| 场景的 `asset` / `items` / `poster` / `pages`、`durations.json` 的 `audio` | **工作根** `.foldercast/`，所以这些值以 `assets/` 或 `audio/` 开头 |
+
+`outputDir` 做成配置项押后（[INTEGRATION §11.5](../INTEGRATION-dsh-plugin.md#115-计划暴露给用户的配置日后)）。
+
+---
+
 ## 一、`foldercast.json`
 
-放在输出目录下（默认 `./foldercast.json`，或 `.foldercast/` 内）。
+写在上面那个工作根的根下。
 
 ### 顶层结构
 
@@ -287,11 +314,13 @@ id_rsa  id_dsa  id_ecdsa  id_ed25519
     "motion.pace": "slow"
   },
   "natural": "把背景换成深蓝，标题用衬线体，节奏放慢",  // 可选：自然语言描述
+  "unresolved": ["活泼一点"],    // 映射不到 token 的片段，不静默丢弃
   "resolvedAt": "2026-10-04T17:30:00+08:00"
 }
 ```
 
 `natural` 由模型解析成 `overrides`，解析结果**回写进 overrides**，这样渲染阶段不需要再调用模型。
+解析不了的片段写进 `unresolved` 并报错，而不是丢掉。
 
 token 清单见 [../rd/风格预设系统.md](../rd/风格预设系统.md)。
 
@@ -411,9 +440,9 @@ assets/
 |---|---|---|
 | `image` | 缩放 + 生成缩略图 | `sips`（macOS 原生）或 ffmpeg |
 | `video` | 抽关键帧 / 首帧封面 | `ffmpeg` `select`/`thumbnail`/`tile` |
-| `pdf` | **逐页转 PNG** | **`dsoffice render`** —— 接受 PDF 输入，不需要 `pdftoppm`/poppler |
-| `office` `.docx/.pptx` | 文本结构化提取（大纲、幻灯片标题）；**转图直接用 `dsoffice render`** | `python-docx` / `python-pptx`（DSH 捆绑 Python）+ `dsoffice` |
-| `office` `.xlsx` | 表头与数据提取；**公式值用 `dsoffice recalculate` 重算** | `openpyxl` + `dsoffice` |
+| `pdf` | **逐页转 PNG**（文字层提取走 `officeparser`） | **`dsoffice render`** —— 接受 PDF 输入，不需要 `pdftoppm`/poppler |
+| `office` `.docx/.pptx` | 文本结构化提取（大纲、幻灯片标题）；**转图直接用 `dsoffice render`** | `officeparser`（Node，带层级 AST）+ `dsoffice` |
+| `office` `.xlsx` | 表头与数据提取；**公式值用 `dsoffice recalculate` 重算** | `officeparser` + `dsoffice` |
 | `code` | 语法高亮截图 | `shiki`（npm，可装） |
 | `text` | 无需素材，直接排版 | — |
 
@@ -427,7 +456,7 @@ dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
 
 **能力边界**（官方声明）：**不保证与 Microsoft Office 的分页一致**——字体度量差异会改变换行与分页。对"演示画面"够用，但不要承诺与原文档逐页相同。
 
-**PDF 不做文字提取**：画面就是页面图，narration 由叙事层依据画面与文件名决定（[ADR 0006](../decisions/0006-narration-layer-moves-up.md) 允许它读内容）。不为边际收益引入 PDF 文本库。
+**PDF 的文字提取**：`officeparser` v8 起对**带文本层**的 PDF 产出 heading 层级与表格节点，因此不为 PDF 单独引入文本库。扫描版 PDF 没有文本层，只能靠页面图，narration 由叙事层依据画面与文件名决定（[ADR 0006](../decisions/0006-narration-layer-moves-up.md) 允许它读内容）。
 
 **注**：本机 ffmpeg **未编译 libass/freetype**，`subtitles` 与 `drawtext` 滤镜不可用。因此字幕不走 ffmpeg 烧录，而是由渲染阶段（Remotion）绘制。这与 [SPEC-pipeline.md](SPEC-pipeline.md) 的「字幕由渲染层负责」一致。
 
@@ -468,3 +497,4 @@ dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
 - `foldercast.json` 与 `script.json` **各自独立版本化**。解读格式升版不必要求讲稿同步升版，只要 `script.json` 声明的版本仍被支持。
 - 读取方遇到未知版本应报错而非猜测。
 - 场景 `type` 是开放枚举：遇到不认识的 type，渲染器应跳过并警告，而不是崩溃。
+- **schema 在各层都是封闭的**（`additionalProperties: false`）：出现未声明的字段就是错误，拼错的键名会被拦住。例外只有真正的映射字段——`stats.languages`、`stats.kindCounts`、`stats.roles`、`sources.kinds`、`style.overrides`，它们允许自由键。加字段意味着**同时**改 schema、本文件与 `packages/plugin/scripts/contracts/` 的类型。

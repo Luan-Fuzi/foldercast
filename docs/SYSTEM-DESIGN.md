@@ -163,11 +163,13 @@ packages/
   plugin/                     DSH 插件（第一版唯一的入口，也是全部代码）
     ├── (npm 包根)             工具注册、Config schema、skill、locale
     └── scripts/
+        ├── contracts/        两个 JSON 契约的 TypeScript 类型，两侧共用
         ├── analyzer/          TypeScript：目录 → 解读
         └── renderer/          TypeScript + Remotion：讲稿 + 素材 → 视频
 styles/                        风格预设（数据，非代码）
 docs/                          文档
 examples/                      示例
+scripts/                       仓库工具（与上面的 scripts/ 无关）
 ```
 
 **编排层是 DSH 主 agent，不是代码。** 三步管线的驱动者：
@@ -179,10 +181,10 @@ examples/                      示例
 | ② 视频 | 主 agent 调 `scripts/renderer/` |
 | ③ 配音 | 主 agent 调脚本 |
 
-**`analyzer` 与 `renderer` 互不依赖**，耦合点是两个数据契约：`foldercast.json`（解读）与 `script.json`（讲稿）。
+**`analyzer` 与 `renderer` 互不依赖**，耦合点是 `contracts/` 里的两个数据契约类型——对应 `foldercast.json`（解读）与 `script.json`（讲稿）。
 这样两边各自可测：分析器可以对任意目录独立跑，渲染器可以拿手写讲稿独立跑。
 
-**待确认**：`scripts/` 之下是否再分 `analyzer/` 与 `renderer/` 两个子目录，还是平铺。分开的理由与上文一致——保住「两侧互不依赖」这条边界在目录结构上可见。
+**`scripts/` 之下分子目录已定**（2026-10-04）：`analyzer/` 与 `renderer/` 分开，因为要让「两侧互不依赖」这条边界在目录结构上可见；两侧都要用的类型放 `contracts/`，否则 analyzer 就得依赖 renderer（见 [coding.md](conventions/coding.md#类型定义的位置)）。
 
 **脚本必须保持独立可跑**（stdin/stdout + 参数）。这是 ADR 0008 的一条缓解措施：没有 CLI 的情况下，CI 仍要能直接调脚本测分析器。
 
@@ -351,6 +353,8 @@ $ ffmpeg -filters | grep -xE 'subtitles|drawtext'
 | 叙事质量无指标 | 无法判断讲稿好坏 | 两层验收：M3 管机器能查的（路径、枚举、字数），M5 的评审 agent 管语义（编造、重点、遗漏）。评审 agent 自身需人工抽查 |
 
 #### PDF 提取的依赖缺口（已实测，已解决）
+
+> 本节是**当时的实测记录**，保留它是因为「为什么不用 PyMuPDF」需要证据。当时评估过走 Python，**现已全部移除，项目不含任何 Python 依赖**（[coding.md](conventions/coding.md#一语言与运行时)）。
 
 原先文档多处写着「`PyMuPDF` 已装」，**实测与此不符**：
 

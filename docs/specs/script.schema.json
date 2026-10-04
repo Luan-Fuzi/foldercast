@@ -49,7 +49,8 @@
               "kind": { "$ref": "#/$defs/kind" },
               "count": { "type": "integer", "minimum": 0 },
               "note": { "type": "string" }
-            }
+            },
+            "additionalProperties": false
           }
         },
         "file": {
@@ -77,7 +78,8 @@
           "type": "array", "items": { "type": "string" },
           "description": "document 场景：逐页转图后的素材路径"
         }
-      }
+      },
+      "additionalProperties": false
     }
   },
 
@@ -94,7 +96,8 @@
       "properties": {
         "root": { "type": "string", "description": "被讲解目录的绝对路径，须与解读一致" },
         "label": { "type": "string", "description": "展示用名称，默认取目录名" }
-      }
+      },
+      "additionalProperties": false
     },
 
     "title": { "type": "string", "description": "整片标题，可选" },

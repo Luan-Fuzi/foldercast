@@ -53,7 +53,7 @@
 
 1. 三个真实目录跑通并人工核对：一个 TS 项目、一个混杂资料目录、一个含 Office 的汇报目录
 2. **对本仓库自身跑一次**：`roots` 应含 `README.md`，`hubs` 应含 `docs/specs/SPEC-pipeline.md`（被 10 个文档引用），`dangling` 为空
-3. **脚本能脱离 DSH 直接跑**（`node packages/plugin/scripts/analyzer/main.js <目录>`，或 `tsx` 直跑源码）——没有 CLI 时，CI 靠这条
+3. **脚本能脱离 DSH 直接跑**（`node packages/plugin/scripts/analyzer/main.ts <目录>`）——Node 22.19+ 直接运行 TS，不需要构建步骤，与仓库工具（`scripts/`）同一套做法。没有 CLI 时，CI 靠这条
 4. 大体量目录不 OOM
 
 **语言**：TypeScript（Node 22.19+），与插件、渲染器同栈。**项目无 Python 依赖**——当初选 Python 是为了 Office/PDF 库，那两块现在都在 Node 侧。

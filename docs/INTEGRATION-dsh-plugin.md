@@ -58,7 +58,7 @@ DSH 进程
 
 ```jsonc
 {
-  "name": "foldercast",                    // 或 dsh-foldercast
+  "name": "dsh-foldercast",
   "version": "0.1.0",
   "type": "module",
   "main": "lib/index.js",
@@ -299,19 +299,26 @@ ctx.tools.register(defineTool({
 
 ## 四、工具设计建议
 
-### 命名
+### 第一版只注册一个工具
 
-生态惯例是 `dsh-tool-<动作>`。模型可见的 `name` 用下划线：
+```
+foldercast_cast       一条龙：分析 → 文案 → 渲染 → 配音
+```
+
+**一个参数**：目录路径。判据是「除了指向哪个目录，不需要任何其他输入」（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)）。
+
+### 押后：细粒度工具
+
+生态惯例是 `dsh-tool-<动作>`，模型可见的 `name` 用下划线。管线本来就分阶段、可重跑（见 [SPEC-pipeline.md](specs/SPEC-pipeline.md)），拆成细粒度工具能让模型只渲染不配音、或换音色重配音：
 
 ```
 foldercast_analyze    分析目录，产出 stats/manifest
 foldercast_script     生成分镜（文案）
 foldercast_render     渲染静音视频
 foldercast_voice      配音（换音色重跑）
-foldercast_cast       一条龙：分析 → 文案 → 渲染 → 配音
 ```
 
-**拆成多个细粒度工具**而非一个巨型工具，理由是管线本来就是分阶段的、可重跑的（见 [SPEC-pipeline.md](specs/SPEC-pipeline.md)）。模型可以只渲染不配音、或换个音色重配音，不必整条重跑。
+**为什么第一版不做**：M4 的验收就是「对话里说一句话能触发」。脚本本来就能分阶段单独跑（主 agent 用 `bash` 直接调，[ADR 0008](decisions/0008-plugin-first.md)），所以细粒度能力现在就有，缺的只是注册；等真出现「模型需要按阶段调用」的实例再暴露。反过来先注册五个工具，会把「编排层是 agent」变成「编排层是工具描述」。
 
 ### `description` 的写法
 
@@ -334,11 +341,19 @@ foldercast_voice  — "Synthesize narration audio and burn subtitles"
 
 | 环节 | 做法 |
 |---|---|
-| 发布 | npm。包名 `foldercast` 或 `dsh-foldercast`，均已确认可注册 |
+| 发布 | npm。包名 **`dsh-foldercast`**（2026-10-04 定）。两个候选在 registry 上都未被占用（均返回 404），选带前缀的理由见表后 |
 | 发现 | GitHub 仓库加 **`dsh-plugin` 话题** —— 这是官方指定的发现机制 |
-| 安装 | `dsh plugin --profile web add foldercast` |
+| 安装 | `dsh plugin --profile web add dsh-foldercast` |
 | 市场 | 会被 `dsh-plugin.org`、`dsh-market`、`dsh-find-plugin` 等自动索引（它们抓 `dsh-plugin` 话题） |
 | 精选列表 | 向 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) 提 PR（社区唯一开放的外部 PR 通道） |
+
+**为什么是 `dsh-foldercast` 而不是 `foldercast`**：
+
+| 理由 | 说明 |
+|---|---|
+| 与生态一致 | 官方插件用 `dsh-` 前缀（`dsh-plugin-manager`、`dsh-hmr`），本机第三方插件的参照 `@linxin666/dsh-usage` 也是 |
+| 把 `foldercast` 留给独立 CLI | [ADR 0008](decisions/0008-plugin-first.md) 推迟了独立 CLI 但没有否决它。真做的那天，`foldercast` 更该属于那个独立工具；现在占用等于给自己留一次改名 |
+| 可发现性 | npm 搜索与插件列表里，前缀直接说明它属于 DSH |
 
 **注意**：官方仓库 `deepseek-ai/deepseek-harness` **不接受外部 PR**（Issues 也是关闭的，反馈走 Discussions）。所以不存在「贡献进官方仓库」这条路 —— 生态贡献就是发布自己的包。
 
@@ -373,7 +388,7 @@ export const Config = z.object({
 | `depth` | enum | `normal` | M1 + M5 之后，见 11.5 —— **控制成本，最早该暴露** |
 | `stylePreset` | enum | `swiss` | M7 出片之后 |
 | `cliPath` | string | 自动探测 | **不`volatile()`**：探测失败该走报错，不该让用户填 |
-| `outputDir` | string | `<源目录>/.foldercast` | 等有人要改产物位置 |
+| `outputDir` | string | 固定 `<源目录>/.foldercast` | **第一版不做成配置**。工作根的唯一性见 [SPEC-data-format.md](specs/SPEC-data-format.md#工作目录所有产物的落点) |
 
 **凭据不进配置项**：只放**引用名**，值走 DSH 的凭据 seam（`@deepseek-ai/dsh-credentials`）。
 
@@ -448,7 +463,7 @@ presets:
 
 沙箱模式来自 `DSH_PERMISSION_MODE`，默认 `workspace-write`。**`danger-full-access` 的字面意思是「绕过文件系统隔离」**，不是「最高权限」——官方明确网络与进程可见性不在这个词汇的定义范围内。
 
-### 7.3 `plugin_manager` 在本机默认关闭（**已实测**）
+### 7.3 `plugin_manager`：基础默认关闭，`cordis` 预设开启（**已实测**）
 
 从 `dsh --profile web --dump-config` 的根部（`@deepseek-ai/dsh-base` 层）：
 
@@ -458,9 +473,12 @@ presets:
   disabled: true
 ```
 
-**基础默认关，不随预设选择而变。** 实测证据：本机一个 `agentPreset: standard` 的会话（从会话日志头读出），标准预设内部确实声明了 `tool-plugin-manager`（缩进 6 层，属 preset 的插件列表），但该会话的工具列表里没有 `plugin_manager`。
+**基础默认关，但 `cordis` 预设会覆盖它。** 两条实测证据：
 
-「创造模式（`cordis` 预设）提供 `plugin_manager` 与两个 `cordis_inspect_*` 工具」是官方说法。**但这个部署根部的 `disabled: true` 是否被预设覆盖，未验证。** 要确认就切到 `cordis` 预设开一个新会话，看工具列表。
+1. 一个 `agentPreset: standard` 的会话（从会话日志头读出），标准预设内部确实声明了 `tool-plugin-manager`（缩进 6 层，属 preset 的插件列表），但该会话的工具列表里没有 `plugin_manager`。
+2. 2026-10-04，`foldercast` 工作区的会话从 `standard` 切到 `cordis`（会话日志 `agent-preset/selected` 事件，seq 3）。同一个会话里 `plugin_manager` 与两个 `cordis_inspect_*` 工具都在工具列表中且可用：`plugin_manager list_plugins` 返回 191 个条目，`cordis_inspect_list` 返回 host 的 `Service` / `Event` / `Config` / `Tool` 与 client 的 `Service` / `Event` / `Builtin` / `Slots` / `Theme` 共九个 provider。**部署根部的 `disabled: true` 会被 `cordis` 预设覆盖。**
+
+**对 foldercast 的含义**：M4 的「装进 DSH 并激活」必须在创造模式（`cordis` 预设）下做，标准模式里模型调不到 `plugin_manager`。
 
 ### 7.4 注册依赖平台与客户端
 

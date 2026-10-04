@@ -83,7 +83,7 @@
 | `image` | 缩放缩略图 | `sips` ✅ |
 | `video` | 抽关键帧 | `ffmpeg` ✅ |
 | `pdf` | 逐页转 PNG | **`dsoffice render`** ✅（预编译 LibreOffice 引擎，接受 PDF 输入） |
-| `office` | 文本结构化提取 + 转图 | `python-docx`/`python-pptx`/`openpyxl`（**DSH 捆绑 Python 已有**）+ `dsoffice render` |
+| `office` | 文本结构化提取 + 转图 | `officeparser`（Node，产出带层级 AST）+ `dsoffice render` |
 | `office` `.xlsx` 公式 | 重算取计算值 | `dsoffice recalculate` ✅ |
 | `code` | 语法高亮截图 | `shiki` 需安装 |
 
@@ -223,3 +223,9 @@
 | 2026-10-04 | 第一版判据：无可配置空间 | R6/R7/R8/R9 与多视频切分押后 |
 | 2026-10-04 | 里程碑按依赖重排：M3 = 契约校验脚本（早于写稿），M6 = HTML 视图（早于视频），M4 = 插件骨架，M8 = 配音 | 编号与管线顺序不再一致；追溯表的里程碑列重画 |
 | 2026-10-04 | Office 与 PDF 转图改用 `dsoffice`（DeepSeek 的 `libreoffice-kit`）；删除 PyMuPDF 与 poppler | 依赖清单、M2 清单、许可清单同步 |
+| 2026-10-04 | 仓库全面去 Python：`check-links.py` 等四个检查脚本改写为 TypeScript，CI 由 Python 3.11 改为 Node 22.19 + pnpm | 新增根目录 `package.json` / `tsconfig.json` / `scripts/lib/`；`check-links.py` 删除；`.gitignore` 去掉 Python 段 |
+| 2026-10-04 | 第一版只注册一个工具 `foldercast_cast`；细粒度工具（analyze/script/render/voice）押后 | 消除 ROADMAP M4 与 INTEGRATION 工具表的冲突 |
+| 2026-10-04 | npm 包名定为 `dsh-foldercast`（两候选在 registry 均未被占用，选带前缀者） | M4 发布；`foldercast` 留给日后的独立 CLI |
+| 2026-10-04 | 契约类型移到共享模块 `packages/plugin/scripts/contracts/`，analyzer 与 renderer 都依赖它 | 原来「类型放 renderer」会让 analyzer 依赖 renderer，违反两者互不依赖 |
+| 2026-10-04 | 工作根定为 `<源目录>/.foldercast/`，内含解读、讲稿、素材、音频、成片；`outputDir` 第一版不做成配置 | M1 的输出契约；明确两条路径基准（源目录 / 工作根） |
+| 2026-10-04 | schema 各层收紧为 `additionalProperties: false`，映射字段除外；`check-json.ts` 增加重复键检测 | 修掉 `foldercast.schema.json` 里 `graph` 被定义两遍（`JSON.parse` 静默保留后者）；M3 校验强度提高 |

@@ -86,7 +86,7 @@ foldercast 插件（npm 包）
 |---|---|
 | 维持 ADR 0005（CLI 为主，插件为壳） | 叙事层的凭据问题无解；且第一版就要负担 CLI 的全部成本 |
 | CLI 随插件分发但不独立发布 | 保留了 CLI 的成本（参数、配置、编排）却暂时不享受收益（独立使用） |
-| 只做 skill，不做插件 | skill 不能提供新能力（Python、ffmpeg、Remotion 都要工具才能跑），见 [INTEGRATION-dsh-plugin.md](../INTEGRATION-dsh-plugin.md#二什么时候用-skill什么时候用插件) |
+| 只做 skill，不做插件 | skill 不能提供新能力（Python、ffmpeg、Remotion 都要工具才能跑），见 [INTEGRATION-dsh-plugin.md](../INTEGRATION-dsh-plugin.md#71-三条安装路径) 与 [ADR 0009](0009-settings-via-config-schema.md) |
 | 同时做插件和 CLI | 第一版范围翻倍，且两者要各自维护 |
 
 ## 参见

@@ -30,6 +30,7 @@ MVP 范围已收敛为**单一路径**：文案 → 视频 → 配音。不做 `
 
 - [ ] npm 包 + `dsh.bundle.patch` 声明（**必需**，漏了会静默不激活）
 - [ ] `locale/zh.json` + `locale/en.json`（插件管理页的标题与描述）
+- [ ] `Config` schema 声明（**第一版不暴露字段**，只把机制立起来 —— 宿主据此生成设置页，见 [ADR 0009](decisions/0009-settings-via-config-schema.md)）
 - [ ] 一个工具：`foldercast_cast`，**一个参数**（目录路径），执行 → 起子进程
 - [ ] skill：工作流步骤 + 「不读哪些文件」的约束
 - [ ] CLI 探测与清晰报错（不是裸 `ENOENT`）

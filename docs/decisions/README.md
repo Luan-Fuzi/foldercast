@@ -103,6 +103,7 @@ NNNN-<kebab-case-标题>.md
 | [0006](0006-narration-layer-moves-up.md) | 叙事层下移给 Agent 集群，分析器只出事实 | 已接受 | 2026-10-04 |
 | [0007](0007-secret-file-exclusion.md) | 密钥类文件按文件名排除，判据只做一层 | 已接受 | 2026-10-04 |
 | [0008](0008-plugin-first.md) | 先做 DSH 插件，推迟独立 CLI | 已接受 | 2026-10-04 |
+| [0009](0009-settings-via-config-schema.md) | 设置页用 Config schema 生成，不写客户端 UI | 已接受 | 2026-10-04 |
 
 ---
 

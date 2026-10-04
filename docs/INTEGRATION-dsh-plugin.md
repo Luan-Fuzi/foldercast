@@ -340,21 +340,42 @@ foldercast_voice  — "Synthesize narration audio and burn subtitles"
 
 ---
 
-## 六、插件配置项（第一版不做）
+## 六、插件配置项（第一版不暴露字段，但 schema 先立）
 
-插件可通过 `Config` 暴露设置，渲染在设置页的 slot 中。**第一版不暴露任何配置项**（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)），本节记录的是设计里已有、后续逐个放开的维度。
+**机制**：声明 `Config` schema，**宿主据此生成设置页**（[ADR 0009](decisions/0009-settings-via-config-schema.md)）。规则：
+
+- 标了 `.volatile()` 的字段才进表单、才可写；写入走 live path，**不重载插件行**
+- 没标的字段只作默认值与校验，用户改不了
+- `min` / `max` / 默认值直接变成表单控件的范围与初值
+
+```ts
+import z from '@deepseek-ai/schemastery'
+
+export const Config = z.object({
+  ttsProvider: z.union(['say', 'edge', 'mimo']).default('say').volatile(),
+  ttsVoice: z.string().volatile(),
+  depth: z.union(['overview', 'normal', 'detailed']).default('normal').volatile(),
+  stylePreset: z.string().default('swiss').volatile(),
+})
+```
+
+**第一版不暴露任何字段**（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)），理由是「没看到真实成片之前无法判断哪些值得暴露」。但 schema 先立起来，字段空着，机制先通。
+
+计划暴露的字段（见 [11.5](#115-计划暴露给用户的配置日后)）：
 
 | 字段 | 类型 | 默认 | 何时放开 |
 |---|---|---|---|
-| `cliPath` | string | 自动探测 | 等真的出现探测失败的用户 |
-| `defaultStyle` | string | `swiss` | 等多预设解禁（R8/R9） |
-| `defaultProvider` | string | `say` | 等 TTS 适配层落地（R6） |
-| `renderTimeoutMs` | number | `900000` | 等出现真实超时案例 |
+| `ttsProvider` / `ttsVoice` / `ttsStyle` | enum + string | `say` | M5 之后 |
+| `depth` | enum | `normal` | 见 11.5 —— **控制成本，最早该暴露** |
+| `stylePreset` | enum | `swiss` | M4 出片之后 |
+| `cliPath` | string | 自动探测 | **不`volatile()`**：探测失败该走报错，不该让用户填 |
 | `outputDir` | string | `<源目录>/.foldercast` | 等有人要改产物位置 |
 
-**配置通过 `@deepseek-ai/schemastery` 声明** —— 官方运行时校验器，放在 `dependencies`（不是 `peerDependencies`），与 `dsh-agent-loop` 的做法一致。
+**凭据不进配置项**：只放环境变量名（`apiKeyEnv` 引用），与 `dsh-usage` 一致——「API key 经宿主凭据缝解析……**永不进入浏览器**」。
 
-**注意配置界面的归属**：`Config` schema 是声明层，界面是浏览器端代码（`settings.section` + `ctx.configForms`）。见 [8.1](#81-配置界面两个易错点)。
+**`@deepseek-ai/schemastery` 放在 `dependencies`**（不是 `peerDependencies`），与 `dsh-agent-loop`、`dsh-usage` 的做法一致。
+
+**与自建设置页的分工**：`Config` 管「配置表单」，`settings.section` 管「自定义内容」（数据面板、可视化）。两者可并存，见 [第十五节](#十五两种-ui-扩展机制)。
 
 ---
 
@@ -429,17 +450,26 @@ Slots 是 Web / Desktop 客户端的类型化 React 组合系统。插件用 `ct
 
 | 插槽 | 位置 | 对 foldercast 的用途 |
 |---|---|---|
+| `settings.section` | 设置面板的功能页 | **自定义内容**（配置表单不用它，见 [第十五节](#十五两种-ui-扩展机制)） |
 | `tool.call.toolview` | 工具调用的自定义渲染 | 渲染进度、结果卡片、视频缩略图 |
 | `sidebar.right.pane.tab` / `sidebar.right.tab.menu` | 右侧栏标签页 | 播成片 / 展示目录解读 |
 | `conversation.session.header.actions` | 会话头部操作按钮 | 「把这个目录讲一遍」 |
 | `conversation.chat.node` | 会话流中的自定义节点 | 把成片作为消息插入对话 |
-| `settings.section` | 设置面板的功能页 | 插件自己的配置界面 |
 
-### 8.1 配置界面：两个易错点
+### 8.1 三个易错点
 
-**一、设置里的「插件」分区不是我们的配置页。** `settings.plugins.tab` 承载的是**只读**的插件清单与页面；我们的配置要自己注册 `settings.section`。
+**一、设置里的「插件」分区不是我们的配置页。** `settings.plugins.tab` 承载的是**只读**的插件清单与页面。
 
-**二、`Config` schema 只是声明层，配置界面是浏览器端代码。** 存储走 `ctx.configForms` 的命名空间（原子更新多字段、schema 校验、防静默覆盖并发修改），持久化到 Host 设置文档。**CLI 用户看不到这个界面** —— 「插件有配置 UI」与「CLI 有配置」是两套东西。
+**二、设置页 ≠ 要写客户端包。** 配置表单由宿主从 `Config` schema 生成（[ADR 0009](decisions/0009-settings-via-config-schema.md)）。只有当你要展示**自定义内容**（数据面板、可视化、按钮）时才需要 `settings.section` + 客户端包。
+
+**三、`settings.section` 是插槽，`Config` 是 schema，两者不是一回事。**
+
+| | `Config` schema | `settings.section` |
+|---|---|---|
+| 写什么 | schemastery 声明 | React 组件 |
+| 在哪 | 插件主包 | 客户端包（`dsh.client`） |
+| 出什么 | 配置表单（宿主渲染） | 你想要的任何内容 |
+| 成本 | 几十行 | 一个包 + 构建 + 发布 |
 
 ### 8.2 无关插槽（说明覆盖面）
 
@@ -514,19 +544,9 @@ ctx.commands.register({
 
 ### 11.3 自建 UI（要客户端包）
 
-`settings.section`（设置页）、`sidebar.right.pane.tab`（右侧栏）、`conversation.session.header.actions`（会话头按钮）等，见 [第八节](#八ui-扩展点第一版不用记录备查)。**要另发客户端包，第一版不做。**
+`sidebar.right.pane.tab`（右侧栏）、`conversation.session.header.actions`（会话头按钮）、`tool.call.toolview`（工具卡片）等，见 [第八节](#八ui-扩展点第一版不用记录备查)。**要另发客户端包，第一版不做。**
 
-**设置页也不例外**（这条容易误判）：设置外壳在 `ui-settings-general`，功能页面通过 **`settings.section` 插槽**注册——而插槽是浏览器端 React 组件。**声明 `Config` schema 不会自动产生设置界面。**
-
-所以「在设置页开一栏」的实际成本是：
-
-| 要做的事 | 内容 |
-|---|---|
-| 声明 schema | 插件包内用 `schemastery` 写 `Config`（**便宜**） |
-| 写设置界面 | 另建客户端包，React 组件，注册 `settings.section`（**贵**：构建、发布、与 `ui-renderer` 配合） |
-| 存取 | `ctx.configForms` 命名空间读写，持久化到 Host 设置文档（由外壳负责，不用自己写） |
-
-**中间方案**：只声明 `Config`。设置文件仍然生效、有 schema 校验、会出现在自动生成的配置目录里，**用户手改文件即可，只是没有图形界面**。等真的有人抱怨要手改 YAML，再补客户端包。
+**但设置页不在这一列** —— 它由宿主从 `Config` schema 自动生成，不用写 React。见 [第十五节](#十五两种-ui-扩展机制)。
 
 ### 11.4 foldercast 的选择
 
@@ -534,11 +554,11 @@ ctx.commands.register({
 |---|---|
 | 模型自动调用 | ✅ **主入口** |
 | `/foldercast`（skill） | ✅ 显式入口。但注意与 11.2 的斜杠命令**不是一回事**——skill 的 `/name` 是注入指令给模型，命令是直接执行插件代码 |
-| 斜杠命令（`ctx.commands`） | ⏸ **暂不做**。它不给模型消息，而「对目录出解读」需要模型参与（选材料、写讲稿） |
-| 自建 UI | ❌ 第一版不做 |
-| **设置页开一栏** | ⏸ **押后**，但**接口先留**：第一版就声明 `Config` schema，界面等真实需求 |
+| **设置页** | ✅ **可行且便宜**：声明 `Config` schema 即可（[ADR 0009](decisions/0009-settings-via-config-schema.md)）。第一版不暴露字段，但 schema 先立 |
+| 斜杠命令（`ctx.commands`） | ⏸ 暂不做。它不给模型消息，而「对目录出解读」需要模型参与（选材料、写讲稿） |
+| 自建 UI（侧边栏 / 工具卡片） | ❌ 第一版不做 |
 
-**结论**：第一版**不做单独入口**，靠自然对话 + skill 的 `/foldercast`。等出现「只出解读不要视频」这类确定性动作时，再考虑加斜杠命令。
+**结论**：第一版**不做单独入口**，靠自然对话 + skill 的 `/foldercast`。设置走 schema 生成，不做客户端包。
 
 ### 11.5 计划暴露给用户的配置（日后）
 
@@ -586,7 +606,41 @@ ctx.commands.register({
 
 ---
 
-## 十三、官方文档索引
+---
+
+## 十三、两种 UI 扩展机制
+
+**别把这两件事混起来**——它们的成本和用途完全不同。
+
+| | `Config` schema | `settings.section` 插槽 |
+|---|---|---|
+| 你要写什么 | schemastery 声明（几十行） | React 组件（一个包） |
+| 写在哪 | 插件主包 `src/index.ts` | 客户端半区，由 `dsh.client` 声明 |
+| 出什么 | **宿主生成的配置表单** | 你想要的任何内容 |
+| 落在哪 | 设置页里属于这个插件条目的一页 | 设置页里一个新的一级分区 |
+| 第一版 | ✅ 声明，先不暴露字段 | ❌ 不做 |
+
+### 15.1 机制（实测来源见 ADR 0009）
+
+- 宿主从 `Config` **为每个 profile 条目生成一份表单**
+- **只有标了 `.volatile()` 的字段进表单、才可写**
+- 写入走 live path：Loader 把新值提交进字段的引用并发 `loader/volatile-update`，**不重载插件行**，所以运行中的状态与路由注册都能幸存
+- 表单写入的持久化由设置外壳负责（`ctx.configForms`），不用自己写
+
+### 15.2 什么时候才需要写客户端包
+
+- 要展示**数据可视化**（图表、余额、进度）
+- 要**非表单类交互**（按钮、批量操作、向导）
+- 要**自定义版式**（宿主生成的表单长什么样不由你定）
+- 要**非 `volatile()` 的配置**（生成表单的写入只走 live path，需要重启才生效的配置表达不了）
+
+### 15.3 foldercast 的判断
+
+第一版只声明 `Config`，**不写客户端包**。日后若要展示「这个目录的解读概要图表」之类的内容，再考虑 `settings.section`——但那更可能落在 `sidebar.right.pane.tab`（对话旁边看解读）而不是设置页。
+
+---
+
+## 十四、官方文档索引
 
 | 主题 | 链接 |
 |---|---|
@@ -608,3 +662,9 @@ ctx.commands.register({
 | 官方文档站 | https://deepseek-harness.github.io/deepseek-harness/ |
 
 参考实现：`dsh-tool-bash`（命令执行工具，含超时、输出截断、spill 文件的完整处理）是生产级范本。
+
+**本机可拆的第三方范本**（装在本机，可直接读源码）：
+
+| 插件 | 位置 | 可学什么 |
+|---|---|---|
+| `@linxin666/dsh-usage` | `~/.dsh/profiles/desktop/node_modules/@linxin666/dsh-usage/` | **`Config` schema 生成设置页**（本项目的直接参照）、bundle patch、`dsh.client` 客户端半区、`settings.section` 内容页、凭据不进浏览器 |

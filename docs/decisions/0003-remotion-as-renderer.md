@@ -55,6 +55,39 @@
 - **必须指定本机 Chrome。** `lecture-videos/remotion.config.ts` 里显式设置了 `setBrowserExecutable('/Applications/Google Chrome.app/...')`，注释说明原因是「当前网络下不了 Chrome Headless Shell」。foldercast 需沿用此处理，或提供 fallback 逻辑。
 - **分镜必须运行时加载。** Remotion 的常规用法是静态 import 组合，但 foldercast 需要按传入路径动态加载（见 ADR 0002 与 C1 约束）。
 
+## 附注（2026-10-04 补：许可约束与运行时体积）
+
+**决策本身不变**（用 Remotion），但补两条此前没记录的事实。
+
+### 许可
+
+Remotion 是**双许可**，不是纯开源：
+
+| 许可 | 适用 | 价格 |
+|---|---|---|
+| Free License | 个人，或**最多 3 人的公司** | $0，含无限商业使用 |
+| **Remotion for Creators** | 4 人及以上公司，为自己的组织做视频（含用 AI agent） | $25/月/座 |
+| **Remotion for Automators** | **构建视频创作工具**（视频编辑器、prompt-to-video 应用、嵌入 Player） | **$0.01/次渲染，$100/月最低** |
+
+**对本项目的含义**：
+
+- **发布 foldercast 不需要我们付费**——我们是个人开发者，落在 Free License
+- **用户需要自行判断**：拿它给 4 人以上的公司做视频 → Creators 档；把它嵌进自己的产品卖 → Automators 档
+- **必须写进 README**，否则等于把法律风险默默转嫁给用户
+- 若 foldercast 自身要商业化，**自动进入 Automators 档**
+
+### 运行时体积
+
+Remotion 本身很小（npm 包合计约 5 MB），**大头是它需要的浏览器**（150–300 MB）。这不是 Remotion 的锅——"用 CSS 排版"这条路必然要一个排版引擎，见 [SYSTEM-DESIGN.md §4.6](../SYSTEM-DESIGN.md#46-为什么必须有浏览器c4)。
+
+加上 Office 侧的 `libreoffice-kit` 引擎（147 MB），**最终产品带两个几百 MB 量级的运行时**。这一点应写进 README 的安装预期。
+
+### 一个仍然开放的问题
+
+**渲染后端是否可替换**。纯 ffmpeg + Pillow 不需要浏览器、没有许可约束，但要做手写排版（见本文「备选方案」的代价表）。
+
+现状：**契约与后端无关**（`script.json` 里没有帧号、spring 参数等 Remotion 特有字段），所以将来加后端只需写渲染器，契约不用动。**第一版不做双后端**，但守住"契约不出现后端特有字段"这条规则。
+
 ## 备选方案
 
 | 方案 | 否决理由 |

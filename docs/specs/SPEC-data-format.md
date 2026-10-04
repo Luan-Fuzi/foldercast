@@ -411,11 +411,23 @@ assets/
 |---|---|---|
 | `image` | 缩放 + 生成缩略图 | `sips`（macOS 原生）或 ffmpeg |
 | `video` | 抽关键帧 / 首帧封面 | `ffmpeg` `select`/`thumbnail`/`tile` |
-| `pdf` | 逐页转 PNG | **`PyMuPDF`(fitz)** —— 已装，不需要 `pdftoppm` |
-| `office` `.docx/.pptx` | 文本直接提取；转图走 PDF | `python-docx` / `python-pptx` 已装 |
-| `office` `.xlsx` | 表格转 CSV/图 | `openpyxl`（用 DSH 捆绑 Python） |
+| `pdf` | **逐页转 PNG** | **`dsoffice render`** —— 接受 PDF 输入，不需要 `pdftoppm`/poppler |
+| `office` `.docx/.pptx` | 文本结构化提取（大纲、幻灯片标题）；**转图直接用 `dsoffice render`** | `python-docx` / `python-pptx`（DSH 捆绑 Python）+ `dsoffice` |
+| `office` `.xlsx` | 表头与数据提取；**公式值用 `dsoffice recalculate` 重算** | `openpyxl` + `dsoffice` |
 | `code` | 语法高亮截图 | `shiki`（npm，可装） |
 | `text` | 无需素材，直接排版 | — |
+
+**`dsoffice` 是什么**：`@deepseek-ai/libreoffice-kit`，DeepSeek 随 DSH 分发的**预编译 LibreOffice 引擎**（MPL-2.0，147 MB / 平台，作为 optionalDependency 按平台安装）。它**不查找也不需要系统装的 LibreOffice**。
+
+```sh
+dsoffice render      --input report.docx --output-dir pages --pages 1
+dsoffice convert     --input report.docx --output report.pdf
+dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
+```
+
+**能力边界**（官方声明）：**不保证与 Microsoft Office 的分页一致**——字体度量差异会改变换行与分页。对"演示画面"够用，但不要承诺与原文档逐页相同。
+
+**PDF 不做文字提取**：画面就是页面图，narration 由叙事层依据画面与文件名决定（[ADR 0006](../decisions/0006-narration-layer-moves-up.md) 允许它读内容）。不为边际收益引入 PDF 文本库。
 
 **注**：本机 ffmpeg **未编译 libass/freetype**，`subtitles` 与 `drawtext` 滤镜不可用。因此字幕不走 ffmpeg 烧录，而是由渲染阶段（Remotion）绘制。这与 [SPEC-pipeline.md](SPEC-pipeline.md) 的「字幕由渲染层负责」一致。
 

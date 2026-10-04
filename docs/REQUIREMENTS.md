@@ -82,9 +82,12 @@
 |---|---|---|
 | `image` | 缩放缩略图 | `sips` ✅ |
 | `video` | 抽关键帧 | `ffmpeg` ✅ |
-| `pdf` | 逐页转 PNG | `PyMuPDF` ✅ |
-| `office` | 文本提取 + 转图 | `python-docx`/`python-pptx` ✅，`openpyxl` 需用 DSH 捆绑 Python |
+| `pdf` | 逐页转 PNG | **`dsoffice render`** ✅（预编译 LibreOffice 引擎，接受 PDF 输入） |
+| `office` | 文本结构化提取 + 转图 | `python-docx`/`python-pptx`/`openpyxl`（**DSH 捆绑 Python 已有**）+ `dsoffice render` |
+| `office` `.xlsx` 公式 | 重算取计算值 | `dsoffice recalculate` ✅ |
 | `code` | 语法高亮截图 | `shiki` 需安装 |
+
+**注**：原方案写的是 `PyMuPDF`，**实测它不在 DSH 捆绑 Python 里**，已改用 `dsoffice`。
 
 ### R6 · TTS 模型可配置，含小米 TTS
 

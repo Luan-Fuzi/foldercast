@@ -72,12 +72,15 @@ MVP 范围已收敛为**单一路径**：文案 → 视频 → 配音。不做 `
 
 - [ ] 图片缩放与缩略图（`sips`）
 - [ ] 视频抽帧与封面（`ffmpeg`）
-- [ ] PDF 逐页转图（`PyMuPDF`）
-- [ ] Office 文本提取（`python-docx` / `python-pptx` / `openpyxl`）
+- [ ] **Office 与 PDF 转图（`dsoffice render`）** —— 一个工具覆盖两类
+- [ ] Office 文本结构化提取（`python-docx` / `python-pptx` / `openpyxl`，用 DSH 捆绑 Python）
+- [ ] **xlsx 公式值重算（`dsoffice recalculate`）**
 - [ ] 代码语法高亮截图（`shiki`）
 - [ ] `assets/manifest.json` 增量重算（按 mtime + hash 跳过未变文件）
 
 **验收**：三类内容各生成可用素材；重复运行第二次全部命中缓存、秒级完成。
+
+**依赖说明**：**PyMuPDF 与 poppler 都不需要**（实测 DSH 捆绑 Python 里没有 PyMuPDF）。转图统一走 `dsoffice`。运行 `dsoffice` 需要 Node ≥ 22.19 与对应平台的引擎包（作为 `optionalDependencies` 自动安装）。
 
 **风险点**：Office 转图是本阶段最重的部分。若 `shiki` 引入的依赖体积过大，退路是用等宽字体 + 简单着色，或复用 `highlight.js`。
 

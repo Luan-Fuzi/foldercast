@@ -55,30 +55,59 @@
 
 ## 二、技术选型
 
----
-
-## 二、技术选型
-
 | 层 | 选型 | 理由 | ADR |
 |---|---|---|---|
 | 渲染 | **Remotion** | React 组件 → 逐帧截图。`lecture-videos` 已验证 | [0003](decisions/0003-remotion-as-renderer.md) |
-| 分析器 | **Python** | 办公文档与 PDF 库（`python-docx`/`python-pptx`/`PyMuPDF`）都在 Python 生态，且已装 | — |
+| 分析器 | **Python**（DSH 捆绑的解释器） | 遍历、分类、依赖图都是纯标准库；文本提取用捆绑已有的库 | — |
+| Office / PDF → 图 | **`dsoffice`**（`@deepseek-ai/libreoffice-kit`） | 预编译 LibreOffice 引擎，Office 与 PDF **都能直接渲染成 PNG**，不需要系统装 LibreOffice | — |
+| Office 文本提取 | **python-docx / python-pptx / openpyxl** | 结构化提取（大纲、幻灯片标题、表头）比转成纯文本更省 token | — |
+| 表格公式 | **`dsoffice recalculate`** | 能重算 xlsx，拿到公式的计算值 | — |
 | 语法高亮 | **shiki** | 与 Remotion 同生态，主题体系成熟 | — |
 | 媒体处理 | **ffmpeg / ffprobe** | 本机已有，抽帧与实测时长都靠它 | — |
 | 图片缩放 | **sips**（macOS） | 零依赖。跨平台时回退 ffmpeg | — |
-| PDF → 图 | **PyMuPDF** | 已装，无需 `pdftoppm`/poppler | — |
-| Office | **python-docx / python-pptx / openpyxl** | 直接提取文本比转 PDF 更结构化 | — |
 | 中间格式 | **JSON** | 人和模型都能读写。解读与讲稿分为两份文件 | [0002](decisions/0002-json-as-intermediate.md) |
+
+### 2.1 两个运行时依赖（体积预期）
+
+最终产品带**两个几百 MB 量级的运行时**，用户应该事先知道：
+
+| 运行时 | 体积 | 许可 | 用途 |
+|---|---|---|---|
+| Remotion 的浏览器（Chrome / Chromium） | 150–300 MB | 浏览器自身是 BSD 系 | 渲染画面（见 [4.6](#46-为什么必须有浏览器c4)） |
+| LibreOffice 引擎（`libreoffice-kit-<platform>`） | **147 MB**（darwin-arm64 实测） | **MPL-2.0** | Office / PDF 转图 |
+| Remotion 的 npm 包 | ~5 MB | **Remotion 双许可**，见下 | 帧驱动与编码 |
+
+**引擎是 `optionalDependencies`**：npm 只装当前平台那一个（`darwin-arm64` / `darwin-x64` / `win32-x64` / `win32-arm64` / `wasm`）。
+
+**pnpm 去重**：本机 DSH 已装同一引擎，装插件时通常复用它，不会翻倍。
+
+**引擎的能力边界**（官方声明）：
+
+- **不保证与 Microsoft Office 或另一引擎的输出完全一致**。字体度量差异仍可能改变换行与分页
+- 不捆绑字体集合，运行时加载部署环境提供的字体；`missingFonts` 报告声明了但不可用的字体族
+- 支持二进制 Office 97–2003（OLE 复合文档），不接受改了后缀的 RTF/HTML 或 `.wps`
+
+### 2.2 许可清单
+
+| 组件 | 许可 | 对我们的约束 |
+|---|---|---|
+| **Remotion** | 双许可：个人与 ≤3 人公司免费；4 人以上公司需付费 | ⚠️ **必须在 README 里声明**，用户自行判断。见 [ADR 0003 附注](decisions/0003-remotion-as-renderer.md) |
+| **`@deepseek-ai/libreoffice-kit`** | **MPL-2.0** | 文件级 copyleft。我们只调用、不修改其文件，**自己的代码不受影响**；**再分发要带它的 LICENSE / NOTICE**（包内已有） |
+| Chromium / Chrome | BSD 系 | 无。**我们不分发它**（用系统的或让 Remotion 下载） |
+| React | MIT | 无 |
+| ffmpeg | LGPL / GPL（视编译选项） | 用系统的，不分发 |
+| `@deepseek-ai/*`（DSH 运行时） | 见其各自 LICENSE | 声明 peer 依赖，不打包 |
 
 ### 明确不引入的依赖
 
 | 不用 | 替代 | 原因 |
 |---|---|---|
-| `pdftoppm` / poppler | `PyMuPDF` | 已装，少一个系统依赖 |
-| `LibreOffice`（转图） | 直接提取文本 + `PyMuPDF` 渲染 | 启动慢、体积大，MVP 不需要 |
+| `pdftoppm` / poppler | `dsoffice` | 少一个系统依赖 |
+| `PyMuPDF` | `dsoffice` | **不在 DSH 捆绑 Python 里**（已实测），而 `dsoffice` 能渲染 PDF |
+| 系统 `LibreOffice` | `libreoffice-kit` 的预编译引擎 | 不需要用户装；引擎随 npm 包分发 |
 | `moviepy` | `ffmpeg` + Remotion | 多一层抽象，且我们有 Remotion |
 | 数据库 | 文件系统 | 无状态，JSON 即状态 |
-| Web 框架 | 无 | MVP 是 CLI |
+| Web 框架 | 无 | 第一版是 DSH 插件 |
 
 ---
 
@@ -274,30 +303,30 @@ $ ffmpeg -filters | grep -xE 'subtitles|drawtext'
 | 大目录分析慢 | 体验差 | 默认排除 + 并行遍历 + 进度输出 |
 | 自然语言风格解析失败率高 | 用户困惑 | `style.unresolved` 明确报错，不静默忽略 |
 | 密钥随内容外传 | 密钥进模型上下文 | 按文件名排除 + `stats.secrets` 审计（ADR 0007）。**不做内容检测**，判据不可能完备，靠声明与审计补偿 |
-| **PyMuPDF 不在 DSH 捆绑 Python 里** | PDF 逐页转图不可用 → 需求 R5 的 pdf 一类缺演示画面 | 见下方「PDF 提取的依赖缺口」 |
+| ~~PyMuPDF 不在 DSH 捆绑 Python 里~~ | ~~PDF 逐页转图不可用~~ | **已解决**：改用 `dsoffice`（`@deepseek-ai/libreoffice-kit`），它同时覆盖 Office 与 PDF 转图。见 [2.1](#21-两个运行时依赖体积预期) 与下方说明 |
 | 叙事质量无指标 | 无法判断讲稿好坏 | 先人工评审；M3 验收标准待定（见 [ROADMAP.md](ROADMAP.md#已识别的坑)） |
 
-#### PDF 提取的依赖缺口（已实测）
+#### PDF 提取的依赖缺口（已实测，已解决）
 
-[SPEC-data-format.md](specs/SPEC-data-format.md) 与 [rd/TTS-适配调研.md](rd/TTS-适配调研.md) 多处写着「`PyMuPDF` 已装」，**实测结果与此不符**：
+原先文档多处写着「`PyMuPDF` 已装」，**实测与此不符**：
 
 | 环境 | `fitz`(PyMuPDF) | 其他 |
 |---|---|---|
-| **DSH 捆绑 Python** | ❌ 无 | ✅ `python-docx` / `python-pptx` / `openpyxl` / `Pillow` / `numpy` / `pandas` / `lxml` |
-| **系统 python3** | ✅ PyMuPDF 1.26.5 | 未逐项核对 |
+| DSH 捆绑 Python | ❌ 无 | ✅ `python-docx` / `python-pptx` / `openpyxl` / `Pillow` / `numpy` / `pandas` / `lxml` |
+| 系统 python3 | ✅ 1.26.5 | 未逐项核对 |
 | `pdftoppm`（poppler） | ❌ 未安装 | — |
 
-**影响**：需求 R5 要求 pdf 一类有演示画面，而渲染 PDF 是那条路的关键步骤。
+**解决方式**：不用 PyMuPDF，改用 **`dsoffice`**（DeepSeek 自己的 `@deepseek-ai/libreoffice-kit`，预编译 LibreOffice 引擎）。
 
-**三条出路**（第一版选一条，M2 决定）：
+```sh
+dsoffice render --input report.docx --output-dir pages --pages 1   # Office → PNG
+dsoffice render --input paper.pdf   --output-dir pages             # PDF → PNG
+dsoffice recalculate --input budget.xlsx --output recalc.xlsx      # 表格公式重算
+```
 
-| 方案 | 代价 |
-|---|---|
-| 用系统 python3（但它有 PyMuPDF） | 违反"用 DSH 捆绑 Python"的既定策略；且系统 Python 版本未知、库不可控 |
-| 把 PyMuPDF 作为可选依赖，缺失时降级 | 可接受：**PDF 元数据与首页文本仍可提取**（无需渲染），只是没有逐页图 |
-| 引导安装 poppler / PyMuPDF | 引入系统依赖，与"零新系统依赖"的目标冲突 |
+**它替换了三件事**：Office 转图、PDF 逐页转图、xlsx 公式求值。**文本提取仍用捆绑 Python 的库**（结构化提取更省 token）。
 
-**注意**：这条与"零新系统依赖"的既有目标直接冲突，M2 开始前必须先解决。
+**PDF 的文字提取不做**：画面是页面图，narration 由 agent 依据画面与文件名决定（ADR 0006 允许它读内容）。不为一个边际收益引入依赖。
 
 ---
 

@@ -16,17 +16,28 @@
 
 ### Python 依赖策略
 
-优先使用**已装的库**（本机实测）：
+优先使用**DSH 捆绑 Python 已有的库**（本机实测）：
 
 | 库 | 用途 | 状态 |
 |---|---|---|
-| `python-docx` | `.docx` 文本提取 | ✅ 已装 |
-| `python-pptx` | `.pptx` 文本提取 | ✅ 已装 |
-| `PyMuPDF`(fitz) | PDF 逐页转图 + 文本 | ✅ 已装 |
-| `Pillow` | 图片处理 | ✅ 已装 |
-| `openpyxl` | `.xlsx` 读取 | 需用 DSH 捆绑 Python |
+| `python-docx` | `.docx` 文本提取 | ✅ 捆绑 Python 已有 |
+| `python-pptx` | `.pptx` 文本提取 | ✅ 捆绑 Python 已有 |
+| `Pillow` | 图片处理 | ✅ 捆绑 Python 已有 |
+| `openpyxl` | `.xlsx` 读取 | ✅ 捆绑 Python 已有 |
+| `numpy` / `pandas` / `lxml` | 数据处理 | ✅ 捆绑 Python 已有 |
+| ~~`PyMuPDF`(fitz)~~ | ~~PDF 逐页转图~~ | ❌ **捆绑 Python 里没有**。改用 `dsoffice` |
 
-**新增第三方依赖需要理由。** 能用标准库或已装库解决的，不引入新依赖。外部命令（`ffmpeg`/`ffprobe`/`sips`）优先于 Python 包。
+**转图不用 Python 库，用外部命令**：
+
+| 用途 | 命令 |
+|---|---|
+| Office / PDF → PNG | `dsoffice render`（`@deepseek-ai/libreoffice-kit`，MPL-2.0） |
+| Office → PDF | `dsoffice convert` |
+| xlsx 公式重算 | `dsoffice recalculate` |
+| 图片缩放 | `sips` |
+| 抽帧 / 时长实测 | `ffmpeg` / `ffprobe` |
+
+**新增第三方依赖需要理由。** 能用标准库、捆绑库或外部命令解决的，不引入新依赖。外部命令优先于 Python 包。
 
 ---
 

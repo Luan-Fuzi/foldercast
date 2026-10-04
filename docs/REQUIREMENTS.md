@@ -230,3 +230,4 @@
 | 2026-10-04 | 工作根定为 `<源目录>/.foldercast/`，内含解读、讲稿、素材、音频、成片；`outputDir` 第一版不做成配置 | M1 的输出契约；明确两条路径基准（源目录 / 工作根） |
 | 2026-10-04 | schema 各层收紧为 `additionalProperties: false`，映射字段除外；`check-json.ts` 增加重复键检测 | 修掉 `foldercast.schema.json` 里 `graph` 被定义两遍（`JSON.parse` 静默保留后者）；M3 校验强度提高 |
 | 2026-10-04 | **M1 完成**：分析器落地（`packages/plugin/scripts/analyzer/`），四条验收全部通过 | 新增 `packages/plugin` 包与 workspace；契约类型在 `scripts/contracts/`；实测 21.3 万文件 0.34 秒、124 MB。office/pdf/video 的 preview 深化提取顺延到 M2 |
+| 2026-10-05 | **M2 完成**：素材阶段落地（`packages/plugin/scripts/assets/`），office/pdf/video 的 preview 已补齐 | 新增依赖 `officeparser` / `shiki` / `@deepseek-ai/libreoffice-kit`（optional）；`assets/manifest.json` 契约定型；代码素材用 SVG；`.gitignore` 的 `assets/` 改为 `/assets/`（原写法把产品代码目录也忽略了） |

@@ -163,9 +163,10 @@ packages/
   plugin/                     DSH 插件（第一版唯一的入口，也是全部代码）
     ├── (npm 包根)             工具注册、Config schema、skill、locale
     └── scripts/
-        ├── contracts/        两个 JSON 契约的 TypeScript 类型，两侧共用
-        ├── analyzer/          TypeScript：目录 → 解读
-        └── renderer/          TypeScript + Remotion：讲稿 + 素材 → 视频
+        ├── contracts/        两个 JSON 契约的 TypeScript 类型，各阶段共用
+        ├── analyzer/          TypeScript：目录 → 解读（M1）
+        ├── assets/            TypeScript：解读 → 素材（M2）
+        └── renderer/          TypeScript + Remotion：讲稿 + 素材 → 视频（M7）
 styles/                        风格预设（数据，非代码）
 docs/                          文档
 examples/                      示例
@@ -178,13 +179,14 @@ scripts/                       仓库工具（与上面的 scripts/ 无关）
 |---|---|
 | ①-1 分析 | 主 agent 调 `scripts/analyzer/` |
 | ①-2 写稿 | **主 agent 自己**（读解经 + 通读内容） |
+| ②-0 素材 | 主 agent 调 `scripts/assets/` |
 | ② 视频 | 主 agent 调 `scripts/renderer/` |
 | ③ 配音 | 主 agent 调脚本 |
 
-**`analyzer` 与 `renderer` 互不依赖**，耦合点是 `contracts/` 里的两个数据契约类型——对应 `foldercast.json`（解读）与 `script.json`（讲稿）。
-这样两边各自可测：分析器可以对任意目录独立跑，渲染器可以拿手写讲稿独立跑。
+**三个阶段互不依赖对方**，耦合点是 `contracts/` 里的类型与工作根下的文件：`foldercast.json`（解读）、`assets/manifest.json`（素材清单）、`script.json`（讲稿）。
+这样每个阶段都能单独跑：分析器对任意目录跑，素材阶段拿现成解读跑，渲染器拿手写讲稿跑。
 
-**`scripts/` 之下分子目录已定**（2026-10-04）：`analyzer/` 与 `renderer/` 分开，因为要让「两侧互不依赖」这条边界在目录结构上可见；两侧都要用的类型放 `contracts/`，否则 analyzer 就得依赖 renderer（见 [coding.md](conventions/coding.md#类型定义的位置)）。
+**素材阶段会回填解读**（`manifest[].asset` 与 office/pdf/video 的 `preview`）：这两处 M1 读不出来，但归属解读本身。回填不破坏「解读可重算」——重跑顺序固定为「分析 → 素材」，两步都是确定性程序。
 
 **脚本必须保持独立可跑**（stdin/stdout + 参数）。这是 ADR 0008 的一条缓解措施：没有 CLI 的情况下，CI 仍要能直接调脚本测分析器。
 

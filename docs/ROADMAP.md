@@ -74,27 +74,46 @@
 
 ---
 
-## M2 · 素材
+## M2 · 素材（已完成）
 
 目标：**解读里的文件 → `assets/`**。
 
-- [ ] 图片缩放与缩略图（`sips`）
-- [ ] 视频抽帧与封面（`ffmpeg`）
-- [ ] **Office 与 PDF 转图（`dsoffice render`）** —— 一个工具覆盖两类
-- [ ] Office / PDF 文本结构化提取（**`officeparser`** —— 一个库覆盖 docx / pptx / xlsx / pdf / odt / rtf / csv / md / epub / tex，产出带层级的 AST）
-- [ ] **xlsx 公式值重算（`dsoffice recalculate`）**
-- [ ] 代码语法高亮截图（`shiki`）
-- [ ] `assets/manifest.json` 增量重算（按 mtime + hash 跳过未变文件）
+- [x] 图片缩放与缩略图（`sips`，非 macOS 回退 `ffmpeg`）
+- [x] 视频抽帧与封面（`ffmpeg`）+ 元数据（`ffprobe`：时长 / 分辨率 / 编码）
+- [x] **Office 与 PDF 转图（`dsoffice render`）** —— 一个工具覆盖两类
+- [x] Office / PDF 文本结构化提取（**`officeparser`** —— 一个库覆盖 docx / pptx / xlsx / pdf 等，产出带层级的 AST）
+- [x] **xlsx 公式值重算（`dsoffice recalculate`）**
+- [x] 代码语法高亮图（`shiki` → **SVG**：渲染器本来就是浏览器，不需要截图工具，见 [SPEC-data-format.md](specs/SPEC-data-format.md#三assets-素材目录)）
+- [x] `assets/manifest.json` 增量重算（按 mtime + size 命中，产物还在才算命中；mtime 变了才重算哈希）
+- [x] 顺带补齐 M1 顺延的 **office / pdf / video 的 `preview`**（素材阶段回填进解读）
 
-**验收**：三类内容各生成可用素材；重复运行第二次全部命中缓存、秒级完成。
+**验收（2026-10-05 实测）**
 
-**依赖说明**：全部 TypeScript，**无 Python**。转图统一走 `dsoffice`（需要 Node ≥ 22.19 与对应平台的引擎包，作为 `optionalDependencies` 自动安装）；文本提取走 `officeparser`。两者都是 npm 包，`pnpm install` 一次装齐。
+| 场景 | 结果 |
+|---|---|
+| Office 汇报目录（`qiuzhao202608/resume`） | 15 个 Office/PDF → **20 张页图 + 15 份文本**，15.0 秒；预览全部补齐，例如「2 页 · 4 个表格」「1 页 · 梁师成」 |
+| 本仓库自身 | 47 个代码文件 → 47 张 SVG，**502 毫秒** |
+| 第二次运行（两处都是） | **全部命中缓存：0–1 毫秒**（`resume` 15 个文件 0 毫秒，仓库 47 个文件 1 毫秒） |
 
-**`officeparser` 的验证**（本阶段必做）：对真实 docx / pptx / xlsx / pdf 各跑一次，确认提取出的标题层级与表格可用。不满意可退回分开用 `mammoth` + `exceljs`。
+**`officeparser` 的验证（本阶段必做，已完成）**：夹具与真实文件各跑一遍，结论是**够用，不退回 `mammoth` + `exceljs`**。
+
+| 输入 | 提取结果 |
+|---|---|
+| 夹具 docx | 标题层级 `Heading1` / `Heading2` ✓，表格 1 个（row / cell 齐全）✓ |
+| 夹具 xlsx | 工作表名 `Summary` ✓；公式 `SUM(B2:B3)` 无缓存值，**重算后取到 4600** ✓ |
+| 夹具 pptx | 2 张幻灯片，题目 `项目概述` / `架构分层` ✓ |
+| 夹具 pdf | 文本层 5 段 ✓（扫描版没有文本层属已知边界） |
+| 真实简历 docx | 6 个表格、2945 字 ✓ |
+| 真实简历 pdf | 2437 字 + **元数据标题** ✓ |
+| 真实 59 页课程 pptx | 46 个标题 + 5 个表格 + 8088 字 ✓ |
+| 真实 xlsx | 75 行 297 个单元格 ✓ |
+
+**依赖说明**：全部 TypeScript，**无 Python**。转图统一走 `dsoffice`（`@deepseek-ai/libreoffice-kit`，作为 `optionalDependencies` 自动安装；缺它时 office/pdf 素材会**报可操作的失败**而不是崩溃，其他类型照常）；文本提取走 `officeparser`；高亮走 `shiki`。
 
 **为什么排在写稿之前**：写稿阶段要引用素材路径（`file` 场景的 `asset`、`gallery` 的 `items`）。没有素材，讲稿只能引用文件而不能引用画面。
 
-**风险点**：Office 转图是本阶段最重的部分。若 `shiki` 依赖体积过大，退路是等宽字体 + 简单着色，或复用 `highlight.js`。
+**风险点（已消解）**：Office 转图是最重的部分——实测每个文件约 1 秒（起 LibreOffice/pdfium 引擎），并且**不保证与 Microsoft Office 分页一致**（官方声明）。`shiki` 体积的担心没有成立：它按需加载语言文法，47 张高亮图共 502 毫秒。
+
 
 ---
 

@@ -427,23 +427,64 @@ assets/
   thumbs/        每个文件的缩略图（图片直接缩放，视频抽首帧）
   pages/         Office/PDF 逐页转图
   frames/        视频关键帧
-  code/          语法高亮的代码截图
+  code/          语法高亮的代码图（SVG）
   posters/       视频封面图
-  manifest.json  素材清单：{源文件 → 产物路径 + 尺寸 + 生成时间}
+  text/          Office/PDF 提取出的文本（Markdown，供叙事层通读）
+  manifest.json  素材清单
 ```
 
-`manifest.json` 记录**源文件的 mtime 与 hash**，用于增量重算：源文件没变就跳过。
+**素材阶段会回填解读**：`foldercast.json` 的 `manifest[].asset`（该文件的主素材路径），以及
+office / pdf / video 的 `preview`（M1 读不了这些格式，留给本阶段填）。解读仍是**可重算**的——
+两个阶段都是确定性程序，重跑顺序固定为「分析 → 素材」。
+
+### `manifest.json` —— 素材清单
+
+```jsonc
+{
+  "assets": 1,                        // 清单格式版本
+  "generatedAt": "2026-10-04T17:30:00+08:00",
+  "source": { "root": "/abs/path/to/target" },
+  "entries": [
+    {
+      "path": "report.docx",          // 相对 source.root
+      "kind": "office",
+      "mtimeMs": 1759600000000,       // 源文件 mtime
+      "size": 34951,
+      "hash": "sha256:1f3a…",         // 内容哈希；增量判据是 mtime+size，哈希用于核对
+      "products": [
+        { "role": "page", "path": "pages/report_p1.png", "width": 1191, "height": 1684 },
+        { "role": "thumb", "path": "thumbs/report.png", "width": 640, "height": 905 }
+      ],
+      "text": {                       // 提取出的结构化信息（office / pdf）
+        "markdown": "text/report.md", // 全文，叙事层读这个
+        "outline": [ { "level": 1, "text": "季度汇报" } ],
+        "sheetNames": ["Summary"],    // xlsx
+        "slideTitles": ["项目概述"],   // pptx
+        "tableCount": 6
+      },
+      "meta": { "durationSec": 12.48, "width": 1920, "height": 1080, "codec": "h264" },  // video / 图片尺寸
+      "error": "可操作的失败说明"       // 单个文件失败不影响整体（coding.md 五）
+    }
+  ]
+}
+```
+
+**`role` 取值**：`thumb`（缩略图）、`page`（Office/PDF 逐页）、`poster`（视频封面）、`frame`（视频关键帧）、`code`（语法高亮图）。路径**相对工作根**，与讲稿里 `asset` / `items` / `pages` 的基准一致。
+
+**增量重算**：`mtimeMs` + `size` 与上次一致、且产物文件仍在，就跳过该文件（不重算、不重新过滤）。哈希只在 mtime 变化时重算，用于确认内容真的变了。
+
+**失败不中断**：单个文件转换失败写 `error` 字段并继续，最后在摘要里列出（`coding.md` 五）。
 
 ### 各类内容的提取方式（零新系统依赖）
 
 | kind | 提取方法 | 依赖 |
 |---|---|---|
 | `image` | 缩放 + 生成缩略图 | `sips`（macOS 原生）或 ffmpeg |
-| `video` | 抽关键帧 / 首帧封面 | `ffmpeg` `select`/`thumbnail`/`tile` |
+| `video` | 抽关键帧 / 首帧封面；时长与分辨率用 `ffprobe` | `ffmpeg` / `ffprobe` |
 | `pdf` | **逐页转 PNG**（文字层提取走 `officeparser`） | **`dsoffice render`** —— 接受 PDF 输入，不需要 `pdftoppm`/poppler |
 | `office` `.docx/.pptx` | 文本结构化提取（大纲、幻灯片标题）；**转图直接用 `dsoffice render`** | `officeparser`（Node，带层级 AST）+ `dsoffice` |
 | `office` `.xlsx` | 表头与数据提取；**公式值用 `dsoffice recalculate` 重算** | `officeparser` + `dsoffice` |
-| `code` | 语法高亮截图 | `shiki`（npm，可装） |
+| `code` | 语法高亮图（**SVG**：渲染器本来就是浏览器，不需要截图工具） | `shiki`（npm） |
 | `text` | 无需素材，直接排版 | — |
 
 **`dsoffice` 是什么**：`@deepseek-ai/libreoffice-kit`，DeepSeek 随 DSH 分发的**预编译 LibreOffice 引擎**（MPL-2.0，147 MB / 平台，作为 optionalDependency 按平台安装）。它**不查找也不需要系统装的 LibreOffice**。

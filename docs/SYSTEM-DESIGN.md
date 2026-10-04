@@ -72,19 +72,57 @@
 | 图片缩放 | **sips**（macOS） | 零依赖。跨平台时回退 ffmpeg | — |
 | 中间格式 | **JSON** | 人和模型都能读写。解读与讲稿分为两份文件 | [0002](decisions/0002-json-as-intermediate.md) |
 
-### 2.1 两个运行时依赖（体积预期）
+### 2.1 两个文档工具的分工（为什么两个都要）
 
-最终产品带**两个几百 MB 量级的运行时**，用户应该事先知道：
+`dsoffice` 与 `officeparser` **不重叠**，回答的是两个不同的问题：
 
-| 运行时 | 体积 | 许可 | 用途 |
-|---|---|---|---|
-| Remotion 的浏览器（Chrome / Chromium） | 150–300 MB | 浏览器自身是 BSD 系 | 渲染画面（见 [4.6](#46-为什么必须有浏览器c4)） |
-| LibreOffice 引擎（`libreoffice-kit-<platform>`） | **147 MB**（darwin-arm64 实测） | **MPL-2.0** | Office / PDF 转图 |
-| Remotion 的 npm 包 | ~5 MB | **Remotion 双许可**，见下 | 帧驱动与编码 |
+| | `officeparser` | `dsoffice` |
+|---|---|---|
+| **回答什么** | 这份文档**说了什么** | 这份文档**长什么样** |
+| **产出** | AST：`heading`（含级别）/ `table` / `list` / 脚注 | **PNG 逐页图**、PDF、重算后的 xlsx |
+| **方向** | 文档 → 文本 | 文档 → 图像 |
+| **技术** | 纯 JS（`pdfjs-dist`、`@xmldom/xmldom`） | LibreOffice 编译的原生引擎 |
 
-**引擎是 `optionalDependencies`**：npm 只装当前平台那一个（`darwin-arm64` / `darwin-x64` / `win32-x64` / `win32-arm64` / `wasm`）。
+**`officeparser` 没有渲染能力**——它的输出格式只有 DOCX / ODT / LaTeX / Markdown / HTML / CSV / RTF / PDF / EPUB / Plain Text / RAG Chunks，**没有图片**。而 `document` 场景类型要的是**页面图**（`pages: ["assets/report_p1.png", …]`），所以 `dsoffice` 不可替代。
 
-**pnpm 去重**：本机 DSH 已装同一引擎，装插件时通常复用它，不会翻倍。
+**两者结合才有「指着画面讲」**：
+
+```
+officeparser  →  H1「年度总结」、H2「营收」、H2「成本」…
+dsoffice      →  这份文档渲染成 12 页 PNG
+                        ↓
+              讲「营收」时画面停在第 3 页，并知道这一节在哪
+```
+
+**已知边界**：`officeparser` 给文本结构，`dsoffice` 给页面图，**两者的分页不一定对得上**（LibreOffice 的分页与 Word 都可能不同）。跨引用只能做到「第 N 页大概是这一节」，**不做像素级高亮**。
+
+**唯一的重叠是 PDF 文本**（两者都能读 PDF）。不冲突：转成图仍然只有 `dsoffice` 能做。
+
+### 2.2 用户要下载什么（体积预期）
+
+分三个时点，**多数用户实际只需要第一个**：
+
+| 时点 | 下载什么 | 体积 |
+|---|---|---|
+| **装插件** | npm 包：插件本体 + `officeparser` + Remotion + `shiki` + `libreoffice-kit` | ~**75 MB**（tarball）。已装过 DSH 的机器上，引擎可能从缓存复用 |
+| **首次渲染** | 浏览器。**系统已有 Chrome / Edge 则零下载** | 0 或 150–300 MB |
+| **用 TTS** | 云端合成或系统本地合成，**无下载**（`say` 是 macOS 自带） | 0 |
+
+**磁盘占用**（解包后）：npm 依赖约 190 MB，浏览器另计。
+
+分项（解包后）：
+
+| 包 | 解包 | 何时需要 |
+|---|---|---|
+| `libreoffice-kit-darwin-arm64`（引擎） | **153 MB** | M2 素材（Office / PDF 转图） |
+| `officeparser`（含 `pdfjs-dist` 35 MB） | 31 MB | M1 分析（文本提取） |
+| Remotion 三件套 + `remotion` | 5 MB | M7 视频 |
+| `shiki` | 0.6 MB | M2 代码高亮 |
+| `libreoffice-kit`（主包） | 0.3 MB | 同上 |
+
+**平台只装一个引擎**：引擎是 `optionalDependencies`（`darwin-arm64` / `darwin-x64` / `win32-x64` / `win32-arm64` / `wasm`）。
+
+**关于复用**：本机 DSH 已带同一引擎（实测 147 MB，在 `app.asar.unpacked` 里）。**插件能否复用那份未验证**——pnpm 的内容寻址存储会避免重复下载同一个 tarball，但那只覆盖 DSH 自己用 pnpm 装过的情况。
 
 **引擎的能力边界**（官方声明）：
 
@@ -92,7 +130,7 @@
 - 不捆绑字体集合，运行时加载部署环境提供的字体；`missingFonts` 报告声明了但不可用的字体族
 - 支持二进制 Office 97–2003（OLE 复合文档），不接受改了后缀的 RTF/HTML 或 `.wps`
 
-### 2.2 许可清单
+### 2.3 许可清单
 
 | 组件 | 许可 | 对我们的约束 |
 |---|---|---|

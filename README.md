@@ -136,18 +136,23 @@ foldercast/
 │   ├── conventions/       工程规范
 │   ├── specs/             人读的规格 + 机器读的 schema
 │   └── rd/                研究性材料
-├── packages/              代码（待实现）
-│   ├── analyzer/          Python：目录 → 分析结果
-│   ├── renderer/          TypeScript + Remotion：分镜 → 视频
-│   ├── cli/               编排层
-│   └── dsh-plugin/        TypeScript：DSH 插件外壳，shell 出去调 CLI
+├── packages/
+│   └── plugin/            DSH 插件（第一版唯一的入口，也是全部代码）
+│       ├── src/           工具注册、Config schema
+│       ├── locale/        中英文标题与描述
+│       └── scripts/
+│           ├── analyzer/  TypeScript：目录 → 解读
+│           └── renderer/  TypeScript + Remotion：讲稿 + 素材 → 视频
 ├── styles/                风格预设（数据，非代码）
-├── examples/              示例分镜
+├── examples/              示例解读与讲稿
 └── scripts/               仓库工具（链接检查等）
 ```
 
-模块依赖方向单向：`cli → analyzer`、`cli → renderer`；`analyzer` 与 `renderer` **互不依赖**，耦合点只有两个数据契约——`foldercast.json`（解读，程序产出）与 `script.json`（讲稿，叙事层产出）。渲染器读讲稿，并按讲稿里引用的路径回解读文件查证。
-`dsh-plugin` 是 `cli` 的**外壳**，不反向依赖。详见 [ADR 0005](docs/decisions/0005-dsh-plugin-shape.md)。
+**全 TypeScript，没有 Python。** 插件本体、分析器、渲染器同栈，`foldercast.json` 的类型定义三方共用。
+
+**编排层是 DSH 主 agent，不是代码。** 脚本由模型用 `bash` 调起，没有 CLI 包装层。分析器与渲染器**互不依赖**，耦合点是两个数据契约——`foldercast.json`（解读，程序产出）与 `script.json`（讲稿，叙事层产出）。
+
+理由见 [ADR 0008](docs/decisions/0008-plugin-first.md)（插件优先）与 [ADR 0006](docs/decisions/0006-narration-layer-moves-up.md)（叙事层下移）。
 
 ---
 

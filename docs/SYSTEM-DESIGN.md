@@ -63,10 +63,10 @@
 | 层 | 选型 | 理由 | ADR |
 |---|---|---|---|
 | 渲染 | **Remotion** | React 组件 → 逐帧截图。`lecture-videos` 已验证 | [0003](decisions/0003-remotion-as-renderer.md) |
-| 分析器 | **Python**（DSH 捆绑的解释器） | 遍历、分类、依赖图都是纯标准库；文本提取用捆绑已有的库 | — |
+| 分析器 | **TypeScript**（Node 22.19+） | 与插件、渲染器同栈。遍历、分类、依赖图无外部依赖 | — |
 | Office / PDF → 图 | **`dsoffice`**（`@deepseek-ai/libreoffice-kit`） | 预编译 LibreOffice 引擎，Office 与 PDF **都能直接渲染成 PNG**，不需要系统装 LibreOffice | — |
-| Office 文本提取 | **python-docx / python-pptx / openpyxl** | 结构化提取（大纲、幻灯片标题、表头）比转成纯文本更省 token | — |
-| 表格公式 | **`dsoffice recalculate`** | 能重算 xlsx，拿到公式的计算值 | — |
+| Office / PDF 文本提取 | **`officeparser`** | 一个库覆盖 docx / pptx / xlsx / pdf / odt / rtf / csv / md / epub / tex，产出**带层级的 AST**（heading 含级别、table/row/cell、list、脚注） | — |
+| 表格公式 | **`dsoffice recalculate`** | 能重算 xlsx，拿到公式的计算值（`officeparser` 也能取缓存值，但重算更准） | — |
 | 语法高亮 | **shiki** | 与 Remotion 同生态，主题体系成熟 | — |
 | 媒体处理 | **ffmpeg / ffprobe** | 本机已有，抽帧与实测时长都靠它 | — |
 | 图片缩放 | **sips**（macOS） | 零依赖。跨平台时回退 ffmpeg | — |
@@ -109,6 +109,8 @@
 |---|---|---|
 | `pdftoppm` / poppler | `dsoffice` | 少一个系统依赖 |
 | `PyMuPDF` | `dsoffice` | **不在 DSH 捆绑 Python 里**（已实测），而 `dsoffice` 能渲染 PDF |
+| **Python 本体** | 全 TypeScript | 当初选它是为了 Office/PDF 库，这两块现在都是 Node 的；留它等于为一个功能维护第二套工具链 |
+| `python-docx` / `python-pptx` / `openpyxl` | `officeparser` | 一个库覆盖三种格式，且带层级结构 |
 | 系统 `LibreOffice` | `libreoffice-kit` 的预编译引擎 | 不需要用户装；引擎随 npm 包分发 |
 | `moviepy` | `ffmpeg` + Remotion | 多一层抽象，且我们有 Remotion |
 | 数据库 | 文件系统 | 无状态，JSON 即状态 |
@@ -120,12 +122,11 @@
 
 ```
 packages/
-  plugin/                     DSH 插件（第一版唯一的入口）
-    ├── (npm 包根)             工具注册、skill、locale
+  plugin/                     DSH 插件（第一版唯一的入口，也是全部代码）
+    ├── (npm 包根)             工具注册、Config schema、skill、locale
     └── scripts/
-        ├── analyzer/          Python：目录 → 解读
-        └── renderer/          Node + Remotion：讲稿 + 素材 → 视频
-packages/cli/                  预留。独立 CLI 推迟，是否做以后再评估（ADR 0008）
+        ├── analyzer/          TypeScript：目录 → 解读
+        └── renderer/          TypeScript + Remotion：讲稿 + 素材 → 视频
 styles/                        风格预设（数据，非代码）
 docs/                          文档
 examples/                      示例
@@ -302,14 +303,14 @@ $ ffmpeg -filters | grep -xE 'subtitles|drawtext'
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| Office 转图质量差 | 演示画面不可用 | 优先直接渲染（Pillow）而非转 PDF；必要时用 LibreOffice |
+| Office 转图与原文分页不一致 | 演示画面与用户预期不符 | `dsoffice` 官方声明**不保证与 Microsoft Office 完全一致**（字体度量差异会改变换行与分页）。README 里写明，不承诺逐页相同 |
 | `shiki` 体积大 | 安装负担 | 退路：`highlight.js` 或等宽字体 + 简单着色 |
 | 容器型目录切分不准 | 视频结构混乱 | 切分结果写进 JSON 供人工调整，不做黑盒自动化 |
 | 大目录分析慢 | 体验差 | 默认排除 + 并行遍历 + 进度输出 |
 | 自然语言风格解析失败率高 | 用户困惑 | `style.unresolved` 明确报错，不静默忽略 |
 | 密钥随内容外传 | 密钥进模型上下文 | 按文件名排除 + `stats.secrets` 审计（ADR 0007）。**不做内容检测**，判据不可能完备，靠声明与审计补偿 |
-| ~~PyMuPDF 不在 DSH 捆绑 Python 里~~ | ~~PDF 逐页转图不可用~~ | **已解决**：改用 `dsoffice`（`@deepseek-ai/libreoffice-kit`），它同时覆盖 Office 与 PDF 转图。见 [2.1](#21-两个运行时依赖体积预期) 与下方说明 |
-| 叙事质量无指标 | 无法判断讲稿好坏 | 先人工评审；M3 验收标准待定（见 [ROADMAP.md](ROADMAP.md#已识别的坑)） |
+| **`officeparser` 是最新引入的依赖** | 文本提取质量未验证 | M2 里验证：对真实 docx/pptx/xlsx/pdf 各跑一次，比对提取出的标题层级与表格是否可用。不满意可退回分开用 `mammoth` + `exceljs`（已查证可用） |
+| 叙事质量无指标 | 无法判断讲稿好坏 | 两层验收：M3 管机器能查的（路径、枚举、字数），M5 的评审 agent 管语义（编造、重点、遗漏）。评审 agent 自身需人工抽查 |
 
 #### PDF 提取的依赖缺口（已实测，已解决）
 
@@ -329,9 +330,9 @@ dsoffice render --input paper.pdf   --output-dir pages             # PDF → PNG
 dsoffice recalculate --input budget.xlsx --output recalc.xlsx      # 表格公式重算
 ```
 
-**它替换了三件事**：Office 转图、PDF 逐页转图、xlsx 公式求值。**文本提取仍用捆绑 Python 的库**（结构化提取更省 token）。
+**它替换了三件事**：Office 转图、PDF 逐页转图、xlsx 公式求值。**文本提取走 `officeparser`**（一个 Node 库覆盖全部格式，产出带层级的 AST）。
 
-**PDF 的文字提取不做**：画面是页面图，narration 由 agent 依据画面与文件名决定（ADR 0006 允许它读内容）。不为一个边际收益引入依赖。
+**PDF 的文字提取也由 `officeparser` 顺带解决**（v8 起它对带标签 PDF 产出真正的 heading 层级与表格节点），所以不需要为此单独决策。
 
 ---
 

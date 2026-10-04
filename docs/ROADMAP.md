@@ -34,7 +34,7 @@
 
 ## M1 · 分析器（解读）
 
-目标：**目录 → `foldercast.json`**。纯确定性程序，不调用模型。
+目标：**目录 → `foldercast.json`**。纯确定性程序，TypeScript，不调用模型。
 
 这是整个项目的地基：**「理解」是核心产物**，而解读就是它的载体。
 
@@ -53,8 +53,10 @@
 
 1. 三个真实目录跑通并人工核对：一个 TS 项目、一个混杂资料目录、一个含 Office 的汇报目录
 2. **对本仓库自身跑一次**：`roots` 应含 `README.md`，`hubs` 应含 `docs/specs/SPEC-pipeline.md`（被 10 个文档引用），`dangling` 为空
-3. **脚本能脱离 DSH 直接跑**（`python3 scripts/analyzer/main.py <目录>`）——没有 CLI 时，CI 靠这条
+3. **脚本能脱离 DSH 直接跑**（`node packages/plugin/scripts/analyzer/main.js <目录>`，或 `tsx` 直跑源码）——没有 CLI 时，CI 靠这条
 4. 大体量目录不 OOM
+
+**语言**：TypeScript（Node 22.19+），与插件、渲染器同栈。**项目无 Python 依赖**——当初选 Python 是为了 Office/PDF 库，那两块现在都在 Node 侧。
 
 **为什么排第一**：唯一不依赖模型、不依赖渲染、不依赖网络的阶段，风险最低，产物本身有价值。
 
@@ -69,14 +71,16 @@
 - [ ] 图片缩放与缩略图（`sips`）
 - [ ] 视频抽帧与封面（`ffmpeg`）
 - [ ] **Office 与 PDF 转图（`dsoffice render`）** —— 一个工具覆盖两类
-- [ ] Office 文本结构化提取（`python-docx` / `python-pptx` / `openpyxl`，用 DSH 捆绑 Python）
+- [ ] Office / PDF 文本结构化提取（**`officeparser`** —— 一个库覆盖 docx / pptx / xlsx / pdf / odt / rtf / csv / md / epub / tex，产出带层级的 AST）
 - [ ] **xlsx 公式值重算（`dsoffice recalculate`）**
 - [ ] 代码语法高亮截图（`shiki`）
 - [ ] `assets/manifest.json` 增量重算（按 mtime + hash 跳过未变文件）
 
 **验收**：三类内容各生成可用素材；重复运行第二次全部命中缓存、秒级完成。
 
-**依赖说明**：**PyMuPDF 与 poppler 都不需要**（实测 DSH 捆绑 Python 里没有 PyMuPDF）。转图统一走 `dsoffice`，需要 Node ≥ 22.19 与对应平台的引擎包（作为 `optionalDependencies` 自动安装）。
+**依赖说明**：全部 TypeScript，**无 Python**。转图统一走 `dsoffice`（需要 Node ≥ 22.19 与对应平台的引擎包，作为 `optionalDependencies` 自动安装）；文本提取走 `officeparser`。两者都是 npm 包，`pnpm install` 一次装齐。
+
+**`officeparser` 的验证**（本阶段必做）：对真实 docx / pptx / xlsx / pdf 各跑一次，确认提取出的标题层级与表格可用。不满意可退回分开用 `mammoth` + `exceljs`。
 
 **为什么排在写稿之前**：写稿阶段要引用素材路径（`file` 场景的 `asset`、`gallery` 的 `items`）。没有素材，讲稿只能引用文件而不能引用画面。
 

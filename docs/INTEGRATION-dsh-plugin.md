@@ -16,18 +16,22 @@
 
 ## 一、插件形态
 
-foldercast 是**工具提供方（Consumer）插件**，通过子进程调用独立 CLI。理由与取舍见 [ADR 0005](decisions/0005-dsh-plugin-shape.md)。
+foldercast 是**工具提供方（Consumer）插件 + 随包的脚本**。脚本由模型用 `bash` 直接调起，不走 CLI 包装层。理由见 [ADR 0008](decisions/0008-plugin-first.md)。
 
 ```
 DSH 进程
-  └── foldercast 插件（TypeScript，轻量）
-        │  ctx.tools.register(defineTool(...))
-        │  execute() → 子进程
-        ▼
-      foldercast CLI（独立；Python + Node + ffmpeg）
+  └── foldercast 插件（TypeScript）
+        ├── 工具：ctx.tools.register(defineTool(...))
+        ├── Config schema（宿主据此生成设置页）
+        ├── skill：工作流说明
+        └── scripts/（模型用 bash 调起）
+              ├── analyzer/   TypeScript：目录 → 解读
+              └── renderer/   TypeScript + Remotion：讲稿 → 视频
 ```
 
-**插件进程内不做渲染、不做分析、不加载 Python 依赖。**
+**全部 TypeScript，没有 Python。** 插件本体、分析器、渲染器同栈：`dsoffice`（Office / PDF 转图）与 `officeparser`（文本提取）都是 npm 包，`pnpm install` 一次装齐。
+
+**插件进程内不做渲染、不做分析。** 分析器与渲染器是子进程（模型用 `bash` 起），不是插件进程里 import 的模块——渲染要起浏览器，分析要遍历几百个文件，都不该占 harness 进程。
 
 ### 1.1 插件能提供什么（四件事，不是一件）
 
@@ -254,7 +258,7 @@ ctx.tools.register(defineTool({
 | 情况 | 处理 |
 |---|---|
 | 渲染失败、TTS 配额耗尽、目录分析出错 | **返回规范值**，内含失败事实与诊断，让模型自己决策重试或换策略 |
-| 子进程无法启动（CLI 未安装） | 可以抛出 —— 这是基础设施故障 |
+| 子进程无法启动（Node 缺失、引擎包损坏） | 可以抛出 —— 这是基础设施故障 |
 | 参数越界（`targetSec` 为负） | 抛出 —— 调用方错误 |
 
 理由：模型看到「渲染失败，因为 ffmpeg 缺少 x264 编码器」比看到一个异常堆栈更有用。
@@ -274,8 +278,8 @@ ctx.tools.register(defineTool({
 原因：它的作用是「多一个工具」。如果它崩了导致整个 harness 起不来，用户会立刻卸载它 —— 这是最严重的可用性缺陷。
 
 具体做法：
-- 插件在 `apply()` 里**不做任何可能失败的重活** —— 不检测 CLI、不读配置、不起进程
-- CLI 可用性检测放在**首次工具调用时**，失败就返回一个说明清楚的领域结果
+- 插件在 `apply()` 里**不做任何可能失败的重活** —— 不探测环境、不读配置、不起进程
+- **运行环境检测**（Node 版本、`dsoffice` 引擎是否就位）放在**首次工具调用时**，失败就返回一个说明清楚的领域结果
 - 不把 foldercast 放进任何 required 的系统提示装配路径
 
 ### 3.7 未处理的 rejection 是致命的
@@ -511,10 +515,10 @@ Slots 是 Web / Desktop 客户端的类型化 React 组合系统。插件用 `ct
 
 - [ ] 确认 `cordis` 预设能否覆盖 `dsh-base` 根部的 `tool-plugin-manager.disabled: true`（见 7.3）
 - [ ] 确认 `@deepseek-ai/dsh-tools` 的 `defineTool` 是否支持数组类型参数的完整推导
-- [ ] 确定 CLI 可用性检测的具体方式（`which foldercast` vs `npx` vs 打包内相对路径）
+- [ ] 确定运行环境检测的具体方式（Node 版本、`dsoffice` 引擎包、浏览器是否就位）
 - [ ] 核实 `exec.agent.inject` 的 `MessageSourceMap` 声明方式（会话格式 V4 拒绝了旧的 `{ kind: 'plugin', plugin: '<name>' }` 包装）
 - [ ] 决定要不要做结果卡片（`presentationMeta`）—— 视频缩略图 + 时长
-- [ ] 插件与 CLI 的版本对齐策略：插件是否需要检查 CLI 版本
+- [ ] 脚本与插件的版本对齐：脚本随包分发，同一包内版本天然一致，无需额外检查
 - [ ] 若第一版之后要做 UI：确认 `tool.call.toolview` 的注册方式与客户端包结构
 
 ---
@@ -524,7 +528,7 @@ Slots 是 Web / Desktop 客户端的类型化 React 组合系统。插件用 `ct
 **做**：
 
 - 一个工具（`foldercast_cast`），一个参数（目录路径）
-- CLI 探测、起子进程、结构化进度输出、`exec.signal` 取消
+- 运行环境探测、起子进程、结构化进度输出、`exec.signal` 取消
 - `locale/zh.json` + `locale/en.json` 的标题与描述（插件管理页要显示）
 
 **不做**：

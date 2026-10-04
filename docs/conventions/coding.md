@@ -8,36 +8,29 @@
 
 | 模块 | 语言 | 运行时 | 理由 |
 |---|---|---|---|
-| `packages/analyzer` | Python | 3.11+ | 办公文档与 PDF 库都在 Python 生态（见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md)） |
-| `packages/renderer` | TypeScript | Node 22+ | Remotion 要求 |
-| `packages/cli` | TypeScript | Node 22+ | 与 renderer 同生态，便于共享类型 |
+| `packages/plugin`（全部） | TypeScript | Node 22.19+ | 插件本体、分析器、渲染器同栈。见下 |
+
+**全 TypeScript，没有 Python**（2026-10-04 定，见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#二技术选型)）。
+
+**为什么不留 Python**：当初选它是为了办公文档与 PDF 库，而这两块现在都走 Node 的 `dsoffice`；剩下的文本提取由 `officeparser` 覆盖。留 Python 等于为一个功能维护第二套工具链（uv/venv + pytest + ruff + 类型检查），而它的库还只在 DSH 内可用——脚本要能脱离 DSH 直跑（M1 验收 4），本来也得自己管环境。
+
+**连带的收益**：`foldercast.json` 的 TypeScript 类型由分析器、渲染器共用一份定义，不再需要「改一边另一边必须同步」这条纪律兜底。
 
 **Node 版本下限 22** —— DSH 插件生态的普遍要求，且 Remotion 4.x 需要。
 
-### Python 依赖策略
+### 外部命令优先
 
-优先使用**DSH 捆绑 Python 已有的库**（本机实测）：
-
-| 库 | 用途 | 状态 |
-|---|---|---|
-| `python-docx` | `.docx` 文本提取 | ✅ 捆绑 Python 已有 |
-| `python-pptx` | `.pptx` 文本提取 | ✅ 捆绑 Python 已有 |
-| `Pillow` | 图片处理 | ✅ 捆绑 Python 已有 |
-| `openpyxl` | `.xlsx` 读取 | ✅ 捆绑 Python 已有 |
-| `numpy` / `pandas` / `lxml` | 数据处理 | ✅ 捆绑 Python 已有 |
-| ~~`PyMuPDF`(fitz)~~ | ~~PDF 逐页转图~~ | ❌ **捆绑 Python 里没有**。改用 `dsoffice` |
-
-**转图不用 Python 库，用外部命令**：
+转图、抽帧、缩放这类事**不引库，用外部命令**：
 
 | 用途 | 命令 |
 |---|---|
 | Office / PDF → PNG | `dsoffice render`（`@deepseek-ai/libreoffice-kit`，MPL-2.0） |
 | Office → PDF | `dsoffice convert` |
 | xlsx 公式重算 | `dsoffice recalculate` |
-| 图片缩放 | `sips` |
+| 图片缩放 | `sips`（macOS），跨平台回退 ffmpeg |
 | 抽帧 / 时长实测 | `ffmpeg` / `ffprobe` |
 
-**新增第三方依赖需要理由。** 能用标准库、捆绑库或外部命令解决的，不引入新依赖。外部命令优先于 Python 包。
+**新增第三方依赖需要理由。** 能用标准库或外部命令解决的，不引入新依赖。
 
 ---
 
@@ -66,37 +59,22 @@
 
 改任何一边，另一边必须同步，且要在同一个提交里。
 
+### 必须遵守的两条
+
+**1. 分析器不得调用模型。** 它是纯确定性模块（见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#44-分析器不调用模型叙事层可以通读adr-0006)）。任何模型调用都属于叙事层（主 agent），不在脚本里。
+
+**2. 密钥不得经过命令行参数，也不得写进配置。** 复用 DSH 的凭据 seam，配置里只放引用名；派生优先级为启动环境 → 凭据存储 → 项目 `.env` → `$DSH_HOME/.env`。见 [TTS-适配调研.md](../rd/TTS-适配调研.md#key-的存放)。
+
 ### 禁止
 
 - ❌ `enum`（用 union type 或 `as const` 对象）
 - ❌ 非空断言 `!`（除非紧邻处有显式检查并注释说明）
 - ❌ `@ts-ignore`（用 `@ts-expect-error` 并写明原因）
-- ❌ 循环依赖（`analyzer` 与 `renderer` 互不依赖，见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#三模块边界)）
+- ❌ 循环依赖（分析器与渲染器互不依赖，见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#三模块边界)）
 
 ---
 
-## 三、Python
-
-### 风格
-
-- **缩进 4 空格**
-- 遵循 PEP 8，行宽 **100**
-- 类型注解**必须**（参数与返回值）
-- 用 `pathlib.Path`，不用 `os.path` 字符串拼接
-
-### 命名
-
-遵循 PEP 8：模块 `snake_case`、类 `PascalCase`、函数与变量 `snake_case`、常量 `SCREAMING_SNAKE`。
-
-### 必须遵守的两条
-
-**1. 不得调用模型。** `analyzer` 是纯确定性模块（见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#44-分析器不调用模型)）。任何 LLM 调用都属于 `packages/cli` 的编排层。
-
-**2. 密钥不得经过命令行参数，也不得写进配置。** 复用 DSH 的凭据 seam（`ctx.credentials`），配置里只放引用名；派生优先级为启动环境 → 凭据存储 → 项目 `.env` → `$DSH_HOME/.env`。见 [TTS-适配调研.md](../rd/TTS-适配调研.md#key-的存放)。
-
----
-
-## 四、测试
+## 三、测试
 
 ### 分层
 
@@ -124,35 +102,36 @@
 
 ---
 
-## 五、Lint 与格式化
+## 四、Lint 与格式化
 
-| 模块 | 工具 | 状态 |
+| 工具 | 用途 | 状态 |
 |---|---|---|
-| TypeScript | `oxlint` + `prettier` | 待接入（`lecture-videos` 用的是默认工具链） |
-| Python | `ruff` | 待接入 |
+| `oxlint` + `prettier` | TypeScript | 待接入 |
+| `vitest` | 测试 | 待接入 |
 
 **提交前必须本地跑过。** 不依赖 CI 兜底。
 
 ---
 
-## 六、错误处理
+## 五、错误处理
 
 - **分析器**：单个文件读取失败不应中断整体。记录进 `stats.errors` 并继续。
 - **渲染器**：遇到不认识的场景 `type` 应**跳过并警告**，不崩溃（见 [SPEC-data-format.md](../specs/SPEC-data-format.md#四版本与兼容)）。
-- **CLI**：面向用户的错误信息必须**可操作** —— 说清哪个文件、什么问题、怎么修。不打印裸 stack trace。
+- **脚本**：面向用户的错误信息必须**可操作** —— 说清哪个文件、什么问题、怎么修。不打印裸 stack trace。工具把失败作为结构化结果返回给模型，而不是抛异常（见 [INTEGRATION](../INTEGRATION-dsh-plugin.md#35-失败语义渲染失败不应该抛出)）。
 
 ---
 
-## 七、注释
+## 六、注释
 
 - 只在**为什么**不明显时写注释。不复述代码在做什么。
 - 借鉴外部实现时，**注释标注来源**。例如从 `lecture-videos` 复制的字幕切分逻辑：
 
-```python
-# Subtitle chunking follows lecture-videos/scripts/tts.py (same author),
-# verified on 7 produced episodes.
-def split_subs(text: str, maxlen: int = 24) -> list[tuple[str, int]]:
-    ...
+```ts
+// Subtitle chunking follows lecture-videos/scripts/tts.py (same author),
+// verified on 7 produced episodes.
+export function splitSubs(text: string, maxlen = 24): [string, number][] {
+  // ...
+}
 ```
 
 - 不用注释掉的代码。要就留着，不要就删 —— git 记着。

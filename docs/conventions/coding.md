@@ -1,22 +1,25 @@
 # 代码规范
 
-**当前项目处于设计阶段，尚无代码。** 本文预先定下规范，避免代码落地时各写一套。
+**产品代码尚未开始（M1 起）。** 仓库工具（`scripts/` 与根目录的 `package.json` / `tsconfig.json`）已落地并遵循本文规范；其余条款用于约束接下来的产品代码。
 
 ---
 
 ## 一、语言与运行时
 
-| 模块 | 语言 | 运行时 | 理由 |
+| 范围 | 语言 | 运行时 | 说明 |
 |---|---|---|---|
-| `packages/plugin`（全部） | TypeScript | Node 22.19+ | 插件本体、分析器、渲染器同栈。见下 |
+| `packages/plugin`（产品代码） | TypeScript | Node 22.19+ | 插件本体、分析器、渲染器同栈。见下 |
+| `scripts/`（仓库工具） | TypeScript | Node 22.19+ | 链接、JSON、风格 token、示例 schema 四项检查 |
 
-**全 TypeScript，没有 Python**（2026-10-04 定，见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#二技术选型)）。
+**全仓库 TypeScript，没有 Python**（2026-10-04 定，见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#二技术选型)）。产品代码与仓库工具同一门语言，工具链只有 Node 一套。
 
 **为什么不留 Python**：当初选它是为了办公文档与 PDF 库，而这两块现在都走 Node 的 `dsoffice`；剩下的文本提取由 `officeparser` 覆盖。留 Python 等于为一个功能维护第二套工具链（uv/venv + pytest + ruff + 类型检查），而它的库还只在 DSH 内可用——脚本要能脱离 DSH 直跑（M1 验收 4），本来也得自己管环境。
 
+**仓库工具不经过构建**：Node 22.19+ 直接运行 `.ts`（类型剥离），所以 `pnpm run check` 没有编译步骤；`pnpm run typecheck` 只做类型检查，不产出文件。这也是 `erasableSyntaxOnly` 打开的原因——只用可擦除的语法，禁 `enum` 与参数属性。
+
 **连带的收益**：`foldercast.json` 的 TypeScript 类型由分析器、渲染器共用一份定义，不再需要「改一边另一边必须同步」这条纪律兜底。
 
-**Node 版本下限 22** —— DSH 插件生态的普遍要求，且 Remotion 4.x 需要。
+**Node 版本下限 22.19** —— DSH 插件生态的普遍要求，Remotion 4.x 与 `dsoffice` 引擎包也都要求。
 
 ### 外部命令优先
 
@@ -55,9 +58,11 @@
 
 ### 类型定义的位置
 
-`foldercast.json` 的 TypeScript 类型是**契约**，放在 renderer 里但**必须与 `docs/specs/foldercast.schema.json` 一致**。
+`foldercast.json` 与 `script.json` 的 TypeScript 类型是**契约**，放在共享模块 `packages/plugin/scripts/contracts/`，**必须与 `docs/specs/` 下对应的 schema 一致**。
 
-改任何一边，另一边必须同步，且要在同一个提交里。
+**为什么不放在 renderer 里**（2026-10-04 改）：那是「分析器是 Python、类型只存在于 renderer」时代的安排。现在分析器也是 TypeScript 且同样要用这些类型，放在 renderer 会让 analyzer 依赖 renderer，违反「两者互不依赖」这条边界（见 [SYSTEM-DESIGN.md](../SYSTEM-DESIGN.md#三模块边界)）。放到 `contracts/` 后两边都只依赖它。
+
+改任何一边，其余各处必须同步，且要在同一个提交里。
 
 ### 必须遵守的两条
 
@@ -98,7 +103,7 @@
 
 ### 测试数据
 
-`packages/analyzer/tests/fixtures/` 下放小型目录样本，**提交进仓库**。不要用真实大目录做单元测试。
+`packages/plugin/scripts/analyzer/tests/fixtures/` 下放小型目录样本，**提交进仓库**。不要用真实大目录做单元测试。
 
 ---
 

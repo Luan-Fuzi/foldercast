@@ -100,19 +100,20 @@ docs/
 
 1. `specs/foldercast.schema.json` + `script.schema.json` —— 机器可读的 JSON Schema
 2. `../specs/SPEC-data-format.md` —— 人读的字段说明
-3. `packages/renderer` 里的 TypeScript 类型（有代码后）
+3. `packages/plugin/scripts/contracts/` 里的 TypeScript 类型（有代码后）
 
 **同一个提交里改完三处**，否则算未完成。
 
-自查命令（设计阶段可用）：
+自查命令：
 
 ```bash
-# JSON 合法性
-find . -name '*.json' -not -path './node_modules/*' -exec sh -c \
-  'python3 -c "import json,sys;json.load(open(sys.argv[1]))"' _ {} \;
-
-# 相对链接是否指向存在的文件（脚本见 docs/conventions/docs.md 说明）
+pnpm run check:json       # JSON 合法性 + 重复键（顺带覆盖 schema 与示例）
+pnpm run check:links      # 相对链接是否指向存在的文件
+pnpm run check:examples   # 示例是否符合 schema
+pnpm run check            # 上面三项 + 风格预设 token 一致性
 ```
+
+四个脚本在 `scripts/` 下，实现见 [../../scripts/check-links.ts](../../scripts/check-links.ts) 等文件；仓库根另有 `pnpm run typecheck` 检查这些脚本自身的类型。
 
 ---
 

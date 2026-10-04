@@ -1,6 +1,6 @@
 # Git 规范
 
-本项目在**设计阶段**，尚无代码。以下规范即刻生效，用于约束后续所有提交。
+本项目在**设计阶段**：产品代码尚未开始，仓库里只有文档、契约与仓库工具（`scripts/`）。以下规范即刻生效，用于约束后续所有提交。
 
 ---
 
@@ -69,11 +69,11 @@ chore/add-oxlint
 
 | scope | 范围 |
 |---|---|
-| `analyzer` | `packages/analyzer` |
-| `renderer` | `packages/renderer` |
-| `cli` | `packages/cli` |
+| `analyzer` | `packages/plugin/scripts/analyzer` |
+| `renderer` | `packages/plugin/scripts/renderer` |
+| `plugin` | `packages/plugin` 的包根（工具注册、`Config` schema、skill、locale） |
 | `styles` | `styles/` 预设 |
-| `schema` | `foldercast.json` 格式 |
+| `schema` | `foldercast.json` / `script.json` 的格式 |
 | `docs` | 文档 |
 | `repo` | 仓库级配置（`.gitignore`、CI、工具链） |
 
@@ -174,8 +174,8 @@ Closes: #7
 
 设计阶段（当前）：
 
-- [ ] JSON 文件语法合法
-- [ ] 文档内的相对链接指向存在的文件
+- [ ] `pnpm run check` 通过（链接、JSON、风格 token、示例 schema）
+- [ ] `pnpm run typecheck` 通过（改了 `scripts/` 下任一脚本时）
 - [ ] 没有提交密钥（`.gitignore` 已含 `.*_api_key` / `.*_key` / `.env*`）
 
 有代码后追加：

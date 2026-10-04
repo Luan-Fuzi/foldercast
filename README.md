@@ -8,7 +8,7 @@
 **核心产物是「目录解读」，不是视频。** 解读是一份结构化的事实：这里有什么、怎么组织的、谁引用谁、哪些是关键。视频、讲解 poster 都是它的视图。
 详见 [PRODUCT.md](docs/PRODUCT.md#3-解读是事实来源讲稿是它的视图)。
 
-**当前状态：设计阶段。** 尚无代码，只有文档、契约与工程规范。
+**当前状态：设计阶段。** 产品代码尚未开始（M1 起）。仓库里目前有文档、契约、风格预设、示例，以及仓库工具脚本。
 
 **形态：第一版是 DSH 插件**（工具 + skill + 脚本），编排层是 DSH 主 agent。**只能在 DeepSeek Harness 内使用**——独立 CLI 与脱离 DSH 的用法推迟，是否做以后再评估（[ADR 0008](docs/decisions/0008-plugin-first.md)）。
 
@@ -141,14 +141,18 @@ foldercast/
 │       ├── src/           工具注册、Config schema
 │       ├── locale/        中英文标题与描述
 │       └── scripts/
+│           ├── contracts/ 两个 JSON 契约的 TypeScript 类型，两侧共用
 │           ├── analyzer/  TypeScript：目录 → 解读
 │           └── renderer/  TypeScript + Remotion：讲稿 + 素材 → 视频
 ├── styles/                风格预设（数据，非代码）
 ├── examples/              示例解读与讲稿
-└── scripts/               仓库工具（链接检查等）
+├── scripts/               仓库工具（TypeScript：链接、JSON、风格 token、示例 schema）
+│   └── lib/repo.ts        四个检查脚本共用的遍历与读取
+├── package.json           仓库工具的依赖与脚本（产品依赖在 packages/plugin 下）
+└── tsconfig.json          仓库工具的类型检查配置
 ```
 
-**全 TypeScript，没有 Python。** 插件本体、分析器、渲染器同栈，`foldercast.json` 的类型定义三方共用。
+**全 TypeScript，没有 Python**——包括仓库工具。插件本体、分析器、渲染器同栈，`foldercast.json` 的类型定义三方共用。`scripts/` 下的检查脚本由 Node 直接运行（类型剥离，不需要构建步骤）。
 
 **编排层是 DSH 主 agent，不是代码。** 脚本由模型用 `bash` 调起，没有 CLI 包装层。分析器与渲染器**互不依赖**，耦合点是两个数据契约——`foldercast.json`（解读，程序产出）与 `script.json`（讲稿，叙事层产出）。
 
@@ -168,5 +172,6 @@ foldercast/
 工程规范见 [docs/conventions/](docs/conventions/)。提交前请跑：
 
 ```bash
-python3 scripts/check-links.py
+pnpm install      # 首次，或依赖变更后
+pnpm run check    # 链接 + JSON + 风格 token + 示例 schema
 ```

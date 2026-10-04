@@ -77,7 +77,7 @@ SYSTEM-DESIGN.md 原本规定「分析器不调用模型」，理由是三条：
 
 **缓解**：
 
-- 讲稿生成后校验路径是否存在于 `manifest`，幻觉路径拦截（[ROADMAP.md](../ROADMAP.md) M3 已有此约束）
+- 讲稿生成后校验路径是否存在于 `manifest`，幻觉路径拦截（[ROADMAP.md](../ROADMAP.md) M3 是专门做这件事的里程碑）
 - 保留「只读摘要」模式作为降级路径：大目录或用户显式要求时，叙事层退回摘要
 - 读内容的范围受 `maxFiles` / `maxFileSizeMb` 约束，不无条件全读
 

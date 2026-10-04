@@ -299,7 +299,7 @@ token 清单见 [../rd/风格预设系统.md](../rd/风格预设系统.md)。
 
 ## 二、`script.json` —— 讲稿（创作）
 
-放在 `foldercast.json` 旁边。**这是 M3 的产物，可以被重写而不影响解读。**
+放在 `foldercast.json` 旁边。**这是 M5（写稿）的产物，可以被重写而不影响解读。**
 
 ```jsonc
 {

@@ -365,9 +365,9 @@ export const Config = z.object({
 
 | 字段 | 类型 | 默认 | 何时放开 |
 |---|---|---|---|
-| `ttsProvider` / `ttsVoice` / `ttsStyle` | enum + string | `say` | M5 之后 |
-| `depth` | enum | `normal` | 见 11.5 —— **控制成本，最早该暴露** |
-| `stylePreset` | enum | `swiss` | M4 出片之后 |
+| `ttsProvider` / `ttsVoice` / `ttsStyle` | enum + string | `say` | M8 之后 |
+| `depth` | enum | `normal` | M1 + M5 之后，见 11.5 —— **控制成本，最早该暴露** |
+| `stylePreset` | enum | `swiss` | M7 出片之后 |
 | `cliPath` | string | 自动探测 | **不`volatile()`**：探测失败该走报错，不该让用户填 |
 | `outputDir` | string | `<源目录>/.foldercast` | 等有人要改产物位置 |
 
@@ -596,8 +596,8 @@ ctx.commands.register({
 
 | 配置 | 类型 | 落点 | 何时做 |
 |---|---|---|---|
-| `tts.provider` / `voice` / `style` / `format` | enum + string | `foldercast.config.json` | M5 之后 |
-| `style.preset` | enum | 同上 | M4 出片之后 |
+| `tts.provider` / `voice` / `style` / `format` | enum + string | `foldercast.config.json` | M8 之后 |
+| `style.preset` | enum | 同上 | M7 出片之后 |
 | `depth` | enum：`overview` / `normal` / `detailed` | 同上 | 见下 |
 
 **`depth` 是新维度，尚未进契约。** 它同时影响三件事：

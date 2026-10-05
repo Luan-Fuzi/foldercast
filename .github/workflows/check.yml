@@ -143,24 +143,43 @@ jobs:
       # 本机有 ffmpeg，走不到。所以这一步还兼作那条分支的覆盖。
       - name: 配音阶段的前置检查
         run: |
+          # 1) 缺密钥：退出码 4，且引导里写明配哪个引用名 —— **在发起合成之前**就返回
           set +e
           pnpm run voice . --provider mimo --json > voice.json 2> voice.log
           mimo_code=$?
+          set -e
+          echo "缺密钥的退出码：$mimo_code"
+          test "$mimo_code" = "4" || { echo "缺密钥应当退出 4"; cat voice.json voice.log; exit 1; }
+          # `pnpm run` 会先把自己的两行前言写进 stdout，所以按 JSON 片段解析而不是整份文件
+          grep -q "MIMO_API_KEY" voice.json || { echo "引导里没有说要配哪个引用名"; cat voice.json; exit 1; }
+
+          # 2) provider 表可用：至少要能列出两个 provider 与「要不要密钥」
+          pnpm run voice . --list-providers --json > providers.json
+          node -e '
+            const text = require("node:fs").readFileSync("providers.json", "utf8");
+            const rows = JSON.parse(text.slice(text.indexOf("[")));
+            const byName = Object.fromEntries(rows.map((row) => [row.name, row.requiresKey]));
+            if (byName.say !== false) throw new Error("say 应当免密钥");
+            if (byName.mimo !== true) throw new Error("mimo 应当需要密钥");
+          '
+
+          # 3) 这台机器没有 ffmpeg / say，所以真正跑一次配音会失败；**失败也要有可操作的说明**，
+          #    而不是崩栈。缺工具时说明里应当出现工具名（这条在 CI 上是真实路径）。
+          set +e
           pnpm run voice . --json > voice-say.json 2> voice-say.log
           say_code=$?
           set -e
-          # mimo 没密钥：退出码 4 + 引导里写明怎么配
-          test "$mimo_code" = "4" || { echo "缺密钥应当退出 4，实际是 $mimo_code"; cat voice.log; exit 1; }
-          grep -q "MIMO_API_KEY" voice.json || { echo "引导里没有说要配哪个引用名"; cat voice.json; exit 1; }
-          # say 这条：runner 上既没有 ffmpeg 也没有 say。要么成功（有工具），要么
-          # 退出码 2 并说清缺什么 —— **不能是崩溃或静默**。
+          echo "缺工具时的退出码：$say_code"
           if [ "$say_code" != "0" ]; then
-            test "$say_code" = "2" || { echo "环境缺失应当退出 2，实际是 $say_code"; cat voice-say.log; exit 1; }
-            grep -qE "ffmpeg|say" voice-say.log || { echo "没说清缺什么"; cat voice-say.log; exit 1; }
+            test "$say_code" = "2" || { echo "环境缺失应当退出 2"; cat voice-say.json voice-say.log; exit 1; }
+            if ! grep -qiE "ffmpeg|say" voice-say.json voice-say.log; then
+              echo "失败信息里没有指出缺哪个工具"; cat voice-say.json voice-say.log; exit 1
+            fi
           fi
-          # durations.json 不存在时校验器要跳过这一层（不能因为「没配音」就报错）
+
+          # 4) 没有配音产物时校验器要跳过这一层（不能因为「没配音」就报错）
           pnpm run validate .
-          rm -f voice.json voice.log voice-say.json voice-say.log
+          rm -f voice.json voice.log voice-say.json voice-say.log providers.json
 
       - name: 检查相对链接
         run: pnpm run check:links

@@ -110,12 +110,21 @@ describe('分析器端到端（夹具目录）', () => {
     expect(strip(first)).toBe(strip(second));
   });
 
-  it('maxFiles 截断保留最该讲的，并如实报告丢了多少', () => {
+  it('maxFiles 截断保留最该讲的，且不截掉密钥文件', () => {
     const limited = analyze({ maxFiles: 3 });
-    expect(limited.document.manifest).toHaveLength(3);
-    expect(limited.report.droppedByMaxFiles).toBeGreaterThan(0);
+    const paths = limited.document.manifest.map((entry) => entry.path);
+    const audited = new Set(limited.document.stats.secrets.excluded.map((hit) => hit.path));
+
+    // 非密钥文件仍然只留 maxFiles 个
+    expect(paths.filter((path) => !audited.has(path))).toHaveLength(3);
+    // 密钥文件不占名额、也不被截掉 —— 被截掉就等于 stats.secrets.excluded 里看不到它，
+    // 与 secrets.ts 写的「命中的文件仍进结构树与计数」矛盾（实测踩过）
+    expect([...audited].sort()).toEqual(['.env', 'credentials.json']);
+    for (const path of audited) expect(paths).toContain(path);
+
     // README 是最高优先级，一定留下
-    expect(limited.document.manifest.map((entry) => entry.path)).toContain('README.md');
+    expect(paths).toContain('README.md');
+    expect(limited.report.droppedByMaxFiles).toBeGreaterThan(0);
   });
 
   it('maxFileSizeMb 只影响内容，不影响计数', () => {

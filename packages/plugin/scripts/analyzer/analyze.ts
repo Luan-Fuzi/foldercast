@@ -167,7 +167,14 @@ export function analyzeDirectory(options: AnalyzeOptions): AnalyzeResult {
 
   // ── 2. 规模保护：按重要性截断，再读内容 ─────────────────
   const ranked = [...candidates].sort(compareImportance);
-  const kept = sources.maxFiles > 0 ? ranked.slice(0, sources.maxFiles) : ranked;
+  // **密钥文件不占 maxFiles 的配额，也不会被截掉**：它们本来就不读内容（零成本），
+  // 而审计必须完整 —— 被截掉的密钥等于没报出来，用户在 stats.secrets.excluded 里看不到它，
+  // 与 secrets.ts 写的「命中的文件仍进结构树与计数」矛盾。
+  // 实测踩过：200 文件的目录里 `lecture-videos/.mimo_api_key` 既不在清单、也不在审计里。
+  const isSecret = new Set(ranked.filter((candidate) => candidate.secret !== undefined));
+  const quota = sources.maxFiles > 0 ? sources.maxFiles : ranked.length;
+  const fillsQuota = new Set(ranked.filter((candidate) => candidate.secret === undefined).slice(0, quota));
+  const kept = ranked.filter((candidate) => isSecret.has(candidate) || fillsQuota.has(candidate));
   const droppedByMaxFiles = ranked.length - kept.length;
 
   // ── 3. 读内容（密钥文件跳过） ──────────────────────────

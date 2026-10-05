@@ -83,6 +83,15 @@ const OUTPUT_SCHEMA = {
       enum: ['missing', 'stale', 'fresh'],
       description: 'missing = 还没出片；stale = 出过但讲稿又改了；fresh = 对应当前这版讲稿（此时不会重渲）',
     },
+    durationsPath: { type: 'string', description: '配音时长表的落点（M8）：实测时长与字幕时序' },
+    narrationPath: { type: 'string', description: '整条旁白音轨的落点（配音阶段拼好）' },
+    voice: {
+      type: 'string',
+      enum: ['missing', 'stale', 'fresh'],
+      description: 'missing = 还没配音；stale = 配过但讲稿又改了；fresh = 对应当前这版讲稿（此时不会重新合成）',
+    },
+    voiceProvider: { type: 'string', description: '实际使用的 TTS provider' },
+    voiceName: { type: 'string', description: '实际使用的音色' },
     reviewPath: { type: 'string', description: '评审结论的落点（M5，skill 第六步写到这里）' },
     review: {
       type: 'string',
@@ -123,6 +132,11 @@ const OUTPUT_SCHEMA = {
           properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
         },
         render: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
+        },
+        voice: {
           type: 'object',
           additionalProperties: false,
           properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
@@ -182,6 +196,9 @@ type CastLike = {
   htmlPath: string;
   videoPath: string;
   video: string;
+  durationsPath: string;
+  narrationPath: string;
+  voice: string;
   dependencies: { name: string; ok: boolean; hint: string }[];
   stages: Record<string, { ok: boolean; ms: number; exitCode?: number; error?: string; detail?: string } | undefined>;
   reading?: {
@@ -254,9 +271,16 @@ function renderResult(value: CastLike): string {
   const missing = value.dependencies.filter((dependency) => !dependency.ok);
   for (const dependency of missing) lines.push(`缺依赖 ${dependency.name}：${dependency.hint}`);
 
+  const voice = value.stages['voice'];
+  if (voice !== undefined && voice.ok === true) {
+    lines.push(`配音：${value.voiceProvider ?? '已生成'}${value.voiceName === undefined ? '' : ` · ${value.voiceName}`} → ${value.durationsPath}`);
+  } else if (voice !== undefined) {
+    lines.push(`配音没成功：见下面的引导。`);
+  }
+
   const render = value.stages['render'];
   if (render?.ok === true) {
-    lines.push(`成片：${value.videoPath}（静音 mp4）`);
+    lines.push(`成片：${value.videoPath}${value.voice === 'fresh' ? '（带旁白；字幕由渲染层画）' : '（静音）'}`);
   } else if (render !== undefined) {
     lines.push(`出片没成功：见上面的引导（成片路径是 ${value.videoPath}）。`);
   }
@@ -267,6 +291,10 @@ function renderResult(value: CastLike): string {
 
 function registerTool(ctx: Context): void {
   const tools = (ctx as unknown as { tools: ToolRegistration }).tools;
+  // 凭据 seam 是**可选**的：缺席时免密钥的 say 照常工作，只是云端 provider 用不了
+  const credentials = ctx.get('credentials') as
+    | { describe: (ref: string) => Promise<{ configured: boolean; writable: boolean }>; resolve: (ref: string) => Promise<{ value: string; source: string } | undefined> }
+    | undefined;
 
   tools.register({
     name: 'foldercast_cast',
@@ -290,6 +318,19 @@ function registerTool(ctx: Context): void {
           description:
             'Skip the render stage. Use it when you only need the reading and the HTML view: rendering needs a browser and takes minutes.',
         },
+        skipVoice: {
+          type: 'boolean',
+          description:
+            'Skip the voice-over stage. Voice-over runs by default with the built-in macOS "say" provider (no key needed) and can be skipped when only a silent film is wanted.',
+        },
+        ttsProvider: {
+          type: 'string',
+          description: 'TTS provider for the voice-over: "say" (default, no key) or "mimo" (needs MIMO_API_KEY).',
+        },
+        ttsVoice: {
+          type: 'string',
+          description: 'Voice within that provider. Left out, "say" picks a Chinese system voice automatically.',
+        },
       },
       required: ['path'],
     },
@@ -297,12 +338,20 @@ function registerTool(ctx: Context): void {
       schema: OUTPUT_SCHEMA,
       render: (_args: unknown, value: unknown) => [{ type: 'text', text: renderResult(value as CastLike) }],
     },
-    async execute(args: { path: string; skipAssets?: boolean; skipRender?: boolean }, exec: { signal: AbortSignal }) {
+    async execute(
+      args: { path: string; skipAssets?: boolean; skipRender?: boolean; skipVoice?: boolean; ttsProvider?: string; ttsVoice?: string },
+      exec: { signal: AbortSignal },
+    ) {
       const result = await cast({
         target: args.path,
         signal: exec.signal,
         skipAssets: args.skipAssets === true,
         skipRender: args.skipRender === true,
+        skipVoice: args.skipVoice === true,
+        ...(args.ttsProvider === undefined ? {} : { ttsProvider: args.ttsProvider }),
+        ...(args.ttsVoice === undefined ? {} : { ttsVoice: args.ttsVoice }),
+        // 凭据只在宿主提供了 seam 时查（缺了不影响免密钥的 say）
+        ...(credentials === undefined ? {} : { credentials }),
       });
 
       // 只报不可用的依赖：都正常时这个数组是空的，模型不必读四条「没问题」
@@ -320,14 +369,19 @@ function registerTool(ctx: Context): void {
         scriptPath: result.scriptPath,
         htmlPath: result.htmlPath,
         videoPath: result.videoPath,
+        durationsPath: result.durationsPath,
+        narrationPath: result.narrationPath,
         reviewPath: result.reviewPath,
         review: result.review,
         video: result.video,
+        voice: result.voice,
         dependencies: unavailable,
         stages: result.stages,
       };
       if (result.htmlBytes !== undefined) value.htmlBytes = result.htmlBytes;
       if (result.videoBytes !== undefined) value.videoBytes = result.videoBytes;
+      if (result.voiceProvider !== undefined) value.voiceProvider = result.voiceProvider;
+      if (result.voiceName !== undefined) value.voiceName = result.voiceName;
       if (result.reading !== undefined) value.reading = result.reading;
       if (result.validation !== undefined) value.validation = result.validation;
 

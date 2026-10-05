@@ -93,7 +93,7 @@ describe('注册的形状符合 DSH 的工具契约', () => {
 
   it('只有一个必需参数：目录路径', () => {
     expect(tool?.parameters.required).toEqual(['path']);
-    expect(Object.keys(tool?.parameters.properties ?? {}).sort()).toEqual(['path', 'skipAssets', 'skipRender']);
+    expect(Object.keys(tool?.parameters.properties ?? {}).sort()).toEqual(['path', 'skipAssets', 'skipRender', 'skipVoice', 'ttsProvider', 'ttsVoice']);
     expect(tool?.parameters.additionalProperties).toBe(false);
   });
 

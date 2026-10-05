@@ -10,6 +10,8 @@ export default defineConfig({
       'packages/plugin/scripts/validate/tests/*.test.ts',
       'packages/plugin/scripts/html/tests/*.test.ts',
       'packages/plugin/scripts/renderer/tests/*.test.ts',
+      'packages/plugin/scripts/voice/tests/*.test.ts',
+      'packages/plugin/scripts/contracts/tests/*.test.ts',
       'packages/plugin/src/tests/*.test.ts',
       'scripts/**/*.test.ts',
     ],
@@ -21,6 +23,7 @@ export default defineConfig({
     // 表现是「单跑必过、全量跑偶发失败」——实测就撞过一次（渲染用例在整套里红了，
     // 单独跑绿）。素材与渲染这两个阶段本来就是重活，串行反而更容易判断结果。
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    // Vitest 4 起 `poolOptions.forks.singleFork` 挪到了顶层
+    singleFork: true,
   },
 });

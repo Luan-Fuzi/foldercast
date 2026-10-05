@@ -44,7 +44,7 @@ export function findPackageRoot(start: string): string | undefined {
 /** 包根：脚本、随包 schema、依赖的 bin 都相对它定位。 */
 export const PACKAGE_ROOT = findPackageRoot(MODULE_DIR) ?? resolve(MODULE_DIR, '..');
 
-export type StageName = 'analyze' | 'assets' | 'validate' | 'html' | 'render';
+export type StageName = 'analyze' | 'assets' | 'validate' | 'html' | 'render' | 'voice';
 
 /** 阶段脚本所在子目录，两套布局下同名。 */
 const STAGE_DIR: Readonly<Record<StageName, string>> = {
@@ -53,9 +53,11 @@ const STAGE_DIR: Readonly<Record<StageName, string>> = {
   validate: 'validate',
   // HTML 视图（M6）：只读解读与素材，产出单文件页面。确定性程序，所以归工具做
   html: 'html',
-  // 渲染（M7）：讲稿 + 素材 → 静音 mp4。需要浏览器，所以是唯一一个可能因环境缺失而失败
-  // 的确定性阶段（其余阶段缺浏览器照跑）
+  // 渲染（M7）：讲稿 + 素材 → mp4（有音轨就用音轨）。需要浏览器，缺浏览器只影响这一步
   render: 'renderer',
+  // 配音（M8）：讲稿 → 逐场景音频 + durations.json + 整条音轨。需要 ffmpeg 与一个 TTS
+  // provider（默认是免密钥的 say）
+  voice: 'voice',
 };
 
 /** 这份 Node 能不能直接跑 TypeScript（类型剥离，22.19 起默认开）。 */
@@ -134,11 +136,21 @@ export function videoPathFor(target: string): string {
   return resolve(workRootFor(target), 'out', 'video.mp4');
 }
 
+/** 配音产物的落点（M8）：逐场景音频、整条音轨与实测时长表都在工作根下。 */
+export function durationsPathFor(target: string): string {
+  return resolve(workRootFor(target), 'durations.json');
+}
+
+/** 整条旁白音轨（配音阶段拼好的，长度等于场景时长之和）。 */
+export function narrationPathFor(target: string): string {
+  return resolve(workRootFor(target), 'audio', 'narration.wav');
+}
+
 export function reviewPathFor(target: string): string {
   return resolve(workRootFor(target), 'review.md');
 }
 
-export type DependencyName = 'node' | 'dsoffice' | 'ffmpeg' | 'sips' | 'browser';
+export type DependencyName = 'node' | 'dsoffice' | 'ffmpeg' | 'ffprobe' | 'sips' | 'browser' | 'say';
 
 export type Dependency = {
   name: DependencyName;
@@ -249,7 +261,22 @@ export async function detectDependencies(): Promise<Dependency[]> {
       name: 'ffmpeg',
       ok: await hasExecutable('ffmpeg', '-version'),
       required: false,
-      hint: '视频抽帧与实测时长需要 ffmpeg（macOS：brew install ffmpeg）。缺它时视频仍进解读，只是没有关键帧。',
+      hint: '视频抽帧、音频拼接与配音都要 ffmpeg（macOS：brew install ffmpeg）。缺它时视频仍进解读，只是没有关键帧、也不能配音。',
+    },
+    {
+      name: 'ffprobe',
+      ok: await hasExecutable('ffprobe', '-version'),
+      required: false,
+      // 与 ffmpeg 分开报：它随 ffmpeg 一起装，但**用途不同** —— 「时长以实测为准」这条
+      // 设计靠它，缺了就只能按字数估
+      hint: '实测音频与视频时长需要 ffprobe（随 ffmpeg 一起装）。缺它时配音无法记录实测时长。',
+    },
+    {
+      name: 'say',
+      ok: await hasExecutable('say', '-v'),
+      required: false,
+      // 默认 provider 是它：免密钥、装了就能出片。缺了也能用云端 provider（要密钥）
+      hint: '默认的配音 provider 是 macOS 自带的 say（免密钥）。没有它就换云端 provider：pnpm voice <目录> --provider mimo，并配好 MIMO_API_KEY。',
     },
     {
       name: 'sips',
@@ -293,6 +320,11 @@ export type RunOptions = {
   signal?: AbortSignal;
   /** 工作目录，默认包根。 */
   cwd?: string;
+  /**
+   * 追加给子进程的环境变量。**只用来传凭据**（配音阶段的 TTS 密钥）：值不进命令行
+   * （命令行会进日志与进程列表），也不进报告 —— 报告里只有引用名（C6）。
+   */
+  env?: Record<string, string>;
 };
 
 /** 输出留多少字符给模型看：够定位问题，又不会把上下文塞满。 */
@@ -335,6 +367,7 @@ export function runStage(stage: StageName, options: RunOptions): Promise<RunResu
       child = spawn(process.execPath, [entry, ...options.args], {
         cwd: options.cwd ?? PACKAGE_ROOT,
         stdio: ['ignore', 'pipe', 'pipe'],
+        ...(options.env === undefined ? {} : { env: { ...process.env, ...options.env } }),
       });
     } catch (error) {
       rejectPromise(new Error(`无法启动 ${stage} 阶段：${(error as Error).message}`));

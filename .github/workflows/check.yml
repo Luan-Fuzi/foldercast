@@ -136,6 +136,28 @@ jobs:
           fi
           rm -f render.json render.log
 
+      # 配音：runner 上没有 say、也没有 ffmpeg，所以能验的是**前置检查与引导**（退出码非 0
+      # 且有可操作的话），以及 durations.json 的校验路径。真配音由本机验收。
+      - name: 配音阶段的前置检查
+        run: |
+          set +e
+          pnpm run voice . --provider mimo --json > voice.json 2> voice.log
+          mimo_code=$?
+          pnpm run voice . --json > voice-say.json 2> voice-say.log
+          say_code=$?
+          set -e
+          # mimo 没密钥：退出码 4 + 引导里写明怎么配
+          test "$mimo_code" = "4" || { echo "缺密钥应当退出 4，实际是 $mimo_code"; cat voice.log; exit 1; }
+          grep -q "MIMO_API_KEY" voice.json || { echo "引导里没有说要配哪个引用名"; cat voice.json; exit 1; }
+          # say 缺命令或 ffmpeg 缺失：退出码 2 + 说清缺什么（runner 两者都没有）
+          if [ "$say_code" != "0" ]; then
+            test "$say_code" = "2" || { echo "环境缺失应当退出 2，实际是 $say_code"; cat voice-say.log; exit 1; }
+            grep -qE "ffmpeg|say" voice-say.log || { echo "没说清缺什么"; cat voice-say.log; exit 1; }
+          fi
+          # durations.json 不存在时校验器要跳过这一层（不能因为「没配音」就报错）
+          pnpm run validate .
+          rm -f voice.json voice.log voice-say.json voice-say.log
+
       - name: 检查相对链接
         run: pnpm run check:links
 

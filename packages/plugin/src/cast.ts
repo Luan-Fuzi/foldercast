@@ -11,9 +11,12 @@
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
+import { KEY_REFS } from '../scripts/contracts/durations.ts';
 import {
   detectDependencies,
+  durationsPathFor,
   htmlPathFor,
+  narrationPathFor,
   readingPathFor,
   reviewPathFor,
   runStage,
@@ -58,12 +61,16 @@ function freshness(productPath: string, sourcePath: string): 'missing' | 'stale'
  * 各阶段的预算。素材阶段最慢（要起 LibreOffice 引擎），**渲染阶段最久**：本机实测
  * 1920×1080 大约 7 帧/秒，5 分钟的片子（9000 帧）要 20 分钟出头，所以给足 40 分钟。
  */
-const TIMEOUT_MS: Readonly<Record<'analyze' | 'assets' | 'validate' | 'html' | 'render', number>> = {
+const TIMEOUT_MS: Readonly<
+  Record<'analyze' | 'assets' | 'validate' | 'html' | 'render' | 'voice', number>
+> = {
   analyze: 300_000,
   assets: 600_000,
   validate: 120_000,
   html: 120_000,
   render: 2_400_000,
+  // 配音要逐场景调 TTS（云端有网络往返），大目录按每场景十几秒算，也给足 40 分钟
+  voice: 2_400_000,
 };
 
 export type StageReport = {
@@ -111,6 +118,15 @@ export type CastResult = {
   videoBytes?: number;
   /** 成片的状态：`missing` 还没出片、`stale` 出过但讲稿又改了、`fresh` 对应当前这版讲稿。 */
   video: 'missing' | 'stale' | 'fresh';
+  /** 配音时长表的落点（M8）。它有值就说明配音跑过，渲染会用它当时间轴。 */
+  durationsPath: string;
+  /** 配音状态，判据与评审/成片同构：产物比讲稿新才算 `fresh`。 */
+  voice: 'missing' | 'stale' | 'fresh';
+  /** 实际使用的 provider 与音色（从 `durations.json` 读，不是配置里写的）。 */
+  voiceProvider?: string;
+  voiceName?: string;
+  /** 整条旁白音轨的落点。 */
+  narrationPath: string;
   /** 评审结论的落点（M5）。有没有、是否比讲稿旧，看 `review`。 */
   reviewPath: string;
   /** 评审结论的状态：`missing` 还没审、`stale` 审过但讲稿又改了、`fresh` 审的是当前这版。 */
@@ -121,6 +137,7 @@ export type CastResult = {
     html?: StageReport;
     validate?: StageReport;
     render?: StageReport;
+    voice?: StageReport;
   };
   dependencies: Dependency[];
   reading?: {
@@ -211,6 +228,28 @@ function explainStage(stage: 'analyze' | 'assets' | 'validate', target: string, 
   return result.error ?? `${stage} 阶段失败（退出码 ${String(result.exitCode)}）。`;
 }
 
+/**
+ * 宿主凭据 seam 的一小块（结构类型，不 import `@deepseek-ai/dsh-*`）。
+ *
+ * **先 `describe` 再 `resolve`**：缺密钥时要在发起合成之前就能给引导 —— 等 401 的话
+ * 错误措辞是外部给的，用户看不出该怎么办（rd 文档「key 未配置时的行为」）。
+ */
+export type CredentialsSeam = {
+  describe: (ref: string) => Promise<{ configured: boolean; source?: string; writable: boolean }>;
+  resolve: (ref: string) => Promise<{ value: string; source: string } | undefined>;
+};
+
+/** 缺密钥时的引导。与配音脚本里那份保持一致（两边都可能先碰到这个问题）。 */
+function CREDENTIAL_HINT(ref: string): string {
+  return [
+    `没有找到凭据 ${ref}。三种办法：`,
+    `  1. 在 DSH 里保存（设置 → 凭据）；`,
+    `  2. 启动时给环境变量：${ref}=… dsh；`,
+    `  3. 放到被讲解目录的 .env 里（项目级隔离靠它）。`,
+    `也可以改用免密钥的默认 provider：再调一次时传 ttsProvider: "say"。`,
+  ].join('\n');
+}
+
 export type CastOptions = {
   target: string;
   signal?: AbortSignal;
@@ -223,6 +262,20 @@ export type CastOptions = {
    * （快很多：本机 5 分钟的片子要 20 分钟渲染）。
    */
   skipRender?: boolean;
+  /**
+   * 跳过配音阶段。默认**要配音**（M8 之后成片应当有声音）：provider 默认是免密钥的
+   * `say`，所以默认路径不需要任何配置。`skipVoice` 用于「只要静音片」的场合。
+   */
+  skipVoice?: boolean;
+  /** 覆盖 provider / 音色（透传给 `voice` 阶段）。 */
+  ttsProvider?: string;
+  ttsVoice?: string;
+  /** 已存在的音频重新合成（会重新消耗配额）。 */
+  forceVoice?: boolean;
+  /** 宿主的凭据 seam。不给就只能靠环境变量与 `.env`（配音脚本自己也会找）。 */
+  credentials?: CredentialsSeam;
+  /** 讲稿里的配音配置（`voice.provider`）。工具从讲稿读一次，用来决定要不要查凭据。 */
+  scriptVoice?: { provider?: string; voice?: string };
 };
 
 /**
@@ -245,6 +298,9 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     htmlPath: htmlPathFor(target),
     videoPath: videoPathFor(target),
     video: videoState(videoPathFor(target), scriptPathFor(target)),
+    durationsPath: durationsPathFor(target),
+    voice: videoState(durationsPathFor(target), scriptPathFor(target)),
+    narrationPath: narrationPathFor(target),
     reviewPath: reviewPathFor(target),
     review: reviewState(reviewPathFor(target), scriptPathFor(target)),
     dependencies,
@@ -344,7 +400,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
       nextHint:
         `解读已生成（${String(readingSummary.files)} 个文件）${htmlRun.ok ? `，页面在 ${base.htmlPath}` : ''}。` +
         `下一步：按 foldercast skill 通读内容并写出 ${base.scriptPath}，再调一次 foldercast_cast 校验；` +
-        `视频与配音尚未实现（M7 / M8）。`,
+        `校验通过、评审也是新的之后，同一次调用会接着配音与出片。`,
       stages,
       reading: readingSummary,
     };
@@ -388,12 +444,103 @@ export async function cast(options: CastOptions): Promise<CastResult> {
         `解读与讲稿都通过校验（${String(validation.warning)} 个待确认项）。` +
         `下一步：按 skill 的评审判据起一个独立 subagent 评审，结论写到 ${base.reviewPath}` +
         `${base.review === 'stale' ? '（现有结论早于当前讲稿，已作废）' : ''}。` +
-        `页面已经生成（${base.htmlPath}），视频与配音尚未实现（M7 / M8）。`,
+        `评审是新的之后再调一次就会配音并出片（页面已经生成：${base.htmlPath}）。`,
       stages: allStages,
       reading: readingSummary,
       validation,
     };
   }
+
+  // ── 配音（M8，出片之前跑） ───────────────────────────
+  // 顺序是**先配音再出片**：渲染阶段会自己认 durations.json 与 narration.wav，
+  // 于是「一次调用出带声音的片」不需要渲染两遍（一遍静音、一遍带音轨）。
+  let voiceReport: StageReport | undefined;
+  let voiceProvider: string | undefined;
+  let voiceName: string | undefined;
+  const credentials = options.credentials;
+  const scriptVoice = options.scriptVoice ?? readScriptVoice(base.scriptPath);
+  const wanted = options.ttsProvider ?? scriptVoice.provider ?? 'say';
+  let voiceEnv: Record<string, string> | undefined;
+
+  if (options.skipVoice === true) {
+    // 显式跳过：不跑配音阶段，也不给渲染喂音轨
+  } else if (base.voice === 'fresh') {
+    // 配音产物比讲稿新 → 不重新合成（TTS 有配额与费用，判据与成片同构）
+    const existing = readDurations(base.durationsPath);
+    voiceProvider = existing?.provider;
+    voiceName = existing?.voice;
+    voiceReport = { ok: true, ms: 0, detail: '配音产物已是最新，跳过合成（讲稿没改）' };
+  } else {
+    const ref = KEY_REFS[wanted];
+    if (ref !== undefined && credentials !== undefined) {
+      // **先 describe 再调用**：等 401 的话措辞是外部给的，用户看不出该怎么办（rd 文档）
+      const info = await credentials.describe(ref).catch(() => undefined);
+      if (info !== undefined && !info.configured) {
+        const voice = { ok: false, ms: 0, error: `缺少凭据 ${ref}`, detail: CREDENTIAL_HINT(ref) };
+        return {
+          ok: false,
+          ...base,
+          ...withHtml,
+          next: 'blocked',
+          nextHint: `配音用的 provider ${wanted} 需要凭据 ${ref}，它还没配置。\n${CREDENTIAL_HINT(ref)}`,
+          stages: { ...allStages, voice },
+          reading: readingSummary,
+          validation,
+        };
+      }
+      // 值**只经环境变量传进子进程**：不进命令行（会进日志与进程列表），也不进报告
+      const resolved = await credentials.resolve(ref).catch(() => undefined);
+      if (resolved !== undefined) voiceEnv = { [ref]: resolved.value };
+    }
+
+    const voiceRun = await runStage('voice', {
+      args: [
+        target,
+        '--json',
+        ...(options.ttsProvider === undefined ? [] : ['--provider', options.ttsProvider]),
+        ...(options.ttsVoice === undefined ? [] : ['--voice', options.ttsVoice]),
+        ...(options.forceVoice === true ? ['--force'] : []),
+      ],
+      timeoutMs: TIMEOUT_MS.voice,
+      ...(voiceEnv === undefined ? {} : { env: voiceEnv }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    });
+    voiceReport = reportOf(voiceRun);
+    const parsedVoice = parseJsonTail<{ provider?: string; voice?: string }>(voiceRun.stdout);
+    voiceProvider = parsedVoice?.provider;
+    voiceName = parsedVoice?.voice;
+    if (voiceRun.cancelled === true) {
+      return {
+        ok: false,
+        ...base,
+        ...withHtml,
+        next: 'blocked',
+        nextHint: '已取消（已合成的音频会保留，重跑会跳过它们）。',
+        stages: { ...allStages, voice: voiceReport },
+        reading: readingSummary,
+        validation,
+      };
+    }
+    if (!voiceRun.ok) {
+      const guidance = credentialGuidance(voiceRun);
+      return {
+        ok: false,
+        ...base,
+        ...withHtml,
+        next: 'blocked',
+        nextHint: guidance ?? explainVoice(voiceRun),
+        stages: { ...allStages, voice: voiceReport },
+        reading: readingSummary,
+        validation,
+      };
+    }
+  }
+
+  // 配音阶段之后才有这些（下面的提前返回要看到它们，所以在这里算）
+  const voiceStages = voiceReport === undefined ? allStages : { ...allStages, voice: voiceReport };
+  const withVoice =
+    voiceProvider === undefined ? {} : { voiceProvider, ...(voiceName === undefined ? {} : { voiceName }) };
+  const voiceFresh = voiceReport !== undefined;
 
   // ── 渲染（M7，评审通过才跑） ─────────────────────────
   // 出片是「讲稿 + 评审都齐了」之后才有意义的一步，所以放在最后。缺浏览器是**预期内的
@@ -407,7 +554,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
       nextHint:
         `解读、讲稿与评审都齐了（${String(validation.warning)} 个待确认项），按 skipRender 跳过了出片。` +
         `要出片就再调一次 foldercast_cast（不传 skipRender），或用 pnpm render ${target}。`,
-      stages: allStages,
+      stages: voiceStages,
       reading: readingSummary,
       validation,
     };
@@ -423,9 +570,9 @@ export async function cast(options: CastOptions): Promise<CastResult> {
       ...(existing === undefined ? {} : { videoBytes: existing.size }),
       next: 'rendered',
       nextHint:
-        `成片已经是最新的：${base.videoPath}（静音 mp4）。讲稿没改就不必重渲；` +
+        `成片已经是最新的：${base.videoPath}。讲稿没改就不必重渲；` +
         `改了讲稿再调一次即可（旧成片会被覆盖）。`,
-      stages: allStages,
+      stages: voiceStages,
       reading: readingSummary,
       validation,
     };
@@ -437,7 +584,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   const render = reportOf(renderRun);
-  const renderStages = { ...allStages, render };
+  const renderStages = { ...voiceStages, render };
   const videoStat = statSync(base.videoPath, { throwIfNoEntry: false });
   const withVideo = videoStat === undefined ? {} : { videoBytes: videoStat.size };
 
@@ -478,11 +625,14 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     // 刚渲完，成片一定比讲稿新 —— 状态要按**渲染之后**的磁盘情况报，不能用函数开头那份
     // （那里还是 missing/stale，报出去会让调用方以为没出片）
     video: 'fresh',
+    // 配音同理：这一轮跑过就是 fresh（`skipVoice` 与「已最新」两种情况都算）
+    ...(voiceFresh ? { voice: 'fresh' as const } : {}),
+    ...withVoice,
     next: 'rendered',
     nextHint:
-      `成片已生成：${base.videoPath}（${String(Math.round(videoStat.size / 1024))} KB，静音）。` +
-      `配音还没做（M8）：要加旁白就装好 TTS provider 后重跑配音阶段。` +
-      `讲稿改了要重新出片 —— 再调一次 foldercast_cast 即可。`,
+      `成片已生成：${base.videoPath}（${String(Math.round(videoStat.size / 1024))} KB` +
+      `${voiceProvider === undefined ? '，静音' : `，配音 ${voiceProvider}${voiceName === undefined ? '' : ` · ${voiceName}`}`}）。` +
+      `讲稿改了要重新出片 —— 再调一次 foldercast_cast 即可（配音产物比讲稿旧时会自动重配）。`,
     stages: renderStages,
     reading: readingSummary,
     validation,
@@ -503,6 +653,52 @@ function explainRender(result: RunResult): string {
   return detail === undefined
     ? `渲染阶段失败（退出码 ${String(result.exitCode)}）。`
     : `渲染阶段失败（退出码 ${String(result.exitCode)}）：\n${detail}`;
+}
+
+/** 从讲稿里读配音配置（只读它，不校验 —— 那是校验器的事）。 */
+function readScriptVoice(scriptPath: string): { provider?: string; voice?: string } {
+  const document = readJson<{ voice?: { provider?: string; voice?: string } }>(scriptPath);
+  const voice = document?.voice;
+  if (voice === undefined) return {};
+  return {
+    ...(voice.provider === undefined ? {} : { provider: voice.provider }),
+    ...(voice.voice === undefined ? {} : { voice: voice.voice }),
+  };
+}
+
+/** 从 `durations.json` 里读实际用的 provider 与音色（报告要如实）。 */
+function readDurations(path: string): { provider?: string; voice?: string } | undefined {
+  const document = readJson<{ provider?: string; voice?: string }>(path);
+  return document === undefined ? undefined : document;
+}
+
+/**
+ * 取脚本 `--json` 报告里的最后一个顶层 JSON 对象。
+ *
+ * 为什么不是「第一个 `{` 到末尾」：`pnpm run` 在脚本非零退出时也会往 stdout 追一行
+ * `ELIFECYCLE`（CI 上踩过），从第一个 `{` 解析会读到多余字符。
+ */
+function parseJsonTail<T>(stdout: string): T | undefined {
+  const matches = [...stdout.matchAll(/^\{.*^\}$/gms)];
+  const last = matches[matches.length - 1];
+  if (last === undefined) return undefined;
+  return safeParse(last[0]) as T | undefined;
+}
+
+/** 配音脚本缺凭据时会把引导写在 stdout/stderr 里；原样交给模型。 */
+function credentialGuidance(result: RunResult): string | undefined {
+  const text = `${result.stdout}\n${result.stderr}`;
+  const marker = text.indexOf('还不能用');
+  if (marker === -1) return undefined;
+  return text.slice(marker).trim();
+}
+
+/** 配音失败的兜底说明：把脚本最后几行交回去，别只说一句「失败了」。 */
+function explainVoice(result: RunResult): string {
+  const detail = summaryOf(result);
+  return detail === undefined
+    ? `配音阶段失败（退出码 ${String(result.exitCode)}）。`
+    : `配音阶段失败（退出码 ${String(result.exitCode)}）：\n${detail}`;
 }
 
 /**

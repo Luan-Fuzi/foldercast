@@ -43,6 +43,11 @@ jobs:
           pnpm run analyze .
           pnpm run validate .
 
+      # HTML 视图也拿仓库自身跑一遍：这一步只读解读与素材，失败说明模板或图片内联坏了。
+      # runner 上没有 sips（macOS 专有），正好验跨平台回退那条路（缩不了就用原图）。
+      - name: 生成 HTML 视图
+        run: pnpm run html .
+
       - name: 检查相对链接
         run: pnpm run check:links
 

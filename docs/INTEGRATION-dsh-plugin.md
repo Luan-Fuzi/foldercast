@@ -440,10 +440,12 @@ foldercast_cast       事实层一条龙：分析 → 素材 → 校验
 | 分析 | 工具（子进程跑 `scripts/analyzer`） | `foldercast.json` |
 | 素材 | 工具（子进程跑 `scripts/assets`） | `assets/` |
 | **写稿** | **模型**（按 skill 的流程） | `script.json` |
+| **页面** | 工具（子进程跑 `scripts/html`，M6） | `out/index.html`（单文件静态页，不依赖讲稿） |
 | 校验 | 工具（子进程跑 `scripts/validate`） | 带行号的问题清单 |
 | **评审** | **另一个 subagent**（按 skill 的评审判据，换一条上下文） | `review.md` |
 
-返回值里的 `next` 就是交接信号：`needsScript`（该写稿了）、`needsReview`（讲稿过了、该评审）、
+返回值里的 `htmlPath` 是页面的落点 —— 它在第一次调用时就有，用户与模型都能直接打开核对理解。
+`next` 就是交接信号：`needsScript`（该写稿了）、`needsReview`（讲稿过了、该评审）、
 `validated`（讲稿与评审都齐了）、`fixScript`（讲稿有问题）、`blocked`（环境或目标有问题）。
 `review` 与 `reviewPath` 报告评审的状态：`missing` 还没审、`stale` 审过但讲稿又改了、`fresh`。
 渲染与配音尚未实现（M7 / M8），工具不声称出片。

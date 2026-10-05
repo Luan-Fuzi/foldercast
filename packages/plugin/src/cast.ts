@@ -184,9 +184,11 @@ export async function cast(options: CastOptions): Promise<CastResult> {
       ok: false,
       ...base,
       next: 'blocked',
-      nextHint: !installed.ok
-        ? `插件包不完整，缺少：${installed.missing.join('、')}。重装 dsh-foldercast。`
-        : (node?.hint ?? '需要 Node 22.19 以上。'),
+      // 先报 Node：Node 不合适时选的脚本入口本来就不一样，这时说「包不完整」是误导
+      nextHint:
+        node?.ok !== true
+          ? (node?.hint ?? '需要 Node 22.19 以上。')
+          : `插件包不完整，缺少：${installed.missing.join('、')}。重装 dsh-foldercast。`,
       stages: { analyze: { ok: false, ms: 0, error: '环境不满足' } },
     };
   }

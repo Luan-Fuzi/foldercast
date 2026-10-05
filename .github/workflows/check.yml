@@ -27,12 +27,14 @@ jobs:
       - name: 类型检查
         run: pnpm run typecheck
 
-      - name: 单元与集成测试
-        run: pnpm run test
-
-      # 发布版要编译成 JS（node_modules 里不允许 TS 类型剥离），所以构建是必须过的一步
+      # 发布版要编译成 JS（node_modules 里不允许 TS 类型剥离），所以构建是必须过的一步。
+      # **放在测试之前**：有一条守卫测试从 `lib/` 加载编译产物，检查发布版里的包根与脚本
+      # 入口（源码布局下这个错误看不出来，见 src/tests/runtime.test.ts）。
       - name: 构建插件包
         run: pnpm --filter dsh-foldercast prepack
+
+      - name: 单元与集成测试
+        run: pnpm run test
 
       # 拿仓库自身当用例跑一遍工具链：分析器产出的解读必须能过契约校验。
       # 解读不进版本库（可重算），所以这里先生成再校验。

@@ -11,23 +11,91 @@
  * LibreOffice 引擎都不该占宿主进程（INTEGRATION §一）。
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** 包根：本文件在 `src/` 下。脚本与随包 schema 都相对它定位。 */
-export const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+/** 本文件所在目录：开发时是 `<包根>/src`，发布版编译后在 `<包根>/lib/src`。 */
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * 从起点往上找第一个含 `package.json` 的目录，作为包根。
+ *
+ * **不能写成 `resolve(MODULE_DIR, '..')`**：源码与编译产物深度不同（`src` vs `lib/src`），
+ * 那样在发布版里会把包根算成 `<包根>/lib`，随包脚本与 `node_modules/.bin` 全部找不到 ——
+ * 而且**只在装上去之后才暴露**，仓库内测试用的是源码布局，永远是对的（M4 装进 desktop
+ * profile 时踩到）。校验器的 schema 定位（`scripts/validate/schema.ts`）用同一套上溯法。
+ */
+export function findPackageRoot(start: string): string | undefined {
+  let current = resolve(start);
+  const { root } = parse(current);
+
+  for (;;) {
+    if (existsSync(join(current, 'package.json'))) return current;
+    if (current === root) return undefined;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+/** 包根：脚本、随包 schema、依赖的 bin 都相对它定位。 */
+export const PACKAGE_ROOT = findPackageRoot(MODULE_DIR) ?? resolve(MODULE_DIR, '..');
 
 export type StageName = 'analyze' | 'assets' | 'validate';
 
-const STAGE_ENTRY: Readonly<Record<StageName, string>> = {
-  analyze: 'scripts/analyzer/main.ts',
-  assets: 'scripts/assets/main.ts',
-  validate: 'scripts/validate/main.ts',
+/** 阶段脚本所在子目录，两套布局下同名。 */
+const STAGE_DIR: Readonly<Record<StageName, string>> = {
+  analyze: 'analyzer',
+  assets: 'assets',
+  validate: 'validate',
 };
 
+/** 这份 Node 能不能直接跑 TypeScript（类型剥离，22.19 起默认开）。 */
+function canStripTypes(): boolean {
+  const features = process.features as { typescript?: string | boolean } | undefined;
+  const value = features?.typescript;
+  return value === 'strip' || value === 'transform';
+}
+
+function isInsideNodeModules(path: string): boolean {
+  return path.split(sep).includes('node_modules');
+}
+
+export type StageEntry = {
+  /** 相对包根的路径，用于报错信息。 */
+  relative: string;
+  absolute: string;
+};
+
+/**
+ * 阶段脚本入口。两套布局都认：
+ *
+ * | 位置 | 什么时候用 |
+ * |---|---|
+ * | `<包根>/scripts/<阶段>/main.ts` | 仓库内直跑，靠 Node 的类型剥离 |
+ * | `<包根>/lib/scripts/<阶段>/main.js` | 装进 `node_modules` 时（那里**禁止**类型剥离） |
+ *
+ * 判据是「要跑的那个 `.ts` 是否落在 `node_modules` 里」，与 Node 自己的规则一致：
+ * `link:` 装法会把软链解析回仓库真实路径，于是照旧跑源码——改完不用重新构建。
+ */
+export function resolveStageEntry(packageRoot: string, stage: StageName): StageEntry {
+  const tsRelative = join('scripts', STAGE_DIR[stage], 'main.ts');
+  const jsRelative = join('lib', 'scripts', STAGE_DIR[stage], 'main.js');
+  const tsAbsolute = resolve(packageRoot, tsRelative);
+  const useSource = !isInsideNodeModules(tsAbsolute) && canStripTypes() && existsSync(tsAbsolute);
+  const relative = useSource ? tsRelative : jsRelative;
+
+  return { relative, absolute: resolve(packageRoot, relative) };
+}
+
+export function stageEntry(stage: StageName): StageEntry {
+  return resolveStageEntry(PACKAGE_ROOT, stage);
+}
+
 export function stageEntryPath(stage: StageName): string {
-  return resolve(PACKAGE_ROOT, STAGE_ENTRY[stage]);
+  return stageEntry(stage).absolute;
 }
 
 /** 工作根：所有产物都在 `<源目录>/.foldercast/` 下（SPEC-data-format.md 工作目录）。 */
@@ -55,9 +123,10 @@ export type Dependency = {
 
 /** 随包的脚本入口是否都在。缺了说明包装坏了，不是用户环境问题。 */
 export function scriptsInstalled(): { ok: boolean; missing: string[] } {
-  const missing = (Object.keys(STAGE_ENTRY) as StageName[])
-    .map((stage) => STAGE_ENTRY[stage])
-    .filter((relative) => !existsSync(resolve(PACKAGE_ROOT, relative)));
+  const missing = (Object.keys(STAGE_DIR) as StageName[])
+    .map((stage) => stageEntry(stage))
+    .filter((entry) => !existsSync(entry.absolute))
+    .map((entry) => entry.relative);
 
   return { ok: missing.length === 0, missing };
 }
@@ -65,10 +134,24 @@ export function scriptsInstalled(): { ok: boolean; missing: string[] } {
 /**
  * `dsoffice` 来自 `@deepseek-ai/libreoffice-kit`，是 optionalDependency：
  * 装不上时 office/pdf 的转图与文本提取不可用，其他类型照常。
+ *
+ * 两个位置都找：包自己的 `node_modules/.bin`（npm 平铺、仓库内），以及按包名解析出的
+ * 清单里的 `bin`（pnpm 把依赖的 bin 放在虚拟store下，不在包目录里）。
  */
 function dsofficePath(): string | undefined {
-  const candidate = resolve(PACKAGE_ROOT, 'node_modules/.bin/dsoffice');
-  return existsSync(candidate) ? candidate : undefined;
+  const direct = resolve(PACKAGE_ROOT, 'node_modules/.bin/dsoffice');
+  if (existsSync(direct)) return direct;
+
+  try {
+    const manifestPath = createRequire(import.meta.url).resolve('@deepseek-ai/libreoffice-kit/package.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { bin?: string | Record<string, string> };
+    const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.dsoffice;
+    if (bin === undefined) return undefined;
+    const candidate = resolve(dirname(manifestPath), bin);
+    return existsSync(candidate) ? candidate : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -96,8 +179,9 @@ function hasExecutable(command: string, versionFlag: string): Promise<boolean> {
  * 不影响解读本身。所以这里返回的是「各自能不能用」，不是一句「环境不满足」。
  */
 export async function detectDependencies(): Promise<Dependency[]> {
-  const nodeMajor = Number(process.versions.node.split('.')[0] ?? '0');
-  const nodeOk = nodeMajor >= 22;
+  // 判据取运行时能力本身，而不是版本号：22.0–22.18 要显式加 `--experimental-strip-types`
+  // 才能跑 `.ts`，那种情况 `process.features.typescript` 同样是 `strip`，算能跑。
+  const nodeOk = canStripTypes();
 
   const dsoffice = dsofficePath();
   const deps: Dependency[] = [
@@ -107,7 +191,7 @@ export async function detectDependencies(): Promise<Dependency[]> {
       required: true,
       hint: nodeOk
         ? `Node ${process.versions.node}`
-        : `需要 Node 22.19 以上（当前 ${process.versions.node}）：脚本直接用 TypeScript，靠 Node 的类型剥离运行。`,
+        : `需要 Node 22.19 以上（当前 ${process.versions.node}）：阶段脚本用 TypeScript 写，靠 Node 的类型剥离直接运行。`,
     },
     {
       name: 'dsoffice',

@@ -12,10 +12,10 @@ import type { FoldercastDocument } from '../contracts/foldercast.ts';
 import type { ScriptDocument } from '../contracts/script.ts';
 import { checkReading } from './check-reading.ts';
 import { checkScript } from './check-script.ts';
-import { createValidator } from './ajv.ts';
+import { createValidator, validateAgainstSchema } from './ajv.ts';
 import { createLocator } from './locate.ts';
 import { IssueCollector, type Issue, type SeverityCounts } from './issue.ts';
-import { loadSchemas } from './schema.ts';
+import { loadAssetsSchema, loadSchemas } from './schema.ts';
 
 export type ValidateOptions = {
   /** 被讲解的目录。`readingPath` 不给时，解读取 `<目录>/.foldercast/foldercast.json`。 */
@@ -57,6 +57,8 @@ export type ValidateReport = {
   counts: SeverityCounts;
   /** blocker 为 0 即通过；warning 不判定失败。 */
   ok: boolean;
+  /** 素材清单的 schema 校验是否跑了（没有清单或没有 schema 时为 false）。 */
+  assetsValidated: boolean;
   /** 这次校验的时间。 */
   validatedAt: string;
 };
@@ -179,15 +181,35 @@ export function validateContracts(options: ValidateOptions): ValidateReport {
 
   // 素材清单：没有它也能校验，只是查不了素材产物是否存在
   let assets = options.assets;
+  const assetPath = resolve(workRoot, 'assets/manifest.json');
   if (assets === undefined) {
-    const assetPath = resolve(workRoot, 'assets/manifest.json');
     const assetFile = readJsonFile(assetPath);
     if (assetFile !== undefined && assetFile.error === undefined && isRecord(assetFile.value)) {
       assets = assetFile.value as unknown as AssetManifest;
       checked.assets = assetPath;
     }
   } else {
-    checked.assets = resolve(workRoot, 'assets/manifest.json');
+    checked.assets = assetPath;
+  }
+
+  // 素材清单的形状本身也要校验（契约第三份的 schema 是 M4 补的）
+  let assetsValidated = false;
+  if (assets !== undefined && checked.assets !== undefined) {
+    const assetsSchema = loadAssetsSchema(options.specsDir);
+    if (assetsSchema !== undefined) {
+      const assetFile = readJsonFile(checked.assets);
+      if (assetFile !== undefined) {
+        for (const issue of validateAgainstSchema(
+          createValidator(assetsSchema),
+          assets,
+          checked.assets,
+          createLocator(assetFile.text),
+        )) {
+          collect.add(issue);
+        }
+        assetsValidated = true;
+      }
+    }
   }
 
   const scriptFile = readJsonFile(scriptPath);
@@ -253,6 +275,7 @@ export function validateContracts(options: ValidateOptions): ValidateReport {
     issues: collect.sorted().map(toCheckedFile),
     counts,
     ok: counts.blocker === 0,
+    assetsValidated,
     validatedAt: localIsoString(options.now ?? new Date()),
   };
 }

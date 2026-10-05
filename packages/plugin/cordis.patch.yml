@@ -1,0 +1,7 @@
+# dsh-foldercast 的组合层：把插件行插进 profile。
+#
+# 条目**按包名引用**（不是相对路径）。`dsh.bundle.patch` 指向本文件，缺了它
+# 插件装上了也不会被激活，而且失败方式是「静默不激活」——所以这个文件是必需的。
+- insert:
+    - id: foldercast
+      name: dsh-foldercast

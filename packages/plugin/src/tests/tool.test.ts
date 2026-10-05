@@ -1,0 +1,222 @@
+/**
+ * 工具定义的形状与编排结果。
+ *
+ * 用假的 ctx 调真实 `apply()`，再把拿到的定义当真的用（`execute` 真跑）—— 这样测的是
+ * **插件交付的那个东西**，不是一份复制品。工具定义写错在这里就暴露，不必先装进 DSH。
+ */
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { apply } from '../index.ts';
+
+const SAMPLE = resolve(import.meta.dirname, '../../scripts/analyzer/tests/fixtures/sample');
+
+type ToolDefinition = {
+  name: string;
+  description: string;
+  parameters: { required: string[]; properties: Record<string, unknown>; additionalProperties: boolean };
+  output: { schema: Record<string, unknown>; render: (args: unknown, value: unknown) => { type: string; text: string }[] };
+  timeoutMs?: number;
+  execute: (args: Record<string, unknown>, exec: { signal: AbortSignal }) => Promise<Record<string, unknown>>;
+};
+
+let tool: ToolDefinition | undefined;
+let registeredSkill: { name: string; description: string; content: string; source?: string } | undefined;
+let source = '';
+
+/** 假 ctx：只提供插件用到的两个能力（工具注册表与 skill 注册表）。 */
+function fakeContext(): { ctx: unknown; tool: () => ToolDefinition; skill: () => typeof registeredSkill } {
+  let captured: ToolDefinition | undefined;
+  let skill: { name: string; description: string; content: string; source?: string } | undefined;
+
+  const ctx = {
+    tools: {
+      register: (definition: ToolDefinition) => {
+        captured = definition;
+        return () => undefined;
+      },
+    },
+    get: (serviceName: string) =>
+      serviceName === 'skills'
+        ? {
+            register: (definition: { name: string; description: string; content: string; source?: string }) => {
+              skill = definition;
+              return () => undefined;
+            },
+          }
+        : undefined,
+  };
+
+  return {
+    ctx,
+    tool: () => {
+      if (captured === undefined) throw new Error('apply() 没有注册工具');
+      return captured;
+    },
+    skill: () => skill,
+  };
+}
+
+beforeAll(() => {
+  const fake = fakeContext();
+  apply(fake.ctx as never);
+  tool = fake.tool();
+  registeredSkill = fake.skill();
+
+  // 目标目录用夹具的副本：分析会往里写 .foldercast/，不污染仓库
+  source = mkdtempSync(join(tmpdir(), 'foldercast-plugin-'));
+  cpSync(SAMPLE, source, { recursive: true });
+});
+
+afterAll(() => {
+  if (source !== '') rmSync(source, { recursive: true, force: true });
+});
+
+describe('注册的形状符合 DSH 的工具契约', () => {
+  it('名字、描述与主动语态', () => {
+    expect(tool?.name).toBe('foldercast_cast');
+    expect(tool?.description).toMatch(/^[A-Z]/);
+    expect(tool?.description.split(' ').length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('只有一个必需参数：目录路径', () => {
+    expect(tool?.parameters.required).toEqual(['path']);
+    expect(Object.keys(tool?.parameters.properties ?? {}).sort()).toEqual(['path', 'skipAssets']);
+    expect(tool?.parameters.additionalProperties).toBe(false);
+  });
+
+  it('声明输出 schema 与 render（注册表强制要求）', () => {
+    expect(typeof tool?.output.render).toBe('function');
+    expect((tool?.output.schema as { type?: string }).type).toBe('object');
+  });
+
+  it('声明自己的时间预算', () => {
+    expect(tool?.timeoutMs).toBeGreaterThan(0);
+  });
+
+  it('skill 已注册，名字是 kebab-case 且带描述', () => {
+    expect(registeredSkill?.name).toBe('foldercast');
+    expect(registeredSkill?.description.length).toBeGreaterThan(0);
+    expect(registeredSkill?.content).toContain('foldercast_cast');
+  });
+
+  it('skill 带 source —— 注册表加载时会复查，缺了读取直接失败', () => {
+    // 踩过一次：只给 name/description/content，读取报 `loaded skill "foldercast" source must be a string`
+    expect(registeredSkill?.source).toBe('foldercast');
+  });
+});
+
+describe('execute 真跑一遍（分析 + 跳过素材）', () => {
+  it('返回结构化结果：读到解读，下一步是写讲稿', async () => {
+    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+
+    expect(value?.ok).toBe(true);
+    expect(value?.next).toBe('needsScript');
+    expect(value?.target).toBe(source);
+    expect(value?.label).toBe(source.split('/').pop());
+
+    const reading = value?.reading as { files: number; roots: string[]; secretsSkipped: { path: string }[] };
+    expect(reading.files).toBeGreaterThan(0);
+    expect(reading.roots).toContain('README.md');
+    // 密钥类文件仍进清单与审计，但内容没被读
+    expect(reading.secretsSkipped.map((hit) => hit.path)).toContain('.env');
+
+    // 结果必须能过 JSON 序列化（注册表要求无损 JSON）
+    expect(() => JSON.stringify(value)).not.toThrow();
+  });
+
+  it('没有讲稿时不跑校验，也不会把「没有讲稿」当成错误', async () => {
+    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+    const stages = value?.stages as Record<string, unknown>;
+    expect(stages.validate).toBeUndefined();
+    expect(stages.analyze).toBeDefined();
+  });
+
+  it('render 输出能读的几句话，且不空', async () => {
+    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+    const blocks = tool?.output.render({ path: source }, value);
+    expect(blocks).toHaveLength(1);
+    const text = blocks?.[0]?.text ?? '';
+    expect(text).toContain('README.md');
+    expect(text.length).toBeGreaterThan(40);
+  });
+
+  it('目录不存在时给出可操作的结论，而不是抛异常', async () => {
+    const value = await tool?.execute({ path: join(tmpdir(), 'foldercast-does-not-exist') }, { signal: new AbortController().signal });
+    expect(value?.ok).toBe(false);
+    expect(value?.next).toBe('blocked');
+    expect(String(value?.nextHint)).toContain('目录不存在');
+  });
+
+  it('取消后立刻返回，不留下跑着的子进程', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: controller.signal });
+    expect(value?.ok).toBe(false);
+  });
+});
+
+describe('有讲稿时跑校验', () => {
+  it('讲稿里有编造的路径时，报出 blocker 并给出位置', async () => {
+    const workRoot = join(source, '.foldercast');
+    const reading = JSON.parse(readFileSync(join(workRoot, 'foldercast.json'), 'utf8')) as {
+      source: { root: string };
+    };
+    writeFileSync(
+      join(workRoot, 'script.json'),
+      `${JSON.stringify(
+        {
+          foldercast: 1,
+          source: { root: reading.source.root },
+          scenes: [
+            { id: 'cover', type: 'cover', title: '封面', narration: '封面场景。' },
+            { id: 'entry', type: 'file', title: '入口', narration: '这是入口。', file: 'src/does-not-exist.ts' },
+            { id: 'outro', type: 'outro', title: '完', narration: '就这些。' },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+    expect(value?.ok).toBe(false);
+    expect(value?.next).toBe('fixScript');
+
+    const validation = value?.validation as { blocker: number; issues: { code: string; line?: number; sceneId?: string }[] };
+    expect(validation.blocker).toBeGreaterThan(0);
+    const hallucinated = validation.issues.filter((issue) => issue.code === 'path-hallucinated');
+    expect(hallucinated.length).toBeGreaterThan(0);
+    expect(hallucinated[0]?.sceneId).toBe('entry');
+    expect(hallucinated[0]?.line).toBeGreaterThan(0);
+  });
+
+  it('讲稿通过时 ok 为真、next 为 validated', async () => {
+    const workRoot = join(source, '.foldercast');
+    const reading = JSON.parse(readFileSync(join(workRoot, 'foldercast.json'), 'utf8')) as {
+      source: { root: string };
+    };
+    writeFileSync(
+      join(workRoot, 'script.json'),
+      `${JSON.stringify(
+        {
+          foldercast: 1,
+          source: { root: reading.source.root },
+          scenes: [
+            { id: 'cover', type: 'cover', title: '封面', narration: '封面场景。' },
+            { id: 'entry', type: 'file', title: '入口', narration: '这是入口。', file: 'src/index.ts' },
+            { id: 'outro', type: 'outro', title: '完', narration: '就这些。' },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+    expect(value?.ok).toBe(true);
+    expect(value?.next).toBe('validated');
+    expect((value?.validation as { blocker: number }).blocker).toBe(0);
+  });
+});

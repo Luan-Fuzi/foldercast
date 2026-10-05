@@ -11,6 +11,7 @@
     "noImplicitOverride": true,
 
     "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "esModuleInterop": true,

@@ -30,6 +30,10 @@ jobs:
       - name: 单元与集成测试
         run: pnpm run test
 
+      # 发布版要编译成 JS（node_modules 里不允许 TS 类型剥离），所以构建是必须过的一步
+      - name: 构建插件包
+        run: pnpm --filter dsh-foldercast prepack
+
       # 拿仓库自身当用例跑一遍工具链：分析器产出的解读必须能过契约校验。
       # 解读不进版本库（可重算），所以这里先生成再校验。
       - name: 分析本仓库并校验解读

@@ -10,7 +10,8 @@ export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 
 
 /**
  * 遍历时跳过的目录名：依赖、生成物、版本库、测试夹具。
- * `assets/` 与 `.foldercast/` 是可重算的产物（见 .gitignore），不参与检查。
+ * `assets/`、`.foldercast/`、`lib/` 与 `schemas/` 是可重算的产物（见 .gitignore），不参与检查：
+ * 前两个是运行产物，后两个是插件发布前的构建产物（`tsc` 的输出与从 docs/specs 复制的 schema）。
  * `fixtures/` 是测试的输入样本（分析器要分析的目录、校验器要报错的讲稿），里面**故意**有
  * 坏链接、密钥文件名与不存在的路径，不能按仓库文档检查。
  */
@@ -18,8 +19,10 @@ export const SKIP_DIRS: ReadonlySet<string> = new Set([
   '.git',
   'node_modules',
   'out',
+  'lib',
   'assets',
   '.foldercast',
+  'schemas',
   'fixtures',
 ]);
 

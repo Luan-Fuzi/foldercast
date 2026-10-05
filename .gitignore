@@ -19,6 +19,14 @@ durations.json
 /assets/
 .foldercast/
 
+# 插件包内随分发的 schema：由 `pnpm --filter dsh-foldercast prepack` 从
+# docs/specs/ 复制生成。契约只有一份，这份是构建产物。
+/packages/plugin/schemas/
+
+# 插件发布版（发布前由 tsc 从 src/ 与 scripts/ 编译）。Node 不允许在
+# node_modules 里剥离 TypeScript 类型，所以分发的必须是 JS。
+/packages/plugin/lib/
+
 # 密钥 —— 绝不能提交
 .*_api_key
 .*_key
@@ -33,3 +41,7 @@ Thumbs.db
 # 测试夹具：里面有故意命中密钥判据的**文件名**、被排除的目录、
 # 以及故意写坏的链接，用来验证判据本身。内容都是占位文本，没有任何真凭据。
 !packages/plugin/scripts/**/tests/fixtures/**
+
+# 夹具里跑出来的工作根仍然是产物（上面那条 `!` 会把它们重新放进来）：
+# 跑一次 analyze/assets 就会在夹具里生成 .foldercast/，不该入库。
+packages/plugin/scripts/**/tests/fixtures/**/.foldercast/

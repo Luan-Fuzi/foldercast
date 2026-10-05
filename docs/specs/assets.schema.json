@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foldercast.dev/schema/assets-1.json",
+  "title": "foldercast 素材清单",
+  "description": "素材阶段的产物契约。字段语义见 docs/specs/SPEC-data-format.md 第三节。它是可重算的缓存：删了能重建，所以只描述形状与服务端已有的约束。",
+  "type": "object",
+  "required": ["assets", "generatedAt", "source", "entries"],
+  "additionalProperties": false,
+
+  "properties": {
+    "assets": { "type": "integer", "const": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "required": ["root"],
+      "properties": { "root": { "type": "string" } },
+      "additionalProperties": false
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind", "mtimeMs", "size", "hash", "products"],
+        "properties": {
+          "path": { "type": "string", "description": "相对 source.root" },
+          "kind": { "type": "string" },
+          "mtimeMs": { "type": "number" },
+          "size": { "type": "integer", "minimum": 0 },
+          "hash": { "type": "string" },
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["role", "path"],
+              "properties": {
+                "role": { "type": "string", "enum": ["thumb", "page", "poster", "frame", "code"] },
+                "path": { "type": "string", "description": "相对工作根 .foldercast/" },
+                "width": { "type": "integer" },
+                "height": { "type": "integer" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "text": {
+            "type": "object",
+            "properties": {
+              "markdown": { "type": "string" },
+              "outline": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["level", "text"],
+                  "properties": {
+                    "level": { "type": "integer", "minimum": 1 },
+                    "text": { "type": "string" }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "sheetNames": { "type": "array", "items": { "type": "string" } },
+              "slideTitles": { "type": "array", "items": { "type": "string" } },
+              "tableCount": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "durationSec": { "type": "number" },
+              "width": { "type": "integer" },
+              "height": { "type": "integer" },
+              "codec": { "type": "string" },
+              "pageCount": { "type": "integer" }
+            },
+            "additionalProperties": false
+          },
+          "error": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

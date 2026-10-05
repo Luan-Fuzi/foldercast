@@ -44,7 +44,8 @@ docs/
 | 事实 | 唯一来源 |
 |---|---|
 | `foldercast.json`（目录解读）的字段与语义 | `../specs/SPEC-data-format.md` 第一节 + `specs/foldercast.schema.json` |
-| `script.json`（讲稿）的字段与语义 | `../specs/SPEC-data-format.md` 第二节 |
+| `script.json`（讲稿）的字段与语义 | `../specs/SPEC-data-format.md` 第二节 + `specs/script.schema.json` |
+| `assets/manifest.json`（素材清单）的字段与语义 | `../specs/SPEC-data-format.md` 第三节 + `specs/assets.schema.json` |
 | 三步管线的顺序与职责 | `../specs/SPEC-pipeline.md` |
 | 风格 token 清单 | `rd/风格预设系统.md` + `styles/*.json` |
 | TTS 供应商能力 | `rd/TTS-适配调研.md` |
@@ -96,9 +97,9 @@ docs/
 
 ## 五、契约与文档的同步
 
-`foldercast.json`（解读）与 `script.json`（讲稿）各有三处表示，**必须同时更新**：
+`foldercast.json`（解读）、`script.json`（讲稿）与 `assets/manifest.json`（素材清单）各有三处表示，**必须同时更新**：
 
-1. `specs/foldercast.schema.json` + `script.schema.json` —— 机器可读的 JSON Schema
+1. `specs/*.schema.json` —— 机器可读的 JSON Schema
 2. `../specs/SPEC-data-format.md` —— 人读的字段说明
 3. `packages/plugin/scripts/contracts/` 里的 TypeScript 类型（有代码后）
 

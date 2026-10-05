@@ -441,6 +441,8 @@ office / pdf / video 的 `preview`（M1 读不了这些格式，留给本阶段�
 
 ### `manifest.json` —— 素材清单
 
+机器可读的 schema 在 [assets.schema.json](assets.schema.json)。
+
 ```jsonc
 {
   "assets": 1,                        // 清单格式版本

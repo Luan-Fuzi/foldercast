@@ -429,6 +429,8 @@ Cordis 加载器是裸 `await import(url)`（`cordis-plugin-loader/lib/index.js`
 Headless Shell），与渲染脚本共用同一份判据（`scripts/renderer/browser.ts`）。它只查文件是否存在，
 **不触发 150–300 MB 的下载** —— 下载与否由用户决定。缺浏览器时 `dependencies` 里会多一条
 `browser`，`hint` 写明三种办法；分析、素材、校验、HTML 视图都不受影响。
+本机装了 Chrome 时，「没有浏览器」这条路径走不到，`FOLDERCAST_IGNORE_SYSTEM_BROWSER=1`
+可以强制它（CI 上本来就走这条，本地要靠这个开关才能验）。
 
 **11. 界面里的渲染要等重启，但脚本不用。**
 M7 新增的 `render` 阶段入口与 `videoPath` 都在 `scripts/` 与 `src/` 两侧：**脚本侧**（渲染本身）

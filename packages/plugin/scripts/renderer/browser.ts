@@ -142,6 +142,10 @@ function isExecutable(path: string): boolean {
 /**
  * 挑一个能用的浏览器。`explicit`（`--browser` 或 `FOLDERCAST_BROWSER`）与
  * `REMOTION_BROWSER_EXECUTABLE` 都优先，其次系统浏览器，最后已下载的 Headless Shell。
+ *
+ * `FOLDERCAST_IGNORE_SYSTEM_BROWSER=1` 时跳过系统浏览器那一步 —— **为了能测「没有浏览器」
+ * 这条路径**：本机装了 Chrome，`missing` 分支（结构化引导 + 退出码 3）平时根本走不到，
+ * 而它恰恰是 CI 上唯一的路径。
  */
 export function resolveBrowser(
   explicit?: string,
@@ -161,7 +165,8 @@ export function resolveBrowser(
     };
   }
 
-  for (const candidate of SYSTEM_CANDIDATES[process.platform] ?? []) {
+  const skipSystem = env['FOLDERCAST_IGNORE_SYSTEM_BROWSER'] === '1';
+  for (const candidate of skipSystem ? [] : (SYSTEM_CANDIDATES[process.platform] ?? [])) {
     for (const path of candidate.paths) {
       searched.push(path);
       if (isExecutable(path)) {

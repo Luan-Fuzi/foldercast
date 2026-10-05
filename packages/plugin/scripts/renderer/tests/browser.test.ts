@@ -61,6 +61,19 @@ describe('浏览器解析', () => {
     expect(text).not.toContain('已安装');
   });
 
+  it('FOLDERCAST_IGNORE_SYSTEM_BROWSER=1 时跳过系统浏览器（为了能测「没有」这条路径）', () => {
+    // 本机装了 Chrome，`missing` 分支平时走不到；CI 上它却是唯一的路径，所以要能强制走到。
+    const result = resolveBrowser(undefined, { FOLDERCAST_IGNORE_SYSTEM_BROWSER: '1' });
+    if (result.kind === 'found') {
+      // 只有 Remotion 已经下过 Headless Shell 时才会命中这里
+      expect(result.origin).toBe('headless-shell');
+      return;
+    }
+    expect(result.kind).toBe('missing');
+    expect(result.guidance).toContain('渲染需要浏览器');
+    expect(result.searched.some((path) => path.includes('Applications'))).toBe(false);
+  });
+
   it('Headless Shell 的落点按平台给，且是绝对路径', () => {
     const roots = headlessShellRoots();
     expect(roots.length).toBeGreaterThan(0);

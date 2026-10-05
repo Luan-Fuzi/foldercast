@@ -382,7 +382,8 @@ docx 的 `<Pages>1</Pages>`、同日 PDF 1 页、第 2 页全白；`tts.py` 确�
 - [x] **运行时加载讲稿**：CLI 读 `script.json` 算成计划，经 `inputProps` 交给浏览器；
       bundle 里没有任何讲稿，加一个目录不改一行代码（见「已识别的坑」第 1 条）
 - [x] 浏览器获取与检查：系统 Chrome / Chromium / Edge → 已下载的 Headless Shell → 结构化引导
-      （**不静默下载**，退出码 3），插件侧只报依赖状态
+      （**不静默下载**，退出码 3），插件侧只报依赖状态。`FOLDERCAST_IGNORE_SYSTEM_BROWSER=1`
+      可以强制走「没有浏览器」那条路 —— 本机装了 Chrome，否则这条分支永远测不到
 - [x] 样式 token 应用层：四套预设任选（默认 `deck`），`style.overrides` 走点号路径，认不出的键报警告
 - [x] 八种场景组件（`cover` / `tree` / `inventory` / `file` / `gallery` / `clip` / `document` / `outro`）
 - [x] 字幕渲染组件（由渲染层绘制，不走 ffmpeg —— 本机 ffmpeg 没有 libass）

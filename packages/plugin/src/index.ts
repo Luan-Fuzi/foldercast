@@ -67,12 +67,19 @@ const OUTPUT_SCHEMA = {
     label: { type: 'string' },
     next: {
       type: 'string',
-      enum: ['needsScript', 'validated', 'fixScript', 'blocked'],
-      description: 'needsScript = 该写讲稿了；validated = 都通过；fixScript = 讲稿有问题；blocked = 环境或目标有问题',
+      enum: ['needsScript', 'needsReview', 'validated', 'fixScript', 'blocked'],
+      description:
+        'needsScript = 该写讲稿了；needsReview = 讲稿通过校验、该评审了；validated = 讲稿与评审都齐了；fixScript = 讲稿有问题；blocked = 环境或目标有问题',
     },
     nextHint: { type: 'string' },
     readingPath: { type: 'string' },
     scriptPath: { type: 'string' },
+    reviewPath: { type: 'string', description: '评审结论的落点（M5，skill 第六步写到这里）' },
+    review: {
+      type: 'string',
+      enum: ['missing', 'stale', 'fresh'],
+      description: 'missing = 还没评审；stale = 现有结论早于当前讲稿；fresh = 审的是当前这版',
+    },
     dependencies: {
       type: 'array',
       description: '不可用的外部依赖。都可用时为空数组。',
@@ -275,6 +282,8 @@ function registerTool(ctx: Context): void {
         nextHint: result.nextHint,
         readingPath: result.readingPath,
         scriptPath: result.scriptPath,
+        reviewPath: result.reviewPath,
+        review: result.review,
         dependencies: unavailable,
         stages: result.stages,
       };

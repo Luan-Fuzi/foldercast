@@ -111,6 +111,14 @@ export function scriptPathFor(target: string): string {
   return resolve(workRootFor(target), 'script.json');
 }
 
+/**
+ * 评审结论（M5）。它由 agent 产出、没有 schema，所以这里只定位、不校验：
+ * 校验器管机器能判的，评审管语义。
+ */
+export function reviewPathFor(target: string): string {
+  return resolve(workRootFor(target), 'review.md');
+}
+
 export type DependencyName = 'node' | 'dsoffice' | 'ffmpeg' | 'sips';
 
 export type Dependency = {

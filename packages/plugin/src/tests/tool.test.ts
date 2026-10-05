@@ -192,7 +192,7 @@ describe('有讲稿时跑校验', () => {
     expect(hallucinated[0]?.line).toBeGreaterThan(0);
   });
 
-  it('讲稿通过时 ok 为真、next 为 validated', async () => {
+  it('讲稿通过时进入 needsReview，并指出该把评审写到哪里', async () => {
     const workRoot = join(source, '.foldercast');
     const reading = JSON.parse(readFileSync(join(workRoot, 'foldercast.json'), 'utf8')) as {
       source: { root: string };
@@ -216,7 +216,35 @@ describe('有讲稿时跑校验', () => {
 
     const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
     expect(value?.ok).toBe(true);
-    expect(value?.next).toBe('validated');
+    // 校验只管机器能判的，「有没有讲错重点」要靠评审（M5）—— 所以通过了也还不能算完成
+    expect(value?.next).toBe('needsReview');
+    expect(value?.review).toBe('missing');
+    expect(value?.reviewPath).toBe(join(workRoot, 'review.md'));
+    expect(String(value?.nextHint)).toContain('review.md');
     expect((value?.validation as { blocker: number }).blocker).toBe(0);
+  });
+
+  it('评审比讲稿新：validated', async () => {
+    const workRoot = join(source, '.foldercast');
+    writeFileSync(join(workRoot, 'review.md'), '# 评审：通过\n');
+
+    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+
+    expect(value?.next).toBe('validated');
+    expect(value?.review).toBe('fresh');
+  });
+
+  it('评审比讲稿旧：当作没审（讲稿改了，旧结论作废）', async () => {
+    const workRoot = join(source, '.foldercast');
+    // 先写评审、再改讲稿 —— 讲稿更新，评审作废
+    writeFileSync(join(workRoot, 'review.md'), '# 评审：通过（针对上一版）\n');
+    const script = JSON.parse(readFileSync(join(workRoot, 'script.json'), 'utf8')) as Record<string, unknown>;
+    writeFileSync(join(workRoot, 'script.json'), `${JSON.stringify(script, null, 2)}\n`);
+
+    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+
+    expect(value?.next).toBe('needsReview');
+    expect(value?.review).toBe('stale');
+    expect(String(value?.nextHint)).toContain('作废');
   });
 });

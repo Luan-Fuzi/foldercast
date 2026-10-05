@@ -12,6 +12,7 @@ import { basename, resolve } from 'node:path';
 import {
   detectDependencies,
   readingPathFor,
+  reviewPathFor,
   runStage,
   scriptPathFor,
   scriptsInstalled,
@@ -19,6 +20,21 @@ import {
   type Dependency,
   type RunResult,
 } from './runtime.ts';
+
+/**
+ * 评审结论的状态（M5）。
+ *
+ * 评审是 agent 干的（skill 第六步），工具不跑它，但要如实报告「有没有、是不是比讲稿旧」——
+ * 改过讲稿之后旧评审就作废了，这一点不查就会被当成「审过了」。
+ */
+function reviewState(reviewPath: string, scriptPath: string): 'missing' | 'stale' | 'fresh' {
+  const review = statSync(reviewPath, { throwIfNoEntry: false });
+  if (review === undefined) return 'missing';
+  const script = statSync(scriptPath, { throwIfNoEntry: false });
+  if (script === undefined) return 'stale';
+
+  return review.mtimeMs >= script.mtimeMs ? 'fresh' : 'stale';
+}
 
 /** 各阶段的预算。素材阶段最慢（要起 LibreOffice 引擎），其余都很快。 */
 const TIMEOUT_MS: Readonly<Record<'analyze' | 'assets' | 'validate', number>> = {
@@ -53,12 +69,19 @@ export type CastResult = {
   ok: boolean;
   target: string;
   label: string;
-  /** 接下来该做什么：写稿（needsScript）还是校验已通过（validated）。 */
-  next: 'needsScript' | 'validated' | 'fixScript' | 'blocked';
+  /**
+   * 接下来该做什么：写稿（`needsScript`）、评审（`needsReview`）、讲稿要改（`fixScript`）、
+   * 都完成（`validated`）、环境或目标有问题（`blocked`）。
+   */
+  next: 'needsScript' | 'needsReview' | 'validated' | 'fixScript' | 'blocked';
   /** 给模型看的一句话下一步。 */
   nextHint: string;
   readingPath: string;
   scriptPath: string;
+  /** 评审结论的落点（M5）。有没有、是否比讲稿旧，看 `review`。 */
+  reviewPath: string;
+  /** 评审结论的状态：`missing` 还没审、`stale` 审过但讲稿又改了、`fresh` 审的是当前这版。 */
+  review: 'missing' | 'stale' | 'fresh';
   stages: { analyze: StageReport; assets?: StageReport; validate?: StageReport };
   dependencies: Dependency[];
   reading?: {
@@ -175,6 +198,8 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     label,
     readingPath: readingPathFor(target),
     scriptPath: scriptPathFor(target),
+    reviewPath: reviewPathFor(target),
+    review: reviewState(reviewPathFor(target), scriptPathFor(target)),
     dependencies,
   };
 
@@ -285,13 +310,31 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     };
   }
 
+  // 讲稿通过了，但评审（skill 第六步）是 agent 干的，工具只能如实报告它的状态：
+  // 没审过、或者审过之后讲稿又改了，都还不能算完成。
+  if (base.review !== 'fresh') {
+    return {
+      ok: true,
+      ...base,
+      next: 'needsReview',
+      nextHint:
+        `解读与讲稿都通过校验（${String(validation.warning)} 个待确认项）。` +
+        `下一步：按 skill 的评审判据起一个独立 subagent 评审，结论写到 ${base.reviewPath}` +
+        `${base.review === 'stale' ? '（现有结论早于当前讲稿，已作废）' : ''}。` +
+        `渲染与配音阶段尚未实现。`,
+      stages,
+      reading: readingSummary,
+      validation,
+    };
+  }
+
   return {
     ok: true,
     ...base,
     next: 'validated',
     nextHint:
-      `解读与讲稿都通过校验（${String(validation.warning)} 个待确认项）。渲染与配音阶段尚未实现，` +
-      `现在可以看 ${base.readingPath} 与 ${base.scriptPath}。`,
+      `解读、讲稿与评审都齐了（${String(validation.warning)} 个待确认项）。` +
+      `渲染与配音阶段尚未实现，现在可以看 ${base.readingPath}、${base.scriptPath} 与 ${base.reviewPath}。`,
     stages,
     reading: readingSummary,
     validation,

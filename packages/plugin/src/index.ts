@@ -67,15 +67,22 @@ const OUTPUT_SCHEMA = {
     label: { type: 'string' },
     next: {
       type: 'string',
-      enum: ['needsScript', 'needsReview', 'validated', 'fixScript', 'blocked'],
+      enum: ['needsScript', 'needsReview', 'validated', 'rendered', 'fixScript', 'blocked'],
       description:
-        'needsScript = 该写讲稿了；needsReview = 讲稿通过校验、该评审了；validated = 讲稿与评审都齐了；fixScript = 讲稿有问题；blocked = 环境或目标有问题',
+        'needsScript = 该写讲稿了；needsReview = 讲稿通过校验、该评审了；validated = 讲稿与评审都齐了但还没出片；rendered = 成片已生成；fixScript = 讲稿有问题；blocked = 环境或目标有问题（缺浏览器时也走这里）',
     },
     nextHint: { type: 'string' },
     readingPath: { type: 'string' },
     scriptPath: { type: 'string' },
     htmlPath: { type: 'string', description: 'HTML 视图的落点（M6）：自包含的单文件页面' },
     htmlBytes: { type: 'integer', description: '页面字节数' },
+    videoPath: { type: 'string', description: '成片的落点（M7）：静音 mp4' },
+    videoBytes: { type: 'integer', description: '成片字节数' },
+    video: {
+      type: 'string',
+      enum: ['missing', 'stale', 'fresh'],
+      description: 'missing = 还没出片；stale = 出过但讲稿又改了；fresh = 对应当前这版讲稿（此时不会重渲）',
+    },
     reviewPath: { type: 'string', description: '评审结论的落点（M5，skill 第六步写到这里）' },
     review: {
       type: 'string',
@@ -111,6 +118,11 @@ const OUTPUT_SCHEMA = {
           properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
         },
         validate: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
+        },
+        render: {
           type: 'object',
           additionalProperties: false,
           properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
@@ -168,6 +180,8 @@ type CastLike = {
   readingPath: string;
   scriptPath: string;
   htmlPath: string;
+  videoPath: string;
+  video: string;
   dependencies: { name: string; ok: boolean; hint: string }[];
   stages: Record<string, { ok: boolean; ms: number; exitCode?: number; error?: string; detail?: string } | undefined>;
   reading?: {
@@ -240,6 +254,13 @@ function renderResult(value: CastLike): string {
   const missing = value.dependencies.filter((dependency) => !dependency.ok);
   for (const dependency of missing) lines.push(`缺依赖 ${dependency.name}：${dependency.hint}`);
 
+  const render = value.stages['render'];
+  if (render?.ok === true) {
+    lines.push(`成片：${value.videoPath}（静音 mp4）`);
+  } else if (render !== undefined) {
+    lines.push(`出片没成功：见上面的引导（成片路径是 ${value.videoPath}）。`);
+  }
+
   lines.push(value.nextHint);
   return lines.join('\n');
 }
@@ -250,7 +271,7 @@ function registerTool(ctx: Context): void {
   tools.register({
     name: 'foldercast_cast',
     description:
-      'Cast a folder into an explainer video: analyze it, build assets, render a self-contained HTML view, validate the script.',
+      'Cast a folder into an explainer video: analyze it, build assets, render a self-contained HTML view, validate the script, and (once the script has been reviewed) render a silent mp4.',
     timeoutMs: CAST_TIMEOUT_MS,
     parameters: {
       type: 'object',
@@ -264,6 +285,11 @@ function registerTool(ctx: Context): void {
           type: 'boolean',
           description: 'Skip the asset stage (faster; the script then cannot reference page images or keyframes).',
         },
+        skipRender: {
+          type: 'boolean',
+          description:
+            'Skip the render stage. Use it when you only need the reading and the HTML view: rendering needs a browser and takes minutes.',
+        },
       },
       required: ['path'],
     },
@@ -271,11 +297,12 @@ function registerTool(ctx: Context): void {
       schema: OUTPUT_SCHEMA,
       render: (_args: unknown, value: unknown) => [{ type: 'text', text: renderResult(value as CastLike) }],
     },
-    async execute(args: { path: string; skipAssets?: boolean }, exec: { signal: AbortSignal }) {
+    async execute(args: { path: string; skipAssets?: boolean; skipRender?: boolean }, exec: { signal: AbortSignal }) {
       const result = await cast({
         target: args.path,
         signal: exec.signal,
         skipAssets: args.skipAssets === true,
+        skipRender: args.skipRender === true,
       });
 
       // 只报不可用的依赖：都正常时这个数组是空的，模型不必读四条「没问题」
@@ -292,12 +319,15 @@ function registerTool(ctx: Context): void {
         readingPath: result.readingPath,
         scriptPath: result.scriptPath,
         htmlPath: result.htmlPath,
+        videoPath: result.videoPath,
         reviewPath: result.reviewPath,
         review: result.review,
+        video: result.video,
         dependencies: unavailable,
         stages: result.stages,
       };
       if (result.htmlBytes !== undefined) value.htmlBytes = result.htmlBytes;
+      if (result.videoBytes !== undefined) value.videoBytes = result.videoBytes;
       if (result.reading !== undefined) value.reading = result.reading;
       if (result.validation !== undefined) value.validation = result.validation;
 

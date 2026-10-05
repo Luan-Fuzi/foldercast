@@ -5,7 +5,7 @@
  * **插件交付的那个东西**，不是一份复制品。工具定义写错在这里就暴露，不必先装进 DSH。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { apply } from '../index.ts';
@@ -93,7 +93,7 @@ describe('注册的形状符合 DSH 的工具契约', () => {
 
   it('只有一个必需参数：目录路径', () => {
     expect(tool?.parameters.required).toEqual(['path']);
-    expect(Object.keys(tool?.parameters.properties ?? {}).sort()).toEqual(['path', 'skipAssets']);
+    expect(Object.keys(tool?.parameters.properties ?? {}).sort()).toEqual(['path', 'skipAssets', 'skipRender']);
     expect(tool?.parameters.additionalProperties).toBe(false);
   });
 
@@ -253,7 +253,10 @@ describe('有讲稿时跑校验', () => {
     expect((value?.validation as { blocker: number }).blocker).toBe(0);
   });
 
-  it('评审比讲稿新：validated', async () => {
+  // 评审通过之后**默认就出片**（`foldercast_cast` 的 `render` 默认 true），所以这两条要
+  // 真的起浏览器渲一遍。渲染夹具（3 个场景、约 30 秒片子）本机 5 秒左右，CI 上更慢，
+  // 所以给足 4 分钟：这不是「慢测试」，这是**出片这条路径确实要跑一遍**。
+  it('评审比讲稿新：validated（按 skipRender 只报状态，不出片）', async () => {
     const workRoot = join(source, '.foldercast');
     writeFileSync(join(workRoot, 'review.md'), '# 评审：通过\n');
     // 显式设 mtime：靠「谁后写」制造时间差，在文件系统时间戳精度粗的机器上会翻车（CI 上踩过：
@@ -261,11 +264,52 @@ describe('有讲稿时跑校验', () => {
     setMtimeAgo(join(workRoot, 'script.json'), 60);
     setMtimeAgo(join(workRoot, 'review.md'), 1);
 
-    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+    const value = await tool?.execute(
+      { path: source, skipAssets: true, skipRender: true },
+      { signal: new AbortController().signal },
+    );
 
     expect(value?.next).toBe('validated');
     expect(value?.review).toBe('fresh');
+    expect((value?.stages as Record<string, unknown>).render).toBeUndefined();
   });
+
+  it(
+    '评审比讲稿新：默认出片（rendered，成片落在 out/video.mp4）',
+    { timeout: 240_000 },
+    async () => {
+      const workRoot = join(source, '.foldercast');
+      writeFileSync(join(workRoot, 'review.md'), '# 评审：通过\n');
+      setMtimeAgo(join(workRoot, 'script.json'), 60);
+      setMtimeAgo(join(workRoot, 'review.md'), 1);
+
+      const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+
+      const videoPath = join(workRoot, 'out', 'video.mp4');
+      const render = (value?.stages as Record<string, { ok?: boolean }>).render;
+
+      if (value?.next === 'rendered') {
+        expect(existsSync(videoPath)).toBe(true);
+        expect(statSync(videoPath).size).toBeGreaterThan(20_000);
+        expect(value?.videoPath).toBe(videoPath);
+        expect(value?.video).toBe('fresh');
+        expect(render?.ok).toBe(true);
+
+        // 再调一次**不许重渲**：成片比讲稿新，直接报现状（渲染是最贵的一步）
+        const again = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+        expect(again?.next).toBe('rendered');
+        expect((again?.stages as Record<string, unknown>).render).toBeUndefined();
+        expect(Number(again?.videoBytes)).toBe(statSync(videoPath).size);
+        return;
+      }
+
+      // 没有浏览器的机器：这一步**必须**给出结构化引导，而不是一句失败（C4 的判据）。
+      // 这条分支在 CI 上是有意义的覆盖，不是「跳过」。
+      expect(value?.next).toBe('blocked');
+      expect(String(value?.nextHint)).toContain('渲染需要浏览器');
+      expect(String(value?.nextHint)).toContain('remotion browser ensure');
+    },
+  );
 
   it('评审比讲稿旧：当作没审（讲稿改了，旧结论作废）', async () => {
     const workRoot = join(source, '.foldercast');

@@ -109,7 +109,7 @@ describe('工具 schema 落在宿主支持的子集内', () => {
     const found: string[] = [];
     violationsIn(tool.output.schema, 'output.schema', found);
     const stages = (tool.output.schema as { properties: { stages: { properties: Record<string, unknown> } } }).properties.stages;
-    expect(Object.keys(stages.properties)).toEqual(['analyze', 'assets', 'html', 'validate']);
+    expect(Object.keys(stages.properties)).toEqual(['analyze', 'assets', 'html', 'validate', 'render']);
   });
 
   it('白名单本身能拦住类型数组（负向用例）', () => {

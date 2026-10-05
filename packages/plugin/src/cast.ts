@@ -1,11 +1,13 @@
 /**
- * `foldercast_cast` 的编排：目录 → 解读 → 素材 → 校验，一次调用把**事实层**做完。
+ * `foldercast_cast` 的编排：目录 → 解读 → 素材 → （有讲稿就）校验 → 评审通过后出片，
+ * 一次调用把**确定性部分**做完。
  *
  * 边界（ADR 0008）：**编排层是模型，不是这个工具**。工具只做确定性的部分，并把
- * 「接下来该做什么」作为结构化结果返回 —— 写稿要判断，它做不了，所以它停在
- * `needsScript` 上，把 `script.json` 的路径与要求交回给 agent。
+ * 「接下来该做什么」作为结构化结果返回 —— 写稿与评审要判断，它做不了，所以它停在
+ * `needsScript` / `needsReview` 上，把路径与要求交回给 agent。
  *
- * 渲染（M7）与配音（M8）还没实现，所以工具不声称做完了整条管线，只报告自己做到哪。
+ * 渲染（M7）需要浏览器，是唯一可能因环境而不可用的一步：缺浏览器时**不静默下载**，
+ * 返回结构化引导（`next: blocked`），其余阶段照常。配音（M8）尚未实现。
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
@@ -17,6 +19,7 @@ import {
   runStage,
   scriptPathFor,
   scriptsInstalled,
+  videoPathFor,
   workRootFor,
   type Dependency,
   type RunResult,
@@ -29,20 +32,38 @@ import {
  * 改过讲稿之后旧评审就作废了，这一点不查就会被当成「审过了」。
  */
 function reviewState(reviewPath: string, scriptPath: string): 'missing' | 'stale' | 'fresh' {
-  const review = statSync(reviewPath, { throwIfNoEntry: false });
-  if (review === undefined) return 'missing';
-  const script = statSync(scriptPath, { throwIfNoEntry: false });
-  if (script === undefined) return 'stale';
-
-  return review.mtimeMs >= script.mtimeMs ? 'fresh' : 'stale';
+  return freshness(reviewPath, scriptPath);
 }
 
-/** 各阶段的预算。素材阶段最慢（要起 LibreOffice 引擎），其余都很快。 */
-const TIMEOUT_MS: Readonly<Record<'analyze' | 'assets' | 'validate' | 'html', number>> = {
+/**
+ * 成片的状态（M7）。**渲染是最贵的一步**（本机 5 分钟的片子要 20 分钟），所以「已经出过片
+ * 且讲稿没再改」时直接报状态、**不重渲**。判据与评审相同：产物 mtime ≥ 讲稿 mtime 即 fresh。
+ *
+ * 这一条不做，agent 每次调工具都会重渲一遍整片 —— 那既费时间，也让「出片」变成不可预期的重活。
+ */
+function videoState(videoPath: string, scriptPath: string): 'missing' | 'stale' | 'fresh' {
+  return freshness(videoPath, scriptPath);
+}
+
+/** 产物是否比源新。两边都用 mtime，与评审那一套保持一致。 */
+function freshness(productPath: string, sourcePath: string): 'missing' | 'stale' | 'fresh' {
+  const product = statSync(productPath, { throwIfNoEntry: false });
+  if (product === undefined) return 'missing';
+  const source = statSync(sourcePath, { throwIfNoEntry: false });
+  if (source === undefined) return 'stale';
+  return product.mtimeMs >= source.mtimeMs ? 'fresh' : 'stale';
+}
+
+/**
+ * 各阶段的预算。素材阶段最慢（要起 LibreOffice 引擎），**渲染阶段最久**：本机实测
+ * 1920×1080 大约 7 帧/秒，5 分钟的片子（9000 帧）要 20 分钟出头，所以给足 40 分钟。
+ */
+const TIMEOUT_MS: Readonly<Record<'analyze' | 'assets' | 'validate' | 'html' | 'render', number>> = {
   analyze: 300_000,
   assets: 600_000,
   validate: 120_000,
   html: 120_000,
+  render: 2_400_000,
 };
 
 export type StageReport = {
@@ -73,9 +94,9 @@ export type CastResult = {
   label: string;
   /**
    * 接下来该做什么：写稿（`needsScript`）、评审（`needsReview`）、讲稿要改（`fixScript`）、
-   * 都完成（`validated`）、环境或目标有问题（`blocked`）。
+   * 讲稿审过但还没出片（`validated`）、出片完成（`rendered`）、环境或目标有问题（`blocked`）。
    */
-  next: 'needsScript' | 'needsReview' | 'validated' | 'fixScript' | 'blocked';
+  next: 'needsScript' | 'needsReview' | 'validated' | 'rendered' | 'fixScript' | 'blocked';
   /** 给模型看的一句话下一步。 */
   nextHint: string;
   readingPath: string;
@@ -84,11 +105,23 @@ export type CastResult = {
   htmlPath: string;
   /** 页面的字节数；没生成成功时不出现在结果里。 */
   htmlBytes?: number;
+  /** 成片的落点（M7）：静音 mp4。 */
+  videoPath: string;
+  /** 成片的字节数；没渲染成功时不出现在结果里。 */
+  videoBytes?: number;
+  /** 成片的状态：`missing` 还没出片、`stale` 出过但讲稿又改了、`fresh` 对应当前这版讲稿。 */
+  video: 'missing' | 'stale' | 'fresh';
   /** 评审结论的落点（M5）。有没有、是否比讲稿旧，看 `review`。 */
   reviewPath: string;
   /** 评审结论的状态：`missing` 还没审、`stale` 审过但讲稿又改了、`fresh` 审的是当前这版。 */
   review: 'missing' | 'stale' | 'fresh';
-  stages: { analyze: StageReport; assets?: StageReport; html?: StageReport; validate?: StageReport };
+  stages: {
+    analyze: StageReport;
+    assets?: StageReport;
+    html?: StageReport;
+    validate?: StageReport;
+    render?: StageReport;
+  };
   dependencies: Dependency[];
   reading?: {
     files: number;
@@ -185,6 +218,11 @@ export type CastOptions = {
   assetLimit?: number;
   /** 跳过素材阶段，只做分析与校验。 */
   skipAssets?: boolean;
+  /**
+   * 跳过渲染阶段。评审通过后默认就出片；`skipRender` 用于「只要事实层与页面」的场合
+   * （快很多：本机 5 分钟的片子要 20 分钟渲染）。
+   */
+  skipRender?: boolean;
 };
 
 /**
@@ -205,6 +243,8 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     readingPath: readingPathFor(target),
     scriptPath: scriptPathFor(target),
     htmlPath: htmlPathFor(target),
+    videoPath: videoPathFor(target),
+    video: videoState(videoPathFor(target), scriptPathFor(target)),
     reviewPath: reviewPathFor(target),
     review: reviewState(reviewPathFor(target), scriptPathFor(target)),
     dependencies,
@@ -355,18 +395,114 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     };
   }
 
+  // ── 渲染（M7，评审通过才跑） ─────────────────────────
+  // 出片是「讲稿 + 评审都齐了」之后才有意义的一步，所以放在最后。缺浏览器是**预期内的
+  // 环境状态**：不静默下载，把渲染脚本给出的结构化引导原样交回给模型。
+  if (options.skipRender === true) {
+    return {
+      ok: true,
+      ...base,
+      ...withHtml,
+      next: 'validated',
+      nextHint:
+        `解读、讲稿与评审都齐了（${String(validation.warning)} 个待确认项），按 skipRender 跳过了出片。` +
+        `要出片就再调一次 foldercast_cast（不传 skipRender），或用 pnpm render ${target}。`,
+      stages: allStages,
+      reading: readingSummary,
+      validation,
+    };
+  }
+
+  // 已经出过片、讲稿没再改 → 不重渲，直接报现状。想强制重出就先把成片删掉。
+  if (base.video === 'fresh') {
+    const existing = statSync(base.videoPath, { throwIfNoEntry: false });
+    return {
+      ok: true,
+      ...base,
+      ...withHtml,
+      ...(existing === undefined ? {} : { videoBytes: existing.size }),
+      next: 'rendered',
+      nextHint:
+        `成片已经是最新的：${base.videoPath}（静音 mp4）。讲稿没改就不必重渲；` +
+        `改了讲稿再调一次即可（旧成片会被覆盖）。`,
+      stages: allStages,
+      reading: readingSummary,
+      validation,
+    };
+  }
+
+  const renderRun = await runStage('render', {
+    args: [target, '--json'],
+    timeoutMs: TIMEOUT_MS.render,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  const render = reportOf(renderRun);
+  const renderStages = { ...allStages, render };
+  const videoStat = statSync(base.videoPath, { throwIfNoEntry: false });
+  const withVideo = videoStat === undefined ? {} : { videoBytes: videoStat.size };
+
+  if (renderRun.cancelled === true) {
+    return {
+      ok: false,
+      ...base,
+      ...withHtml,
+      next: 'blocked',
+      nextHint: '已取消（渲染到一半，成片可能不完整；重跑即可覆盖）。',
+      stages: renderStages,
+      reading: readingSummary,
+      validation,
+    };
+  }
+
+  if (!renderRun.ok || videoStat === undefined) {
+    // `browser` 依赖不可用是这一步最常见的失败原因，且退出码 3 就是它的专用信号。
+    const guidance = browserGuidance(renderRun) ?? explainRender(renderRun);
+    return {
+      ok: false,
+      ...base,
+      ...withHtml,
+      ...withVideo,
+      next: 'blocked',
+      nextHint: guidance,
+      stages: renderStages,
+      reading: readingSummary,
+      validation,
+    };
+  }
+
   return {
     ok: true,
     ...base,
     ...withHtml,
-    next: 'validated',
+    ...withVideo,
+    // 刚渲完，成片一定比讲稿新 —— 状态要按**渲染之后**的磁盘情况报，不能用函数开头那份
+    // （那里还是 missing/stale，报出去会让调用方以为没出片）
+    video: 'fresh',
+    next: 'rendered',
     nextHint:
-      `解读、讲稿与评审都齐了（${String(validation.warning)} 个待确认项）。` +
-      `页面在 ${base.htmlPath}（用浏览器打开），视频与配音尚未实现（M7 / M8）。`,
-    stages: allStages,
+      `成片已生成：${base.videoPath}（${String(Math.round(videoStat.size / 1024))} KB，静音）。` +
+      `配音还没做（M8）：要加旁白就装好 TTS provider 后重跑配音阶段。` +
+      `讲稿改了要重新出片 —— 再调一次 foldercast_cast 即可。`,
+    stages: renderStages,
     reading: readingSummary,
     validation,
   };
+}
+
+/** 渲染脚本缺浏览器时会把引导写在 stderr/stdout 里；把它原样交给模型。 */
+function browserGuidance(result: RunResult): string | undefined {
+  const text = `${result.stdout}\n${result.stderr}`;
+  if (!text.includes('渲染需要浏览器')) return undefined;
+  const start = text.indexOf('渲染需要浏览器');
+  return text.slice(start).trim();
+}
+
+/** 渲染失败的兜底说明：把脚本最后几行交回去，别只说一句「失败了」。 */
+function explainRender(result: RunResult): string {
+  const detail = summaryOf(result);
+  return detail === undefined
+    ? `渲染阶段失败（退出码 ${String(result.exitCode)}）。`
+    : `渲染阶段失败（退出码 ${String(result.exitCode)}）：\n${detail}`;
 }
 
 /**

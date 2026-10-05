@@ -15,6 +15,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveBrowser } from '../scripts/renderer/browser.ts';
 
 /** 本文件所在目录：开发时是 `<包根>/src`，发布版编译后在 `<包根>/lib/src`。 */
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
@@ -43,7 +44,7 @@ export function findPackageRoot(start: string): string | undefined {
 /** 包根：脚本、随包 schema、依赖的 bin 都相对它定位。 */
 export const PACKAGE_ROOT = findPackageRoot(MODULE_DIR) ?? resolve(MODULE_DIR, '..');
 
-export type StageName = 'analyze' | 'assets' | 'validate' | 'html';
+export type StageName = 'analyze' | 'assets' | 'validate' | 'html' | 'render';
 
 /** 阶段脚本所在子目录，两套布局下同名。 */
 const STAGE_DIR: Readonly<Record<StageName, string>> = {
@@ -52,6 +53,9 @@ const STAGE_DIR: Readonly<Record<StageName, string>> = {
   validate: 'validate',
   // HTML 视图（M6）：只读解读与素材，产出单文件页面。确定性程序，所以归工具做
   html: 'html',
+  // 渲染（M7）：讲稿 + 素材 → 静音 mp4。需要浏览器，所以是唯一一个可能因环境缺失而失败
+  // 的确定性阶段（其余阶段缺浏览器照跑）
+  render: 'renderer',
 };
 
 /** 这份 Node 能不能直接跑 TypeScript（类型剥离，22.19 起默认开）。 */
@@ -125,11 +129,16 @@ export function htmlPathFor(target: string): string {
   return resolve(workRootFor(target), 'out', 'index.html');
 }
 
+/** 成片的落点（M7）。与 HTML 视图同一个出口目录，渲染阶段不传 `--out` 时就是它。 */
+export function videoPathFor(target: string): string {
+  return resolve(workRootFor(target), 'out', 'video.mp4');
+}
+
 export function reviewPathFor(target: string): string {
   return resolve(workRootFor(target), 'review.md');
 }
 
-export type DependencyName = 'node' | 'dsoffice' | 'ffmpeg' | 'sips';
+export type DependencyName = 'node' | 'dsoffice' | 'ffmpeg' | 'sips' | 'browser';
 
 export type Dependency = {
   name: DependencyName;
@@ -191,6 +200,21 @@ function hasExecutable(command: string, versionFlag: string): Promise<boolean> {
 }
 
 /**
+ * 找浏览器：系统 Chrome / Chromium / Edge，或 Remotion 已经下过的 Headless Shell。
+ *
+ * 与渲染脚本共用同一份判据（`scripts/renderer/browser.ts`），所以「插件说可用」与
+ * 「渲染真能跑」不会打架。**这里不下载**：探测只做文件存在性检查。
+ */
+function findBrowser(): { name: string; path: string } | undefined {
+  try {
+    const found = resolveBrowser(process.env['FOLDERCAST_BROWSER']);
+    return found.kind === 'found' ? { name: found.name, path: found.path } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * 首次调用时探测环境。
  *
  * **只有 Node 与随包脚本是硬条件**：其余缺失都降级（office/pdf 素材、视频关键帧），
@@ -202,6 +226,7 @@ export async function detectDependencies(): Promise<Dependency[]> {
   const nodeOk = canStripTypes();
 
   const dsoffice = dsofficePath();
+  const browser = findBrowser();
   const deps: Dependency[] = [
     {
       name: 'node',
@@ -231,6 +256,17 @@ export async function detectDependencies(): Promise<Dependency[]> {
       ok: await hasExecutable('sips', '-h'),
       required: false,
       hint: 'sips 是 macOS 自带的图片工具；其他平台会把图片缩放回退到 ffmpeg。',
+    },
+    {
+      name: 'browser',
+      ok: browser !== undefined,
+      required: false,
+      // **不是硬条件**：缺浏览器时分析、素材、校验、页面都能跑，只有出片不能（C4）。
+      // 所以这里只如实报告，不触发下载（下载由用户决定，150–300 MB）。
+      hint:
+        browser === undefined
+          ? '出片需要浏览器（Remotion 用它排版）。装 Google Chrome / Chromium / Edge，或跑 npx remotion browser ensure 让 Remotion 下载，或用 FOLDERCAST_BROWSER 指定路径。只影响出片。'
+          : `出片可用（${browser.name}）。`,
     },
   ];
 

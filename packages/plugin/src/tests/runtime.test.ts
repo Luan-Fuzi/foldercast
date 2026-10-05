@@ -112,5 +112,7 @@ describe.skipIf(!existsSync(BUILT_RUNTIME))('编译产物', () => {
     expect(existsSync(built.stageEntryPath('analyze'))).toBe(true);
     expect(existsSync(built.stageEntryPath('assets'))).toBe(true);
     expect(existsSync(built.stageEntryPath('validate'))).toBe(true);
+    expect(existsSync(built.stageEntryPath('html'))).toBe(true);
+    expect(existsSync(built.stageEntryPath('render'))).toBe(true);
   });
 });

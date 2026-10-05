@@ -48,6 +48,33 @@ jobs:
       - name: 生成 HTML 视图
         run: pnpm run html .
 
+      # 出片要浏览器，**这一层 CI 里不装**：缺浏览器时渲染阶段必须给出结构化引导并退出 3，
+      # 这里正好验那条路径（也验证「缺浏览器不影响别的阶段」）。真出片由本机验收，
+      # 判据与证据记在 docs/ROADMAP.md 的 M7 记录里。
+      - name: 无浏览器时的渲染引导
+        run: |
+          pnpm run render . --check
+          # 拿仓库自己的解读现写一份最小讲稿：`script.json` 是创作产物，不进版本库
+          node -e '
+            const fs = require("node:fs");
+            const reading = JSON.parse(fs.readFileSync(".foldercast/foldercast.json", "utf8"));
+            const file = reading.manifest.find((entry) => entry.kind === "code") ?? reading.manifest[0];
+            fs.writeFileSync(".foldercast/script.json", JSON.stringify({
+              foldercast: 1,
+              source: { root: reading.source.root },
+              scenes: [
+                { id: "cover", type: "cover", title: "本仓库", narration: "这是 foldercast 自己的目录。" },
+                { id: "entry", type: "file", title: "一个源文件", file: file.path, narration: "随便挑一个文件讲一句。" },
+                { id: "outro", type: "outro", title: "完", narration: "就这些。" }
+              ]
+            }, null, 2));
+          '
+          set +e
+          pnpm run render . --json
+          code=$?
+          set -e
+          test "$code" = "3" || { echo "缺浏览器时应当退出 3，实际是 $code"; exit 1; }
+
       - name: 检查相对链接
         run: pnpm run check:links
 

@@ -11,7 +11,8 @@ export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 
 /**
  * 遍历时跳过的目录名：依赖、生成物、版本库、测试夹具。
  * `assets/` 与 `.foldercast/` 是可重算的产物（见 .gitignore），不参与检查。
- * `fixtures/` 是分析器的输入样本，里面**故意**有坏链接与密钥文件名，不能按仓库文档检查。
+ * `fixtures/` 是测试的输入样本（分析器要分析的目录、校验器要报错的讲稿），里面**故意**有
+ * 坏链接、密钥文件名与不存在的路径，不能按仓库文档检查。
  */
 export const SKIP_DIRS: ReadonlySet<string> = new Set([
   '.git',

@@ -30,6 +30,13 @@ jobs:
       - name: 单元与集成测试
         run: pnpm run test
 
+      # 拿仓库自身当用例跑一遍工具链：分析器产出的解读必须能过契约校验。
+      # 解读不进版本库（可重算），所以这里先生成再校验。
+      - name: 分析本仓库并校验解读
+        run: |
+          pnpm run analyze .
+          pnpm run validate .
+
       - name: 检查相对链接
         run: pnpm run check:links
 

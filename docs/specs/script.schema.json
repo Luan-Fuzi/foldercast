@@ -7,6 +7,42 @@
   "required": ["foldercast", "source", "scenes"],
   "additionalProperties": false,
 
+  "allOf": [
+    {
+      "$comment": "每种场景除 id / type / narration 之外的必需字段，与 SPEC-data-format.md 的「场景类型清单（MVP）」那张表一致。这里用条件约束表达，是校验器报出的「缺哪个字段」的依据。",
+      "if": { "type": "object", "properties": { "type": { "const": "cover" } }, "required": ["type"] },
+      "then": { "required": ["title"] }
+    },
+    {
+      "if": { "type": "object", "properties": { "type": { "const": "tree" } }, "required": ["type"] },
+      "then": { "required": ["highlight"] }
+    },
+    {
+      "if": { "type": "object", "properties": { "type": { "const": "inventory" } }, "required": ["type"] },
+      "then": { "required": ["groups"] }
+    },
+    {
+      "if": { "type": "object", "properties": { "type": { "const": "file" } }, "required": ["type"] },
+      "then": { "required": ["file"] }
+    },
+    {
+      "if": { "type": "object", "properties": { "type": { "const": "gallery" } }, "required": ["type"] },
+      "then": { "required": ["items"] }
+    },
+    {
+      "if": { "type": "object", "properties": { "type": { "const": "clip" } }, "required": ["type"] },
+      "then": { "required": ["source"] }
+    },
+    {
+      "if": { "type": "object", "properties": { "type": { "const": "document" } }, "required": ["type"] },
+      "then": { "required": ["source", "pages"] }
+    },
+    {
+      "if": { "type": "object", "properties": { "type": { "const": "outro" } }, "required": ["type"] },
+      "then": { "required": ["title"] }
+    }
+  ],
+
   "$defs": {
     "kind": {
       "description": "文件内容类别。场景引用文件时用于说明类型。",

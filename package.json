@@ -16,6 +16,7 @@
     "check:examples": "node scripts/check-examples.ts",
     "analyze": "node packages/plugin/scripts/analyzer/main.ts",
     "assets": "node packages/plugin/scripts/assets/main.ts",
+    "validate": "node packages/plugin/scripts/validate/main.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

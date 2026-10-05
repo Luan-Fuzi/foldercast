@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foldercast.dev/schema/durations-1.json",
+  "title": "foldercast 配音时长表",
+  "description": "阶段③（配音）的产物：逐场景音频、ffprobe 实测时长、字幕块时序。它是可重算的缓存，不是创作产物；形状与语义见 docs/specs/SPEC-data-format.md 第四节。",
+  "type": "object",
+  "required": ["durations", "generatedAt", "provider", "track", "pause", "scenes"],
+  "additionalProperties": false,
+
+  "properties": {
+    "durations": {
+      "type": "integer",
+      "const": 1,
+      "description": "格式版本。破坏性变更时递增。"
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+
+    "provider": {
+      "type": "string",
+      "description": "实际使用的 provider。它可能覆盖解读里的 voice 配置（例如自动挑了中文音色）。"
+    },
+    "voice": {
+      "type": "string",
+      "description": "实际使用的音色。provider 内的字符串，不做跨 provider 统一枚举。"
+    },
+    "style": { "type": "string", "description": "实际传入的「怎么读」描述，原样记录。" },
+
+    "track": {
+      "type": "string",
+      "description": "拼好的整条旁白音轨，相对工作根。长度等于所有场景 duration 之和。"
+    },
+    "pause": {
+      "type": "number",
+      "minimum": 0,
+      "description": "每个场景末尾的留白（秒）。duration = audioSec + pause。"
+    },
+
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "audio", "audioSec", "duration", "subs"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "description": "对应讲稿里的场景 id。" },
+          "audio": { "type": "string", "description": "音频路径，相对工作根。" },
+          "audioSec": { "type": "number", "exclusiveMinimum": 0, "description": "ffprobe 实测时长（秒）。" },
+          "duration": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "这个场景在成片里占多久（秒）= audioSec + pause。帧号换算以它为准。"
+          },
+          "subs": {
+            "type": "array",
+            "description": "字幕块与各自的时长：[文本, 秒]。切分与校验器、渲染器共用 contracts/subtitles.ts。",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": [{ "type": "string" }, { "type": "number", "exclusiveMinimum": 0 }]
+            }
+          }
+        }
+      }
+    }
+  }
+}

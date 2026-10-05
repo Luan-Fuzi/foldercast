@@ -36,7 +36,7 @@ export function textWidth(text: string): number {
 }
 
 /** 宽度的一半，整数。用于比较，避免 0.1 + 0.2 那类误差。 */
-function halfWidthUnits(text: string): number {
+export function halfWidthUnits(text: string): number {
   let units = 0;
   for (const char of text) units += CJK.test(char) ? 2 : 1;
   return units;

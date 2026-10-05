@@ -8,7 +8,7 @@
  * 讲稿是**创作产物**：重跑会得到不同结果，删了就丢了。所以这里的类型只描述形状，
  * 判据（路径是否存在、字幕是否超长）在 `scripts/validate/` 里查。
  */
-import type { Kind, StyleSpec, VideoSpec } from './foldercast.ts';
+import type { Kind, StyleSpec, VideoSpec, VoiceSpec } from './foldercast.ts';
 
 /** 场景类型。开放枚举：渲染器遇到不认识的类型应跳过并警告，而不是崩溃。 */
 export const SCENE_TYPES = [
@@ -120,5 +120,10 @@ export type ScriptDocument = {
   video?: VideoSpec;
   /** 风格：预设名 + token 覆盖。渲染阶段（M7）读它，见 docs/specs/SPEC-data-format.md 第一节。 */
   style?: StyleSpec;
+  /**
+   * 配音配置：provider + 音色 + 风格。配音阶段（M8）读它，**讲稿这一份优先于解读里的**。
+   * 密钥不放这里（只放引用名），值走凭据 seam（C6）。
+   */
+  voice?: VoiceSpec;
   scenes: Scene[];
 };

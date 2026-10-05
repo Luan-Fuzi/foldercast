@@ -43,6 +43,7 @@
     "validate": "node scripts/validate/main.ts",
     "html": "node scripts/html/main.ts",
     "render": "node scripts/renderer/main.ts",
+    "voice": "node scripts/voice/main.ts",
     "sync-schemas": "node scripts/tools/sync-schemas.ts",
     "prepack": "node scripts/tools/sync-schemas.ts && pnpm run build",
     "test": "vitest run",

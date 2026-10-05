@@ -338,7 +338,7 @@ ctx.tools.register(defineTool({
 - 监听并处理子进程的 `'exit'` 与 `'close'`
 - 不留下悬空的 Promise
 
-### 3.8 六条实测结论（M4，本机 DSH `0.2.0-rc.2`）
+### 3.8 八条实测结论（M4，本机 DSH `0.2.0-rc.2`）
 
 这些都是「写的时候看不出来、装上去才炸」的坑。每条都给出了证据与做法。
 
@@ -391,6 +391,33 @@ dsh: UNKNOWN: Cannot read properties of undefined (reading 'prepare')
 `ignore`、`ajv`、`ajv-formats`、`jsonc-parser` 都能从仓库根的 `node_modules` 解析到，
 所以本机全绿；装到别处才 `ERR_MODULE_NOT_FOUND`。**做法**：守卫测试用 TypeScript 解析器
 扫 `scripts/` 与 `src/` 的 import，裸包名必须在 `dependencies` 里（`src/tests/dependencies.test.ts`）。
+
+**7. 包根不能靠「上一级目录」算 —— 编译产物比源码深一层。**
+`resolve(MODULE_DIR, '..')` 在源码布局（`<包根>/src`）下是对的，装上去跑编译产物
+（`<包根>/lib/src`）时算成 `<包根>/lib`，于是随包脚本「全部找不到」，工具直接报
+`插件包不完整，缺少：scripts/analyzer/main.ts …`。仓库内测试都从 `src/` import，**永远看不出这个错**。
+（M4 首版就是这么写的，装进 desktop profile 才暴露。）做法两条：
+
+- 包根用**上溯找 `package.json`**（`findPackageRoot()`），与校验器定位 schema 的 `findUp` 同一套
+- 阶段入口按布局选：`link:` 装法把软链解析回仓库真实路径，跑 `scripts/<阶段>/main.ts`（改完不用重建）；
+  真正落在 `node_modules` 里时跑 `lib/scripts/<阶段>/main.js`（那里不允许类型剥离，见第 1 条）
+- 守卫测试**从 `lib/` 加载一次编译产物**再断言包根与入口（`src/tests/runtime.test.ts`），
+  CI 里构建排在测试之前，所以这条必定执行
+
+同理，可选依赖 `dsoffice` 的 `bin` 也不能只认 `<包根>/node_modules/.bin`：pnpm 会建在包自己的
+`node_modules` 下，**npm 会把它提升到根**。所以再按包名解析一次 `@deepseek-ai/libreoffice-kit`
+的 `bin` 字段兜底。
+
+**8. 条目代码不会热加载，改 `src/` 要重启宿主。**
+Cordis 加载器是裸 `await import(url)`（`cordis-plugin-loader/lib/index.js` 的 `import(name)`），
+没有查询串、也没有缓存失效，`ctx.loader.internal` 在 DSH 里没有实现。实测：改完 `src/` 重新构建、
+把插件停用再启用、再调工具 —— 报的还是旧代码的错误。**这与 HMR 无关**（desktop profile 的 `hmr`
+行是激活的）。
+
+反过来，**阶段脚本不受影响**：它们每次都是新起的子进程，改 `scripts/` 立即生效。
+所以开发期的循环是「改 `scripts/` → 直接试；改 `src/` → 重启」。宿主是 Electron 也没问题：
+子进程用 `process.execPath`（Electron 二进制）+ 继承来的 `ELECTRON_RUN_AS_NODE=1`，
+实测该运行时是 Node 24.18.1、类型剥离可用，`scripts/*/main.ts` 照常跑。
 
 ---
 
@@ -552,11 +579,13 @@ ttsKeyRef: z.string().default('MIMO_API_KEY').volatile()   // 引用名，不是
 |---|---|---|---|
 | Web 侧边栏「插件」页 | 人 | 无（界面操作） | 文档记载 |
 | `dsh plugin --profile <name> add <pkg>` | 人（终端） | 无（就是 pnpm） | 已实测（命令存在、行为如文档） |
-| 对话里让 agent 调 `plugin_manager` | 模型 | `danger-full-access` 或本次调用的批准 | 文档记载；**本机该工具默认关闭**，见 7.3 |
+| 对话里让 agent 调 `plugin_manager` | 模型 | `danger-full-access` 或本次调用的批准 | ✅ 已实测（2026-10-05 装进 desktop profile：`install_bundle` 传 `link:` spec，装完**当场**工具就出现在会话里）；**该工具默认关闭**，见 7.3 |
 
 **foldercast 的安装说明应该写前两条**，不要依赖第三条。
 
-启用/停用同样走前两条：Web 插件页管理组合包与「能唯一定位的行」，或直接改 profile 的 `cordis.patch.yml`。改动**影响该 profile 的所有会话**。开 HMR 时立即生效，否则等重启。
+启用/停用同样走前两条：Web 插件页管理组合包与「能唯一定位的行」，或直接改 profile 的 `cordis.patch.yml`。改动**影响该 profile 的所有会话**。
+
+生效时机要分两件事（见 §3.8 第 8 条）：**增删条目/改配置**是即时的（装了工具当场就能用）；**模块代码**（`src/` 编译产物）不会重新加载，要重启宿主 —— 即使 HMR 是开的。
 
 ### 7.2 权限是三层的，不是一层
 
@@ -599,6 +628,8 @@ presets:
 ### 7.4 注册依赖平台与客户端
 
 **Desktop profile 由 Electron 独占管理**，`dsh --profile desktop --dump-config` 直接报错 `profile "desktop" is managed exclusively by the Electron application`。当前桌面 App 用的就是它（`DSH_PROFILE=desktop`）。
+
+**所以要改它只能走会话内的 `plugin_manager`**（它操作的就是当前 profile，不是另起一个）：实测 `install_bundle` 把 `link:` 依赖写进 `~/.dsh/profiles/desktop/package.json` 并加入 `dsh.profile.bundles`，当场激活。CLI 那条路走不通。
 
 **CLI 里没有 UI 插槽。** `dsh web` / `dsh tui` / `dsh headless` 从同一 profile 加载同一套插件，工具都能用，但插槽是 Web 客户端机制，TUI 与 headless 不渲染。
 

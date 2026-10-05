@@ -201,7 +201,7 @@ pnpm validate <目录> --json     # 机器可读报告（M4 的工具与 CI 用�
 **skill 怎么发**：`ctx.skills.register()` 注册**内存 skill**，随包走 —— 不需要往用户的项目目录里放
 文件，装到哪台机器上都有效。
 
-**六条实测结论**（都写进了 [INTEGRATION](INTEGRATION-dsh-plugin.md)，本机 DSH `0.2.0-rc.2`）：
+**八条实测结论**（都写进了 [INTEGRATION](INTEGRATION-dsh-plugin.md)，本机 DSH `0.2.0-rc.2`）：
 
 1. **插件入口可以直接是 `.ts`**，但**只在仓库内开发时成立**：Node 拒绝在 `node_modules` 里剥离
    类型（`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`，实测 v26.8.1）。所以**发布版必须编译**：
@@ -218,6 +218,12 @@ pnpm validate <目录> --json     # 机器可读报告（M4 的工具与 CI 用�
 5. **`exec.signal` 可能在调用前就已取消**：不先查 `signal.aborted` 就 spawn，监听器永远等不到事件。
 6. **依赖漏声明在本机看不出来**：`ignore`、`ajv`、`ajv-formats`、`jsonc-parser` 都能从仓库根的
    `node_modules` 解析到，只有装到别处才会 `ERR_MODULE_NOT_FOUND`。加了守卫测试。
+7. **包根不能靠「上一级目录」算**：编译产物比源码深一层（`src` vs `lib/src`），原来的
+   `resolve(MODULE_DIR, '..')` 在装上去之后把包根算成 `lib/`，随包脚本「全部找不到」。
+   改成上溯找 `package.json`，阶段入口按「在不在 `node_modules` 里」选 `.ts` / `lib/**/*.js`。
+8. **条目代码不会热加载**（加载器是裸 `import()`，没有缓存失效）：改 `src/` 要重启宿主；
+   阶段脚本是子进程，改 `scripts/` 立即生效。宿主是 Electron 也不影响 —— 子进程继承
+   `ELECTRON_RUN_AS_NODE=1`，实测该运行时是 Node 24.18.1、类型剥离可用。
 
 **验收（2026-10-05 实测）**
 
@@ -229,6 +235,17 @@ pnpm validate <目录> --json     # 机器可读报告（M4 的工具与 CI 用�
 
 **另外验过的**：打包装到仓库外（临时目录）后 —— 入口 `lib/src/index.js` 能被 import 并注册工具、
 随包脚本以 JS 正常运行、校验器从**包内** `schemas/` 解析契约。包内容 48 个文件，不含测试与产物。
+
+**装进 desktop profile 时又抓到一处（2026-10-05 补）**：M4 的验收是在隔离 profile 里用 CLI 跑的，
+那时插件入口还是 `.ts`；后来为了让发布版能跑而把入口改成 `lib/src/index.js`，**这一改把包根算错了**
+（第 7 条）。仓库内测试全绿、隔离 profile 的结论也没错——两边都是源码布局，看不出问题。
+装进 desktop profile（`link:` 安装）后工具直接报「插件包不完整」。
+
+修法：包根改为上溯找 `package.json`；阶段入口按布局选（仓库内跑 `scripts/*/main.ts`，
+落在 `node_modules` 里跑 `lib/scripts/*/main.js`）；可选依赖 `dsoffice` 增加按包名解析的兜底。
+新增守卫测试**从 `lib/` 加载编译产物**再断言（`src/tests/runtime.test.ts`），CI 里构建提前到测试之前。
+修复后在 desktop 运行时（Electron 44 / Node 24.18、`ELECTRON_RUN_AS_NODE=1`）里两条分支各跑通一次：
+`link:` 安装跑 `.ts` 源码、tarball 安装跑包内 `lib/**/*.js`，都返回 `next: needsScript` 的正确解读。
 
 **这一步才做骨架的理由**：骨架/技能只服务于「让 agent 调脚本」。先有脚本，才有东西可调。
 

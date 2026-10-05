@@ -8,8 +8,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AssetManifest } from '../contracts/assets.ts';
+import type { DurationsDocument } from '../contracts/durations.ts';
 import type { FoldercastDocument } from '../contracts/foldercast.ts';
 import type { ScriptDocument } from '../contracts/script.ts';
+import { checkDurations, readDurations } from './check-durations.ts';
 import { checkReading } from './check-reading.ts';
 import { checkScript } from './check-script.ts';
 import { createValidator, validateAgainstSchema } from './ajv.ts';
@@ -52,13 +54,15 @@ export type ValidateReport = {
   root: string;
   workRoot: string;
   /** 实际检查了哪些文件，以及它们各自的问题数。没找到的文件不在里面。 */
-  checked: { reading?: string; script?: string; assets?: string };
+  checked: { reading?: string; script?: string; assets?: string; durations?: string };
   issues: CheckedFile[];
   counts: SeverityCounts;
   /** blocker 为 0 即通过；warning 不判定失败。 */
   ok: boolean;
   /** 素材清单的 schema 校验是否跑了（没有清单或没有 schema 时为 false）。 */
   assetsValidated: boolean;
+  /** 配音时长表是否校验了（没跑过配音时为 false）。 */
+  durationsValidated: boolean;
   /** 这次校验的时间。 */
   validatedAt: string;
 };
@@ -212,6 +216,7 @@ export function validateContracts(options: ValidateOptions): ValidateReport {
     }
   }
 
+  let scriptDocument: ScriptDocument | undefined;
   const scriptFile = readJsonFile(scriptPath);
   if (scriptFile === undefined) {
     collect.add({
@@ -254,8 +259,9 @@ export function validateContracts(options: ValidateOptions): ValidateReport {
         fix: '先修好解读，再校验讲稿；幻觉路径拦截依赖解读的 manifest。',
       });
     } else {
+      scriptDocument = scriptFile.value as unknown as ScriptDocument;
       const found = checkScript({
-        document: scriptFile.value as unknown as ScriptDocument,
+        document: scriptDocument,
         path: scriptPath,
         text: scriptFile.text,
         validateSchema: scriptValidator,
@@ -264,6 +270,37 @@ export function validateContracts(options: ValidateOptions): ValidateReport {
         workRoot,
       });
       for (const issue of found.all()) collect.add(issue);
+    }
+  }
+
+  // 配音产物：**没有就跳过**（没跑过配音的机器上它本来就不存在）。
+  // 有它就要查严：它是配音与画面之间唯一的接口，错了会以「声音说到第三句、字幕还在
+  // 第二句」这种最难查的方式表现出来。
+  let durationsValidated = false;
+  const durationsPath = resolve(workRoot, 'durations.json');
+  const durationsFile = readJsonFile(durationsPath);
+  if (durationsFile !== undefined) {
+    checked.durations = durationsPath;
+    if (durationsFile.error !== undefined) {
+      collect.add({
+        path: durationsPath,
+        pointer: '/',
+        severity: 'blocker',
+        code: 'json-invalid',
+        message: `时长表不是合法 JSON：${durationsFile.error}`,
+        fix: '重跑配音：pnpm voice <目录>',
+      });
+    } else if (isRecord(durationsFile.value)) {
+      for (const issue of checkDurations({
+        document: durationsFile.value as unknown as DurationsDocument,
+        path: durationsPath,
+        workRoot,
+        ...(scriptDocument === undefined ? {} : { script: scriptDocument }),
+        measure: measureAudio,
+      }).all()) {
+        collect.add(issue);
+      }
+      durationsValidated = true;
     }
   }
 
@@ -276,6 +313,20 @@ export function validateContracts(options: ValidateOptions): ValidateReport {
     counts,
     ok: counts.blocker === 0,
     assetsValidated,
+    durationsValidated,
     validatedAt: localIsoString(options.now ?? new Date()),
   };
+}
+
+/**
+ * 实测一段音频的时长。**缺 ffprobe 时返回 undefined**（不报错）：校验器要能在没有
+ * ffmpeg 的机器上跑完其余部分，而「量不出时长」不该让整份报告失败。
+ */
+function measureAudio(path: string): number | undefined {
+  try {
+    const { probeDurationSec } = require('../voice/audio.ts') as typeof import('../voice/audio.ts');
+    return probeDurationSec(path);
+  } catch {
+    return undefined;
+  }
 }

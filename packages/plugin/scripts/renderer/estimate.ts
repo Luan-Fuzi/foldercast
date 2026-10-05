@@ -16,6 +16,7 @@
  * 一眼能看出这是「按字数估」而不是测量值。这些是**校准常数**，M8 拿到真实音频后可
  * 按实测回校，`durations.json` 的结构与渲染链路不变。
  */
+import { allocateByWidth } from '../contracts/spans.ts';
 import { splitSubtitles } from '../contracts/subtitles.ts';
 
 /** 一个宽度单位读多久（秒）。4.3 个中文字/秒。 */
@@ -51,9 +52,20 @@ export function estimateSceneSec(narration: string): number {
   return Math.min(MAX_SCENE_SEC, Math.max(MIN_SCENE_SEC, raw));
 }
 
-/** 秒 → 帧，四舍五入到最近的帧，至少 1 帧。 */
+/** 秒 → 帧，四舍五入到最近的帧，至少 1 帧。用于**预估**（字数算出来的秒数）。 */
 export function secToFrames(sec: number, fps: number): number {
   return Math.max(1, Math.round(sec * fps));
+}
+
+/**
+ * 秒 → 帧，**向上取整**。用于**实测**时长。
+ *
+ * 为什么与预估不同：实测时长是硬约束 —— 音频多长，画面就得有多长。向上取整只多出不到
+ * 一帧，四舍五入则可能少掉将近一帧，累到十几个场景就是半秒的错位（画面比声音先结束，
+ * 最后一句话被切掉）。宁可多一帧。
+ */
+export function secToFramesUp(sec: number, fps: number): number {
+  return Math.max(1, Math.ceil(sec * fps - 1e-9));
 }
 
 /**
@@ -73,43 +85,12 @@ export function captionWindows(
 ): { text: string; from: number; to: number }[] {
   const texts = splitSubtitles(narration);
   if (texts.length === 0) return [];
-
-  const weights = texts.map(spokenUnits).map((value) => (value > 0 ? value : 0.5));
-  const total = weights.reduce((sum, value) => sum + value, 0);
-  const quota = weights.map((value) => Math.max(1, Math.round((value / total) * frames)));
-
-  const floor = Math.max(1, Math.min(minFrames, Math.floor(frames / texts.length)));
-  for (let i = 0; i < quota.length; i += 1) {
-    let need = floor - (quota[i] ?? 0);
-    let guard = 0;
-    while (need > 0 && guard < quota.length * 4) {
-      guard += 1;
-      let donor = -1;
-      let donorValue = floor;
-      for (let j = 0; j < quota.length; j += 1) {
-        const value = quota[j] ?? 0;
-        if (j === i || value <= donorValue) continue;
-        donor = j;
-        donorValue = value;
-      }
-      if (donor === -1) break;
-      const give = Math.min(need, donorValue - floor);
-      quota[donor] = donorValue - give;
-      quota[i] = (quota[i] ?? 0) + give;
-      need -= give;
-    }
-  }
-
-  const windows: { text: string; from: number; to: number }[] = [];
-  let cursor = 0;
-  for (let i = 0; i < texts.length; i += 1) {
-    const text = texts[i] ?? '';
-    const isLast = i === texts.length - 1;
-    const span = isLast ? Math.max(1, frames - cursor) : (quota[i] ?? 1);
-    windows.push({ text, from: cursor, to: cursor + span });
-    if (!isLast) cursor += span;
-  }
-  return windows;
+  // 分配算法在契约里（`contracts/spans.ts`）：配音阶段用同一份把**实测秒数**分给这些块，
+  // 两处各写一遍必然漂移，而漂移的表现就是「声音说到第三句、字幕还在第二句」。
+  return texts.map((text, index) => {
+    const span = allocateByWidth(texts, frames, minFrames)[index] ?? { from: 0, to: 1 };
+    return { text, from: span.from, to: span.to };
+  });
 }
 
 /** 一份讲稿的时长预估汇总，`--check` 与日志用它。 */

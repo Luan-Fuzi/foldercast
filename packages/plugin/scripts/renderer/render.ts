@@ -25,8 +25,10 @@ export const DEFAULT_CONCURRENCY = 1;
 export type RenderOptions = {
   serveUrl: string;
   plan: Plan;
-  /** 被讲解目录的绝对路径：素材 `file://` URL 的基准。 */
+  /** 被讲解目录的绝对路径（素材基准；音频走 data URI，不用它）。 */
   base: string;
+  /** 旁白音轨（`data:` URI 或 http(s) URL）。不给就出静音片。 */
+  audio?: string;
   outputPath: string;
   browserPath: string;
   /** 渲染并发数。默认 1（刻意：并发会让画面不可复现）。 */
@@ -43,12 +45,13 @@ export async function selectPlan(options: {
   plan: Plan;
   base: string;
   browserPath: string;
+  audio?: string;
   onLog?: (message: string) => void;
 }) {
   return selectComposition({
     serveUrl: options.serveUrl,
     id: options.plan.composition.id,
-    inputProps: { plan: options.plan, base: options.base },
+    inputProps: { plan: options.plan, base: options.base, ...(options.audio === undefined ? {} : { audio: options.audio }) },
     browserExecutable: options.browserPath,
     chromiumOptions: { gl: 'swangle' },
     logLevel: 'error',
@@ -58,6 +61,7 @@ export async function selectPlan(options: {
 
 /** 出一张静帧（`--still`）：调画面时比整片快得多。 */
 export async function renderStillFrame(options: {
+  audio?: string;
   serveUrl: string;
   plan: Plan;
   base: string;
@@ -74,7 +78,7 @@ export async function renderStillFrame(options: {
     serveUrl: options.serveUrl,
     output: options.outputPath,
     frame: options.frame,
-    inputProps: { plan: options.plan, base: options.base },
+    inputProps: { plan: options.plan, base: options.base, ...(options.audio === undefined ? {} : { audio: options.audio }) },
     browserExecutable: options.browserPath,
     chromiumOptions: { gl: 'swangle' },
     imageFormat: options.imageFormat ?? 'png',
@@ -112,12 +116,13 @@ export async function renderVideo(
     serveUrl: options.serveUrl,
     codec: 'h264',
     outputLocation: options.outputPath,
-    inputProps: { plan: options.plan, base: options.base },
+    inputProps: { plan: options.plan, base: options.base, ...(options.audio === undefined ? {} : { audio: options.audio }) },
     browserExecutable: options.browserPath,
     chromiumOptions: { gl: 'swangle' },
-    // 静音片：没有音轨，也不加空音轨（M8 才配音）。
-    muted: true,
-    enforceAudioTrack: false,
+    // 没有音轨时**静音出片**（M7 的默认路径）；有音轨就编成 aac 一起封装。
+    muted: options.audio === undefined,
+    enforceAudioTrack: options.audio !== undefined,
+    ...(options.audio === undefined ? {} : { audioCodec: 'aac' as const }),
     ...(range === undefined ? {} : { frameRange: range }),
     concurrency: options.concurrency ?? DEFAULT_CONCURRENCY,
     logLevel: 'error',

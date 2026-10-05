@@ -55,7 +55,32 @@ export type IssueCode =
   | 'inventory-group-kind-unknown'
   /** `focusLines` 超出文件的真实行数。 */
   | 'focus-lines-out-of-range'
-  | 'clip-range-invalid';
+  | 'clip-range-invalid'
+  // ── 配音产物（durations.json） ───────────────────
+  /** 时长表里没有场景。 */
+  | 'durations-empty'
+  /** 时长表里的场景 id 重复。 */
+  | 'durations-scene-duplicate'
+  /** 时长表里的场景在讲稿里不存在。 */
+  | 'durations-scene-unknown'
+  /** 讲稿里的场景没有配音（按字数预估时长）。 */
+  | 'durations-scene-missing'
+  /** 音频文件不存在。 */
+  | 'durations-audio-missing'
+  /** 记录的实测时长与音频实际时长不符。 */
+  | 'durations-audio-drift'
+  /** `duration ≠ audioSec + pause`。 */
+  | 'durations-duration-mismatch'
+  /** 字幕块时长之和与场景时长不符。 */
+  | 'durations-subs-mismatch'
+  /** 字幕块超过 24 宽度单位。 */
+  | 'durations-subs-too-wide'
+  /** 字幕块数与当前讲稿不符（讲稿改了没重跑配音）。 */
+  | 'durations-subs-stale'
+  /** 音轨文件不存在。 */
+  | 'durations-track-missing'
+  /** 音轨长度与场景总长不符。 */
+  | 'durations-track-mismatch';
 
 export type Issue = {
   /** 问题所在文件（路径按调用方给的写法，便于阅读）。 */

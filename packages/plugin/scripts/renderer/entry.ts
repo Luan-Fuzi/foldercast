@@ -9,15 +9,21 @@
  * 就算好了，浏览器只负责画。这样「同一份讲稿两次渲染逐帧一致」不依赖浏览器里的任何计算。
  */
 import { createElement as h } from 'react';
-import { AbsoluteFill, Composition, Sequence, registerRoot } from 'remotion';
+import { AbsoluteFill, Audio, Composition, Sequence, registerRoot } from 'remotion';
 import type { Plan, PlanScene } from './plan.ts';
 import { captionStyle } from './scenes/captions.ts';
 import { SceneView } from './scenes/index.ts';
 
 export type FoldercastProps = {
   plan: Plan;
-  /** 素材路径的基准：**被讲解目录的绝对路径**，浏览器侧拼成 `file://` URL。 */
+  /** 素材路径的基准：**被讲解目录的绝对路径**（只有 `clip` 的封面图用得着）。 */
   base: string;
+  /**
+   * 旁白音轨的地址（`data:` URI）。**必须内联**：Remotion 取资源只认 http(s) 与 data，
+   * `file://` 会被拒（`Can only download URLs starting with http:// or https://`）。
+   * 一段 6 分钟的 wav 大约 30 MB，转成 base64 约 40 MB —— 换一次「不用起本地服务」是划算的。
+   */
+  audio?: string;
 };
 
 /** 兜底规格，与 `plan.ts` 的 `DEFAULT_VIDEO` 一致；真正渲染时一律由 plan 决定。 */
@@ -76,7 +82,7 @@ const CaptionBar = ({ scene, plan }: { scene: PlanScene; plan: Plan }) => {
   );
 };
 
-export const FoldercastVideo = ({ plan, base }: FoldercastProps) => {
+export const FoldercastVideo = ({ plan, base, audio }: FoldercastProps) => {
   const style: Record<string, unknown> = {
     ...plan.css,
     backgroundColor: 'var(--bg)',
@@ -97,6 +103,8 @@ export const FoldercastVideo = ({ plan, base }: FoldercastProps) => {
   return h(
     AbsoluteFill,
     { style },
+    // 整条音轨从头播到尾：它的长度等于场景时长之和，与画面一一对应（配音阶段保证）
+    audio === undefined ? null : h(Audio, { src: audio, volume: 1 }),
     ...plan.scenes.map((scene, index) =>
       h(
         Sequence,

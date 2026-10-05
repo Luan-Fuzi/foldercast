@@ -15,14 +15,24 @@
  * 3. **`--check` 不碰浏览器**：算计划、报时长与警告，CI 与 fast feedback 走这条路。
  * 4. **素材走 `file://`**：由 `plan.ts` 拼出来，浏览器不需要文件系统访问。
  */
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bundleProject } from './bundle.ts';
 import { embedImage } from './embed-node.ts';
 import { resolveBrowser } from './browser.ts';
 import { summarizeDurations } from './estimate.ts';
-import { findStylesDir, loadAssets, loadPreset, loadReading, loadScript, LoadError, sourceDirOf, workRootOf } from './load.ts';
+import {
+  findStylesDir,
+  loadAssets,
+  loadDurations,
+  loadPreset,
+  loadReading,
+  loadScript,
+  LoadError,
+  sourceDirOf,
+  workRootOf,
+} from './load.ts';
 import { buildPlan, type Plan } from './plan.ts';
 import { renderStillFrame, renderVideo } from './render.ts';
 
@@ -49,6 +59,8 @@ const USAGE = `把目录的讲稿渲染成静音 mp4。
   --concurrency <n> 渲染并发数。**默认 1**：多并发会让同一份讲稿渲出不同的帧
                     （实测三次的帧哈希互不相同），只在不在乎可复现时调大
   --no-embed        不把图片内联成 data URI（调试用；浏览器读不了 file:// 图片）
+  --audio <文件>    旁白音轨（配音产物）。不给就出静音片
+  --durations <文件> 配音时长表。默认 <工作根>/durations.json（有就用实测时长）
   --check           只算计划并报时长，不打包、不渲染（不需要浏览器）
   --json            以 JSON 输出结果（给 agent 与 CI 用）
   -h, --help        显示这段说明
@@ -69,6 +81,8 @@ type Options = {
   json: boolean;
   /** 关掉图片内联（调试用）。 */
   noEmbed: boolean;
+  audio?: string;
+  durations?: string;
 };
 
 function parseArgs(argv: string[]): Options | { error: string } {
@@ -171,6 +185,10 @@ export type RenderReport = {
   inlineBytes: number;
   /** 内联的图片张数。 */
   inlineImages: number;
+  /** 时长来源：`measured`（配音实测）或 `estimated`（按字数）。 */
+  timing: 'measured' | 'estimated';
+  /** 旁白音轨的落点（有音轨时）。 */
+  audioPath?: string;
   /** `--check` 时给出每个场景的时长，方便写稿阶段对齐字数。 */
   timings?: { id: string; type: string; seconds: number; frames: number }[];
 };
@@ -210,6 +228,9 @@ async function main(): Promise<number> {
     return 2;
   }
 
+  // 配音产物：有就用实测时长（C3），没有就按字数预估。**不报错**：没跑过配音的机器上
+  // `durations.json` 本来就不存在。
+  const durations = loadDurations(workRoot, parsed.durations);
   const presetName = parsed.style ?? script.value.style?.preset ?? reading.value.style?.preset ?? 'deck';
   const preset = loadPreset(STYLES_DIR ?? resolve(RENDERER_DIR, 'styles'), presetName);
 
@@ -224,6 +245,7 @@ async function main(): Promise<number> {
       // 图片在这里内联成 data URI：浏览器里读不了 `file://`，见 `embed.ts`。
       workRoot,
       embed: parsed.noEmbed ? undefined : embedImage,
+      ...(durations === undefined ? {} : { durations }),
     });
   } catch (error) {
     console.error(`算不出渲染计划：${(error as Error).message}`);
@@ -240,6 +262,10 @@ async function main(): Promise<number> {
 
   const browser = resolveBrowser(parsed.browser);
   const inlined = collectInline(plan);
+
+  // `scaled` 只表示「按 targetDurationSec 缩放过」。配音跑过之后不缩放（实测为准），
+  // 这时它必须是 false —— 否则报告会说一件没发生的事。
+  const scaled = durations === undefined && estimatedFrames !== plan.composition.durationInFrames;
 
   const report: RenderReport = {
     ok: true,
@@ -261,6 +287,8 @@ async function main(): Promise<number> {
     warnings,
     inlineBytes: inlined.bytes,
     inlineImages: inlined.images,
+    timing: durations === undefined ? 'estimated' : 'measured',
+    ...(parsed.audio === undefined ? {} : { audioPath: resolve(parsed.audio) }),
   };
   if (parsed.check) {
     report.timings = estimate.scenes.map((scene) => ({
@@ -272,7 +300,7 @@ async function main(): Promise<number> {
   }
 
   if (parsed.check) {
-    printReport(report, parsed.json, estimate.totalFrames !== plan.composition.durationInFrames);
+    printReport(report, parsed.json, scaled);
     return 0;
   }
 
@@ -287,6 +315,23 @@ async function main(): Promise<number> {
   }
 
   const outputPath = resolve(parsed.out ?? join(workRoot, 'out', parsed.still === undefined ? 'video.mp4' : 'still.png'));
+
+  // 音轨内联成 data URI：Remotion 取资源只认 http(s) 与 data（`file://` 会被拒）。
+  // 显式给了 `--audio` 就用它；否则配音产物里记的那条（`narration.wav`）存在就用它。
+  const audioFile =
+    parsed.audio !== undefined
+      ? resolve(parsed.audio)
+      : durations?.track !== undefined && durations.track !== ''
+        ? resolve(workRoot, durations.track)
+        : undefined;
+  let audio: string | undefined;
+  if (audioFile !== undefined && existsSync(audioFile)) {
+    audio = inlineAudio(audioFile);
+    report.audioPath = audioFile;
+  } else if (parsed.audio !== undefined) {
+    console.error(`找不到音轨：${audioFile ?? parsed.audio}`);
+    return 2;
+  }
   const bundle = await bundleProject({
     rendererDir: RENDERER_DIR,
     onProgress: (percent) => {
@@ -312,6 +357,7 @@ async function main(): Promise<number> {
         browserPath: browser.path,
         frame,
         outputPath,
+        ...(audio === undefined ? {} : { audio }),
       });
       report.stillPath = outputPath;
       report.renderMs = bundle.ms;
@@ -322,6 +368,7 @@ async function main(): Promise<number> {
         base: sourceDir,
         outputPath,
         browserPath: browser.path,
+        ...(audio === undefined ? {} : { audio }),
         ...(parsed.frames === undefined ? {} : { frameRange: parsed.frames }),
         ...(parsed.concurrency === undefined ? {} : { concurrency: parsed.concurrency }),
         onProgress: ({ rendered, total }) => {
@@ -343,8 +390,29 @@ async function main(): Promise<number> {
   }
 
   if (!parsed.json && process.stderr.isTTY) process.stderr.write('\r');
-  printReport(report, parsed.json, estimatedFrames !== plan.composition.durationInFrames);
+  printReport(report, parsed.json, scaled);
   return 0;
+}
+
+/**
+ * 把音轨读成 `data:` URI。**必须内联**：Remotion 取资源只认 http(s) 与 `data:`，
+ * `file://` 会被拒（实测 `Can only download URLs starting with http:// or https://`）。
+ * 代价是内存（wav 的 base64 约 1.33 倍），所以配音阶段产出的是 16 位单声道 44.1k。
+ */
+function inlineAudio(path: string): string {
+  const bytes = readFileSync(path);
+  return `data:${sniffAudioMime(bytes)};base64,${bytes.toString('base64')}`;
+}
+
+/** 按魔数认音频类型：wav 的头部是 `RIFF....WAVE`。**不按后缀猜**（say 的产物就骗过后缀）。 */
+function sniffAudioMime(bytes: Buffer): string {
+  if (bytes.length >= 12 && bytes.subarray(0, 4).toString('latin1') === 'RIFF' && bytes.subarray(8, 12).toString('latin1') === 'WAVE') {
+    return 'audio/wav';
+  }
+  if (bytes.length >= 4 && bytes.subarray(0, 4).toString('latin1') === 'fLaC') return 'audio/flac';
+  if (bytes.length >= 3 && bytes.subarray(0, 3).toString('latin1') === 'ID3') return 'audio/mpeg';
+  if (bytes.length >= 2 && bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0) return 'audio/mpeg';
+  return 'application/octet-stream';
 }
 
 /** 计划里内联了多少图片。`--check` 报出来，让人知道 props 有多大。 */
@@ -377,9 +445,10 @@ function printReport(report: RenderReport, json: boolean, scaled: boolean): void
     `${report.target}`,
     `  讲稿    ${report.scriptPath}`,
     `  规格    ${report.width}×${report.height} @ ${report.fps}fps · ${report.scenes} 个场景`,
-    `  时长    ${report.durationSec} 秒（${report.durationInFrames} 帧，预估 ${report.estimatedSec} 秒${scaled ? '，已按 targetDurationSec 缩放' : ''}）`,
+    `  时长    ${report.durationSec} 秒（${report.durationInFrames} 帧，${report.timing === 'measured' ? '取自实测音频' : `按字数预估 ${report.estimatedSec} 秒`}${scaled ? '，已按 targetDurationSec 缩放' : ''}）`,
     `  样式    ${report.style} · 内联图片 ${report.inlineImages} 张（${Math.round(report.inlineBytes / 1024)} KB）`,
   ];
+  if (report.audioPath !== undefined) lines.push(`  音轨    ${report.audioPath}`);
   if (report.stillPath !== undefined) lines.push(`  静帧    ${report.stillPath}`);
   if (report.outputPath !== undefined) {
     lines.push(`  成片    ${report.outputPath}`);

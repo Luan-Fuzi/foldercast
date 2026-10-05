@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, parse, resolve } from 'node:path';
 import type { AssetManifest } from '../contracts/assets.ts';
 import type { FoldercastDocument } from '../contracts/foldercast.ts';
+import type { DurationsDocument } from '../contracts/durations.ts';
 import type { ScriptDocument } from '../contracts/script.ts';
 import { DEFAULT_PRESET } from './plan.ts';
 
@@ -73,6 +74,23 @@ export function loadReading(workRoot: string, override?: string): Loaded<Folderc
     );
   }
   return loaded;
+}
+
+/**
+ * 读配音产物 `durations.json`。**可选**：没有它就用字数预估（M7 的默认路径）。
+ *
+ * 读不出来（坏 JSON）时返回 undefined 并**不报错**：配音产物是可重算的缓存，
+ * 一台没跑过配音的机器上它本来就不存在。渲染报告里会写明用的是哪一套时长。
+ */
+export function loadDurations(workRoot: string, override?: string): DurationsDocument | undefined {
+  const path = override === undefined ? join(workRoot, 'durations.json') : resolve(override);
+  if (!existsSync(path)) return undefined;
+  try {
+    const document = JSON.parse(readFileSync(path, 'utf8')) as DurationsDocument;
+    return document.durations === 1 ? document : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** 读素材清单。**可选**：没有它照样出片，只是画面拿不到尺寸与提取出的正文。 */

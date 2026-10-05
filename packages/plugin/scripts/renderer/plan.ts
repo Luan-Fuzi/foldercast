@@ -15,12 +15,15 @@
  */
 import { primaryProduct, type AssetEntry, type AssetManifest, type AssetProduct, type AssetRole } from '../contracts/assets.ts';
 import type { FoldercastDocument, Kind, ManifestEntry, Role } from '../contracts/foldercast.ts';
+import type { DurationsDocument, SceneDuration } from '../contracts/durations.ts';
 import type { Scene, SceneType, ScriptDocument } from '../contracts/script.ts';
+import { allocateByWidth } from '../contracts/spans.ts';
 import {
   captionWindows,
   estimateSceneSec,
   scaleToTarget,
   secToFrames,
+  secToFramesUp,
 } from './estimate.ts';
 import { EMBED_WIDTH, type EmbedFn } from './embed.ts';
 import { applyOverrides, cssVariables, FALLBACK_TOKENS, tokensFromPreset, type Tokens } from './styles.ts';
@@ -270,6 +273,12 @@ export type BuildPlanInput = {
   embed?: EmbedFn;
   /** 内联用的工作根（素材路径的基准）。 */
   workRoot?: string;
+  /**
+   * `durations.json`（配音阶段产物）。**给了就以实测时长为准**（C3）：场景的帧数、
+   * 字幕块的时间轴都换成实测值，`targetDurationSec` 与字数预估都不再参与 —— 画面必须
+   * 迁就配音，而不是反过来。缺哪个场景就用那个场景的预估值（配音可以只跑一部分）。
+   */
+  durations?: DurationsDocument;
 };
 
 /**
@@ -307,20 +316,39 @@ export function buildPlan(input: BuildPlanInput): Plan {
     throw new Error('讲稿里没有可渲染的场景');
   }
 
-  const estimated = kept.map((scene) =>
-    scene.durationSec !== undefined && scene.durationSec !== null && scene.durationSec > 0
+  // 时长的三个来源，优先级从高到低：
+  //   ① durations.json 的实测值（配音跑过）
+  //   ② 讲稿的 durationSec（配音回填、或人手写）
+  //   ③ 按字数预估（没有音频时的默认）
+  const measured = new Map<string, SceneDuration>();
+  for (const scene of input.durations?.scenes ?? []) measured.set(scene.id, scene);
+
+  const estimated = kept.map((scene) => {
+    const actual = measured.get(scene.id);
+    // 实测时长向上取整：少一帧就是「最后一句话被切掉」，多一帧只是多停 1/30 秒
+    if (actual !== undefined) return secToFramesUp(actual.duration, fps);
+    return scene.durationSec !== undefined && scene.durationSec !== null && scene.durationSec > 0
       ? secToFrames(scene.durationSec, fps)
-      : secToFrames(estimateSceneSec(scene.narration), fps),
-  );
+      : secToFrames(estimateSceneSec(scene.narration), fps);
+  });
+
   const target = script.video?.targetDurationSec;
-  const frames =
-    target !== undefined && target !== null && target > 0
-      ? scaleToTarget(estimated, secToFrames(target, fps))
-      : estimated;
-  if (target !== undefined && target !== null && target > 0) {
+  const scaled = measured.size === 0 && target !== undefined && target !== null && target > 0;
+  const frames = scaled ? scaleToTarget(estimated, secToFrames(target, fps)) : estimated;
+  if (scaled) {
     warnings.push(
       `讲稿写了 targetDurationSec=${target}，各场景按比例缩放到共 ${frames.reduce((sum, value) => sum + value, 0)} 帧`,
     );
+  }
+  if (measured.size > 0) {
+    const missing = kept.filter((scene) => !measured.has(scene.id)).map((scene) => scene.id);
+    warnings.push(
+      `时长取自实测音频（${measured.size} 个场景）` +
+        (missing.length === 0 ? '' : `；这些场景在 durations.json 里没有，仍按字数预估：${missing.join('、')}`),
+    );
+    if (target !== undefined && target !== null && target > 0) {
+      warnings.push(`讲了 targetDurationSec=${target}，但配音已经跑过：以实测时长为准，不缩放`);
+    }
   }
 
   const context: SceneContext = {
@@ -329,6 +357,7 @@ export function buildPlan(input: BuildPlanInput): Plan {
     assetByProduct,
     embed: input.embed,
     workRoot: input.workRoot,
+    measured,
     media: (path, file, product) => mediaFor(path, file, product, input.embed, input.workRoot),
     root: script.source.root,
     label,
@@ -376,6 +405,8 @@ type SceneContext = {
   embed?: EmbedFn;
   /** 内联用的工作根。 */
   workRoot?: string;
+  /** 场景 id → 实测时长与字幕块（配音产物）。空表示还没配音。 */
+  measured: Map<string, SceneDuration>;
   /** 素材 → `Media`（内联在这里发生，只做一次；组件不再碰文件系统）。 */
   media: (path: string, file: string | undefined, product?: AssetProduct) => Media;
   root: string;
@@ -383,6 +414,31 @@ type SceneContext = {
   warnings: string[];
   fps: number;
 };
+
+/**
+ * 字幕块与它们在本场景里的帧区间。
+ *
+ * **有实测的 `subs` 就用它**（配音按实测时长分的块，与校验器、渲染器同一份切分），
+ * 只做秒 → 帧的取整；没有就按字数预估现算。两条路都不能让字幕跑到场景外面。
+ */
+function partsFor(scene: Scene, build: SceneBuild): SceneCommon['parts'] {
+  const subs = build.measured.get(scene.id)?.subs;
+  if (subs === undefined || subs.length === 0) {
+    return captionWindows(scene.narration, build.frames, secToFrames(MIN_SUB_SEC, build.fps));
+  }
+  const spans = allocateByWidth(
+    subs.map(([text]) => text),
+    Math.round((build.measured.get(scene.id)?.duration ?? 0) * 1000),
+    1000,
+  );
+  let cursor = 0;
+  return subs.map(([text], index) => {
+    const span = spans[index] ?? { from: cursor, to: cursor + 1000 };
+    const from = secToFrames(span.from / 1000, build.fps);
+    const to = index === subs.length - 1 ? build.frames : secToFrames(span.to / 1000, build.fps);
+    return { text, from: Math.min(from, build.frames - 1), to: Math.max(Math.min(to, build.frames), from + 1) };
+  });
+}
 
 type SceneBuild = SceneContext & {
   frames: number;
@@ -401,7 +457,7 @@ function buildScene(scene: Scene, build: SceneBuild): PlanScene {
     narration: scene.narration,
     title: build.title,
     durationInFrames: build.frames,
-    parts: captionWindows(scene.narration, build.frames, secToFrames(MIN_SUB_SEC, build.fps)),
+    parts: partsFor(scene, build),
   };
 
   switch (scene.type) {

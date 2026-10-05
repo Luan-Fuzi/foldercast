@@ -11,6 +11,11 @@
  *
  * 没有浏览器的机器上，出片相关的用例**断言另一条路径**：CLI 必须给出结构化引导、
  * 退出码 3，而不是崩掉或静默下载。
+ *
+ * **一条实测经验**：这条用例在整套里偶发失败过一次，根因是**上一次渲染被中断后留下的
+ * Chrome 进程**（`puppeteer_dev_chrome_profile-*`）一直在后台跑：它抢 CPU，占满 SwiftShader
+ * 的软件光栅，帧的产物就不再逐位相同。杀掉它之后整套 44 个文件全绿。所以「渲染失败 →
+ * 中断 → 再跑」这套流程之后，值得看一眼 `ps | grep puppeteer_dev_chrome_profile`。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';

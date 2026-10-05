@@ -89,12 +89,16 @@ describe('字幕窗口', () => {
     }
   });
 
-  it('分不够时不硬凑：块数多于帧数也不产生空窗口', () => {
+  it('块数多于帧数时：总长不变，前几块各占一帧，后面的块为 0', () => {
+    // 5 块、3 帧。**帧数不能因此变多** —— 场景时长是实测出来的，字幕必须迁就它。
+    // 这种极端输入正常路径上不会出现（一秒 30 帧、一段旁白最多切出十几块），
+    // 但「宁可看不到、也不把画面改长」这条规则要钉住。
     const text = '一。二。三。四。五。';
     const windows = captionWindows(text, 3, 30);
-    for (const window of windows) {
-      expect(window.to).toBeGreaterThan(window.from);
-      expect(window.to - window.from).toBeGreaterThanOrEqual(1);
+    expect(windows).toHaveLength(5);
+    expect(windows[windows.length - 1]?.to).toBe(3);
+    for (const window of windows.slice(0, 3)) {
+      expect(window.to - window.from).toBe(1);
     }
   });
 

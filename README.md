@@ -8,7 +8,7 @@
 **核心产物是「目录解读」，不是视频。** 解读是一份结构化的事实：这里有什么、怎么组织的、谁引用谁、哪些是关键。视频、讲解 poster 都是它的视图。
 详见 [PRODUCT.md](docs/PRODUCT.md#3-解读是事实来源讲稿是它的视图)。
 
-**当前状态：M1–M4 完成。** 分析器能把任意目录变成 `foldercast.json`（21.3 万文件 0.34 秒），素材阶段能把解读里的图片/视频/Office/PDF/代码变成可用素材并**增量重算**（第二次运行毫秒级命中），契约校验能拦住编出来的路径、场景字段错误与超长字幕，插件 `dsh-foldercast` 已能装进 DSH：对话里说「把这个目录讲一遍」就会触发工具，skill 带着工作流与判据。M5 起尚未开始：写稿、HTML、视频、配音。
+**当前状态：M1–M5 完成。** 分析器能把任意目录变成 `foldercast.json`（21.3 万文件 0.34 秒），素材阶段能把解读里的图片/视频/Office/PDF/代码变成可用素材并**增量重算**（第二次运行毫秒级命中），契约校验能拦住编出来的路径、场景字段错误与超长字幕。插件 `dsh-foldercast` 已能装进 DSH：对话里说「把这个目录讲一遍」就会触发工具。skill 带完整的工作流与判据（通读策略、场景选择、写稿判据、评审判据），**写稿由主 agent 做、评审由另一个独立 subagent 做**，结论写到 `<目录>/.foldercast/review.md`。M6 起尚未开始：HTML 视图、视频、配音。
 
 **形态：第一版是 DSH 插件**（工具 + skill + 脚本），编排层是 DSH 主 agent。**只能在 DeepSeek Harness 内使用**——独立 CLI 与脱离 DSH 的用法推迟，是否做以后再评估（[ADR 0008](docs/decisions/0008-plugin-first.md)）。
 
@@ -135,6 +135,10 @@ pnpm validate <目录>   # 校验解读与讲稿是否符合契约（退出码 0
 三个脚本都能**脱离 DSH 直跑**（`node packages/plugin/scripts/<阶段>/main.ts <目录>`），仓库内
 Node 22.19+ 直接运行 TypeScript，不需要构建步骤。加 `--json` 可拿到机器可读的报告。
 
+**评审不是脚本**（[M5](docs/ROADMAP.md)）：写稿与评审都是模型在做，第二个脚本管不了对错。
+主 agent 按 skill 写讲稿，**另一个独立 subagent** 按 skill 的六条评审判据复核，结论写到
+`<目录>/.foldercast/review.md`。工具会报告它的状态：改过讲稿之后旧评审自动作废（`stale`）。
+
 ## 装进 DSH
 
 ```bash
@@ -142,7 +146,8 @@ dsh plugin --profile <profile> add dsh-foldercast
 ```
 
 装完在插件管理页看到「目录放映」，对话里说「把这个目录讲一遍」即触发 `foldercast_cast`
-（分析 → 素材 → 校验），随后由 agent 按 skill 写讲稿、再调一次工具校验。
+（分析 → 素材 → 校验），随后由 agent 按 skill 写讲稿、再调一次工具校验；讲稿通过后由
+**另一个 subagent** 评审，结论写到 `<目录>/.foldercast/review.md` —— 到这一步才算走完。
 
 **发布前要构建**：Node 不允许在 `node_modules` 里剥离 TypeScript 类型，所以分发的入口与阶段脚本
 必须是 JS。`pnpm --filter dsh-foldercast prepack`（= 复制 schema + `tsc`）会生成 `lib/` 与

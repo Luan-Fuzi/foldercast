@@ -441,9 +441,16 @@ foldercast_cast       事实层一条龙：分析 → 素材 → 校验
 | 素材 | 工具（子进程跑 `scripts/assets`） | `assets/` |
 | **写稿** | **模型**（按 skill 的流程） | `script.json` |
 | 校验 | 工具（子进程跑 `scripts/validate`） | 带行号的问题清单 |
+| **评审** | **另一个 subagent**（按 skill 的评审判据，换一条上下文） | `review.md` |
 
-返回值里的 `next` 就是交接信号：`needsScript`（该写稿了）、`fixScript`（讲稿有问题）、
-`validated`、`blocked`（环境或目标有问题）。渲染与配音尚未实现（M7 / M8），工具不声称出片。
+返回值里的 `next` 就是交接信号：`needsScript`（该写稿了）、`needsReview`（讲稿过了、该评审）、
+`validated`（讲稿与评审都齐了）、`fixScript`（讲稿有问题）、`blocked`（环境或目标有问题）。
+`review` 与 `reviewPath` 报告评审的状态：`missing` 还没审、`stale` 审过但讲稿又改了、`fresh`。
+渲染与配音尚未实现（M7 / M8），工具不声称出片。
+
+**为什么工具要管评审的状态**：校验（M3）只能判机器能判的，「有没有讲错重点」判不了（M5）。
+所以讲稿通过校验**不等于**做完 —— 工具不跑评审（那是 agent 的事），但必须如实报告
+「有没有审、审的是不是当前这版」，否则改完讲稿会把旧结论当成已审过。
 
 **三条实现约束**：分析、素材、校验都以**子进程**跑（遍历几万个文件、起 LibreOffice 都不该占
 宿主进程）；`exec.signal` 取消时杀子进程；单个阶段失败变成结构化结果，而不是抛异常

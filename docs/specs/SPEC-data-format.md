@@ -18,6 +18,7 @@
 <源目录>/.foldercast/
 ├── foldercast.json     解读（可重算）
 ├── script.json         讲稿（创作）
+├── review.md           评审结论（M5，agent 产出）
 ├── assets/             素材（可重算）
 ├── audio/scene-N.wav   逐场景音频（阶段③）
 ├── durations.json      实测时长（阶段③）
@@ -25,6 +26,10 @@
 ```
 
 **为什么放在源目录下**：源目录只多一个隐藏目录，不散落文件；解读、讲稿、素材同处一处，重跑分析不会碰到讲稿。
+
+**`review.md` 为什么是 Markdown，不是 JSON**：它由评审 subagent 产出（[ROADMAP M5](../ROADMAP.md)），每条判据都要带
+「文件路径 + 原文片段」这类证据，给人抽查用。它没有机器判据——校验器（M3）不读它，渲染也不消费它，
+所以不纳入本文件的 schema 体系。格式与逐条判据见 skill 的「评审判据」一节；重跑评审会覆盖它。
 
 **两条路径基准，不要混用**：
 
@@ -227,6 +232,11 @@ id_rsa  id_dsa  id_ecdsa  id_ed25519
 ```
 
 **这一节必须打印出来。** 判据只按文件名匹配，不可能完备 —— 用户靠这份清单确认命中了什么、有没有该排除却没排除的。放回方式：`sources.rescan`。
+
+**密钥文件不占 `maxFiles` 的配额，也不会被截断。** 它们本来就不读内容（零成本），而审计必须完整：
+被截掉的密钥等于没报出来 —— 清单里没有、结构树里也没有，用户在 `stats.secrets.excluded` 里
+看不到它，与上面「仍进结构树与计数」的承诺矛盾。（2026-10-05 修：一个 200 文件的目录里
+`lecture-videos/.mimo_api_key` 就是这样消失的，`sources.maxFiles` 截断时把它一起丢了。）
 
 判据范围与已知短板见 [ADR 0007](../decisions/0007-secret-file-exclusion.md)。**明确不做**：内容签名比对、熵检测。
 

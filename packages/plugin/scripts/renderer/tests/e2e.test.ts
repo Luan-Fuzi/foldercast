@@ -12,10 +12,13 @@
  * 没有浏览器的机器上，出片相关的用例**断言另一条路径**：CLI 必须给出结构化引导、
  * 退出码 3，而不是崩掉或静默下载。
  *
- * **一条实测经验**：这条用例在整套里偶发失败过一次，根因是**上一次渲染被中断后留下的
- * Chrome 进程**（`puppeteer_dev_chrome_profile-*`）一直在后台跑：它抢 CPU，占满 SwiftShader
- * 的软件光栅，帧的产物就不再逐位相同。杀掉它之后整套 44 个文件全绿。所以「渲染失败 →
- * 中断 → 再跑」这套流程之后，值得看一眼 `ps | grep puppeteer_dev_chrome_profile`。
+ * **一条实测经验，值得写下来**：机器被占满时（上一次渲染留下的 Chrome 进程、或者
+ * 另一个正在渲整片的任务），这条用例会失败 —— 它比的是**字节**，而 SwiftShader 的软件
+ * 光栅在 CPU 被抢的时候不再逐位可复现。同一个文件单独跑、或者机器空着的时候跑，几十次都过。
+ *
+ * 所以：**判据本身不变**（逐帧一致 = 字节一致），但它要在机器空着的时候验。CI 里它是唯一
+ * 的重活，本身满足这个条件；本地如果刚渲染过、或者中断过渲染，先看一眼
+ * `ps | grep puppeteer_dev_chrome_profile`。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';

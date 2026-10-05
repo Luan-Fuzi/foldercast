@@ -12,6 +12,9 @@
  * 不用真 provider：假 provider 按文本长度写一段真实音频（真的用 ffprobe 量），
  * 所以调度、实测、写表、渲染、抽帧这一整条链路都是真的，只有「谁在说话」是假的。
  * 真正的音色差异由人耳验收，不进 CI。
+ *
+ * **与渲染那条一样，它要在机器空着的时候跑**：比的是帧的字节，而软件光栅在 CPU 被抢时
+ * 不再逐位可复现。单独跑几十次全过；整套里同时有别的整片渲染时会失败。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';

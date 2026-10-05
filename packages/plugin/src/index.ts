@@ -199,6 +199,8 @@ type CastLike = {
   durationsPath: string;
   narrationPath: string;
   voice: string;
+  voiceProvider?: string;
+  voiceName?: string;
   dependencies: { name: string; ok: boolean; hint: string }[];
   stages: Record<string, { ok: boolean; ms: number; exitCode?: number; error?: string; detail?: string } | undefined>;
   reading?: {

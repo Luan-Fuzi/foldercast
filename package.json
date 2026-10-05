@@ -21,7 +21,7 @@
     "render": "node packages/plugin/scripts/renderer/main.ts",
     "voice": "node packages/plugin/scripts/voice/main.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && pnpm --filter dsh-foldercast typecheck"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

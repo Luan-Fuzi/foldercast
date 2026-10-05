@@ -8,7 +8,7 @@
 **核心产物是「目录解读」，不是视频。** 解读是一份结构化的事实：这里有什么、怎么组织的、谁引用谁、哪些是关键。视频、讲解 poster 都是它的视图。
 详见 [PRODUCT.md](docs/PRODUCT.md#3-解读是事实来源讲稿是它的视图)。
 
-**当前状态：M1、M2 完成。** 分析器能把任意目录变成 `foldercast.json`（21.3 万文件 0.34 秒），素材阶段能把解读里的图片/视频/Office/PDF/代码变成可用素材并**增量重算**（第二次运行毫秒级命中）。M3 起尚未开始：契约校验、插件骨架、写稿、HTML、视频、配音。
+**当前状态：M1、M2、M3 完成。** 分析器能把任意目录变成 `foldercast.json`（21.3 万文件 0.34 秒），素材阶段能把解读里的图片/视频/Office/PDF/代码变成可用素材并**增量重算**（第二次运行毫秒级命中），契约校验能拦住编出来的路径、场景字段错误与超长字幕。M4 起尚未开始：插件骨架、写稿、HTML、视频、配音。
 
 **形态：第一版是 DSH 插件**（工具 + skill + 脚本），编排层是 DSH 主 agent。**只能在 DeepSeek Harness 内使用**——独立 CLI 与脱离 DSH 的用法推迟，是否做以后再评估（[ADR 0008](docs/decisions/0008-plugin-first.md)）。
 
@@ -124,6 +124,16 @@
 | [examples/script.example.json](examples/script.example.json) | 与上面配套的讲稿示例，已通过 schema 校验 |
 | [styles/](styles/) | 四套风格预设，token 键集合完全一致（31 个），可互换 |
 
+## 现在能跑的三步
+
+```bash
+pnpm analyze  <目录>   # 目录 → 解读，写到 <目录>/.foldercast/foldercast.json
+pnpm assets   <目录>   # 解读 → 素材，写到 <目录>/.foldercast/assets/
+pnpm validate <目录>   # 校验解读与讲稿是否符合契约（退出码 0/1/2）
+```
+
+三个脚本都能**脱离 DSH 直跑**（`node packages/plugin/scripts/<阶段>/main.ts <目录>`），Node 22.19+ 直接运行 TypeScript，不需要构建步骤。加 `--json` 可拿到机器可读的报告。
+
 ---
 
 ## 目录结构
@@ -141,9 +151,10 @@ foldercast/
 │       ├── src/           工具注册、Config schema
 │       ├── locale/        中英文标题与描述
 │       └── scripts/
-│           ├── contracts/ 两个 JSON 契约的 TypeScript 类型，各阶段共用
+│           ├── contracts/ 两个 JSON 契约的 TypeScript 类型 + 字幕切分，各阶段共用
 │           ├── analyzer/  TypeScript：目录 → 解读
 │           ├── assets/    TypeScript：解读 → 素材（缩略图/逐页图/关键帧/高亮图/提取文本）
+│           ├── validate/  TypeScript：解读与讲稿的契约校验（含幻觉路径拦截）
 │           └── renderer/  TypeScript + Remotion：讲稿 + 素材 → 视频
 ├── styles/                风格预设（数据，非代码）
 ├── examples/              示例解读与讲稿

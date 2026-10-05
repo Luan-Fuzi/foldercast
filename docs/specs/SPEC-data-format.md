@@ -416,6 +416,8 @@ token 清单见 [../rd/风格预设系统.md](../rd/风格预设系统.md)。
 | `document` | Office/PDF 分页 | `source`、`pages` |
 | `outro` | 结尾 | `title` |
 
+上表的必需字段由 [script.schema.json](script.schema.json) 的 `allOf` 表达，**校验器（`pnpm validate`）会连同路径引用一起查**。schema 查不了的（路径是否存在、字幕能不能切开）由校验器补，见本文第五节。
+
 后续可扩展：`timeline`（时序）、`compare`（对比）、`metrics`（数据卡）。
 
 ---
@@ -530,6 +532,10 @@ dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
 3. 相邻块若合并后仍 ≤24 字则合并（避免孤行）
 4. 每块时长按**字符数**占比分配实测总时长
 
+**「24 字」按显示宽度折算**：中日韩文字与全角标点算 1，其余（半角标点、拉丁字母、数字）算 0.5。24 本来就是屏幕上一行的容量，中英混排按折算算才与画面一致；纯中文文本下它与「数汉字个数」等价。算法与常量在 `packages/plugin/scripts/contracts/subtitles.ts`（`SUB_LIMIT`），校验器与配音阶段共用同一份实现。
+
+**切不动时校验器会报错**：整块没有任何可切点（例如一长串没有标点的文字）时，硬切会产生半个词，所以切分器原样保留该块，由校验器报出来让人改稿。
+
 ---
 
 ## 五、版本与兼容
@@ -539,3 +545,17 @@ dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
 - 读取方遇到未知版本应报错而非猜测。
 - 场景 `type` 是开放枚举：遇到不认识的 type，渲染器应跳过并警告，而不是崩溃。
 - **schema 在各层都是封闭的**（`additionalProperties: false`）：出现未声明的字段就是错误，拼错的键名会被拦住。例外只有真正的映射字段——`stats.languages`、`stats.kindCounts`、`stats.roles`、`sources.kinds`、`style.overrides`，它们允许自由键。加字段意味着**同时**改 schema、本文件与 `packages/plugin/scripts/contracts/` 的类型。
+
+### 契约校验（`pnpm validate <目录>`）
+
+schema 只能表达**形状**，另有一层校验查形状之外的东西，两者都要过：
+
+| 层 | 查什么 | 谁的判据 |
+|---|---|---|
+| JSON Schema | 类型、枚举、必需字段、封闭性 | `specs/*.schema.json` |
+| **解读自洽** | `stats` 是 `manifest` 的投影、图上路径都是真实节点、度数对得上 | 本文第一节 |
+| **跨文件引用** | 讲稿里的 `file` / `source` 必须在解读的 `manifest` 里；`asset` / `items` / `poster` / `pages` 必须在素材清单里（**幻觉路径拦截**） | 本文第二节「工作目录」的两条基准 |
+| 场景语义 | 该场景类型用不上的字段、`highlight` 是不是真实子路径、`focusLines` 是否超出文件行数 | 本文第二节的场景类型清单 |
+| 字幕 | `narration` 能否切成每块 ≤24 字的字幕块 | 本文第四节 |
+
+**边界**：它只查机器能判断的。**「有没有讲错重点」不在这一层**，那是写稿之后的评审 agent（M5）。

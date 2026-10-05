@@ -231,3 +231,4 @@
 | 2026-10-04 | schema 各层收紧为 `additionalProperties: false`，映射字段除外；`check-json.ts` 增加重复键检测 | 修掉 `foldercast.schema.json` 里 `graph` 被定义两遍（`JSON.parse` 静默保留后者）；M3 校验强度提高 |
 | 2026-10-04 | **M1 完成**：分析器落地（`packages/plugin/scripts/analyzer/`），四条验收全部通过 | 新增 `packages/plugin` 包与 workspace；契约类型在 `scripts/contracts/`；实测 21.3 万文件 0.34 秒、124 MB。office/pdf/video 的 preview 深化提取顺延到 M2 |
 | 2026-10-05 | **M2 完成**：素材阶段落地（`packages/plugin/scripts/assets/`），office/pdf/video 的 preview 已补齐 | 新增依赖 `officeparser` / `shiki` / `@deepseek-ai/libreoffice-kit`（optional）；`assets/manifest.json` 契约定型；代码素材用 SVG；`.gitignore` 的 `assets/` 改为 `/assets/`（原写法把产品代码目录也忽略了） |
+| 2026-10-05 | **M3 完成**：契约校验脚本落地（`packages/plugin/scripts/validate/`），验收「故意写坏的讲稿全部报出」通过 | 新增 `contracts/script.ts`（讲稿类型）与 `contracts/subtitles.ts`（字幕切分，校验与配音共用）；`script.schema.json` 用 `allOf` 补上各场景的必需字段；字幕的「24 字」明确为按显示宽度折算 |

@@ -70,6 +70,8 @@ chore/add-oxlint
 | scope | 范围 |
 |---|---|
 | `analyzer` | `packages/plugin/scripts/analyzer` |
+| `assets` | `packages/plugin/scripts/assets` |
+| `validate` | `packages/plugin/scripts/validate` |
 | `renderer` | `packages/plugin/scripts/renderer` |
 | `plugin` | `packages/plugin` 的包根（工具注册、`Config` schema、skill、locale） |
 | `styles` | `styles/` 预设 |

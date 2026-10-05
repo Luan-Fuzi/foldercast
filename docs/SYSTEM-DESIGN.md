@@ -163,9 +163,10 @@ packages/
   plugin/                     DSH 插件（第一版唯一的入口，也是全部代码）
     ├── (npm 包根)             工具注册、Config schema、skill、locale
     └── scripts/
-        ├── contracts/        两个 JSON 契约的 TypeScript 类型，各阶段共用
+        ├── contracts/        两个 JSON 契约的 TypeScript 类型 + 字幕切分，各阶段共用
         ├── analyzer/          TypeScript：目录 → 解读（M1）
         ├── assets/            TypeScript：解读 → 素材（M2）
+        ├── validate/          TypeScript：解读与讲稿的契约校验（M3）
         └── renderer/          TypeScript + Remotion：讲稿 + 素材 → 视频（M7）
 styles/                        风格预设（数据，非代码）
 docs/                          文档
@@ -173,12 +174,15 @@ examples/                      示例
 scripts/                       仓库工具（与上面的 scripts/ 无关）
 ```
 
+**校验器不属于三步管线的任何一步**：它不产出产物，只对别的阶段的产物下判断，所以 `analyzer`、`assets`、`validate` 三者互不依赖，共同依赖 `contracts/`。schema 只有一份，在 `docs/specs/` 下，校验器直接读它（不复制第二份）；代价是它要求仓库布局，打包分发时 schema 要随包走（M4）。
+
 **编排层是 DSH 主 agent，不是代码。** 三步管线的驱动者：
 
 | 步骤 | 谁做 |
 |---|---|
 | ①-1 分析 | 主 agent 调 `scripts/analyzer/` |
 | ①-2 写稿 | **主 agent 自己**（读解经 + 通读内容） |
+| ①-2 校验 | 主 agent 调 `scripts/validate/`；**不过就不往下走** |
 | ②-0 素材 | 主 agent 调 `scripts/assets/` |
 | ② 视频 | 主 agent 调 `scripts/renderer/` |
 | ③ 配音 | 主 agent 调脚本 |

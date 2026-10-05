@@ -1,6 +1,6 @@
 # 代码规范
 
-**产品代码尚未开始（M1 起）。** 仓库工具（`scripts/` 与根目录的 `package.json` / `tsconfig.json`）已落地并遵循本文规范；其余条款用于约束接下来的产品代码。
+**产品代码已开始（M1 起）。** 仓库工具（`scripts/` 与根目录的 `package.json` / `tsconfig.json`）与产品脚本（`packages/plugin/scripts/`）都遵循本文规范。
 
 ---
 
@@ -16,6 +16,8 @@
 **为什么不留 Python**：当初选它是为了办公文档与 PDF 库，而这两块现在都走 Node 的 `dsoffice`；剩下的文本提取由 `officeparser` 覆盖。留 Python 等于为一个功能维护第二套工具链（uv/venv + pytest + ruff + 类型检查），而它的库还只在 DSH 内可用——脚本要能脱离 DSH 直跑（M1 验收 4），本来也得自己管环境。
 
 **仓库工具不经过构建**：Node 22.19+ 直接运行 `.ts`（类型剥离），所以 `pnpm run check` 没有编译步骤；`pnpm run typecheck` 只做类型检查，不产出文件。这也是 `erasableSyntaxOnly` 打开的原因——只用可擦除的语法，禁 `enum` 与参数属性。
+
+**产品脚本同样直跑**（`pnpm analyze` / `assets` / `validate`，M1–M3），所以 CI 不需要为它们加构建步骤。
 
 **连带的收益**：`foldercast.json` 的 TypeScript 类型由分析器、渲染器共用一份定义，不再需要「改一边另一边必须同步」这条纪律兜底。
 

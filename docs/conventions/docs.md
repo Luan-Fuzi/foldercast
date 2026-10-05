@@ -111,9 +111,10 @@ pnpm run check:json       # JSON 合法性 + 重复键（顺带覆盖 schema 与
 pnpm run check:links      # 相对链接是否指向存在的文件
 pnpm run check:examples   # 示例是否符合 schema
 pnpm run check            # 上面三项 + 风格预设 token 一致性
+pnpm run validate <目录>   # 解读与讲稿是否符合契约（含幻觉路径、字幕字数）
 ```
 
-四个脚本在 `scripts/` 下，实现见 [../../scripts/check-links.ts](../../scripts/check-links.ts) 等文件；仓库根另有 `pnpm run typecheck` 检查这些脚本自身的类型。
+四个脚本在 `scripts/` 下，实现见 [../../scripts/check-links.ts](../../scripts/check-links.ts) 等文件；仓库根另有 `pnpm run typecheck` 检查这些脚本自身的类型。`validate` 是**产品脚本**，在 `packages/plugin/scripts/validate/` 下（M3），它读的就是这里的 schema。
 
 ---
 

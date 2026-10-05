@@ -117,21 +117,68 @@
 
 ---
 
-## M3 · 契约校验脚本
+## M3 · 契约校验脚本（已完成）
 
 目标：**机器可查的验收，先于被验收的产物。**
 
 **为什么单独成为里程碑**：它是 M5（写稿）的前提。把校验混在写稿里，等于「先做，再想怎么判断做对没有」——而这个项目最大的空白正是叙事质量没有判据（见「已识别的坑」第 5 条）。
 
-- [ ] `foldercast.json` / `script.json` 通过各自 schema 校验
-- [ ] 讲稿引用的每个路径都在解读的 `manifest` 里 —— **幻觉路径拦截**
-- [ ] 场景 `type` 在开放枚举内
-- [ ] 字幕块 ≤24 字
-- [ ] 结构树与 `stats` 的一致性（计数与清单对得上）
+- [x] `foldercast.json` / `script.json` 通过各自 schema 校验
+- [x] 讲稿引用的每个路径都在解读的 `manifest` 里 —— **幻觉路径拦截**
+- [x] 场景 `type` 在开放枚举内
+- [x] 字幕块 ≤24 字
+- [x] 结构树与 `stats` 的一致性（计数与清单对得上）
 
-**验收**：对一份**故意写坏**的讲稿（含幻觉路径、非法 type、超长字幕块）能全部报出，并指出具体位置。
+落地时补了三条（都在原目标的判据之内，只是原清单没写全）：
+
+- **场景字段按类型查**：schema 的字段集合是各类型的并集，所以「`cover` 场景里出现 `groups`」schema 拦不住，要按类型再查一遍；同时把各场景的必需字段用 `allOf` 写进 `script.schema.json`（原来只在 SPEC 的表格里）
+- **素材路径的存在性**：`asset` / `items` / `poster` / `pages` 相对工作根，要在素材清单或工作根里能找到，否则要到渲染阶段才发现
+- **`stats` 反查路径**：`stats.roles` / `stats.secrets` / `graph.roots|hubs|leaves|dangling` 里列出的路径都必须在 `manifest` 里，图上度数也要与 `imports` / `importedBy` 对得上
+
+**用法**
+
+```bash
+pnpm validate <目录>            # 默认校验 <目录>/.foldercast/ 下的解读与讲稿
+pnpm validate <目录> --json     # 机器可读报告（M4 的工具与 CI 用）
+```
+
+退出码：`0` 通过（可能有 warning）、`1` 有 blocker、`2` 参数或环境有误。blocker 必须修，warning 是「可能是笔误，自己确认」。
+
+**验收（2026-10-05 实测）**
+
+| 场景 | 结果 |
+|---|---|
+| `qiuzhao202608/lecture-videos`（TS + Remotion，94 文件） | 解读 **0 blocker**；塞入故意写坏的讲稿后报出 **11 条**，全部带文件名与行列号 |
+| `qiuzhao202608/resume`（Office 汇报，22 文件） | 解读 **0 blocker** |
+| `qiuzhao202608`（混杂资料，1040 文件 → 按重要性保留 200） | 解读 **0 blocker** |
+| 本仓库自身 | 解读 **0 blocker**，且已进 CI（分析器产出的解读必须能过校验） |
+
+前三条是**与输入无关的证据**：解读是分析器刚跑出来的，校验器在真实语料上没有误报。
+
+**「故意写坏」的讲稿**（`packages/plugin/scripts/validate/tests/fixtures/bad-script.json`）覆盖十类错误，每类都在测试里对着 `(code, JSON 指针, 场景 id, 字段, 行号)` 断言：
+
+| # | 错误 | 报出 |
+|---|---|---|
+| 1 | `cover` 缺必需字段 `title` | `scene-field-missing` `/scenes/0/title` |
+| 2 | 引用编出来的路径 `src/main.ts` | `path-hallucinated`，并给出相近候选 |
+| 3 | `focusLines` 超出文件真实行数 | `focus-lines-out-of-range` |
+| 4 | 两个场景 `id` 重复 | `scene-id-duplicate` |
+| 5 | 素材基准写错（多一层 `assets/`） | `asset-missing`，并说明该写成什么 |
+| 6 | 素材不存在 | `asset-missing` |
+| 7 | 盘点数量与解读不符 | `inventory-group-count-mismatch`（warning） |
+| 8 | `tree` 强调不存在的子路径 | `path-hallucinated` |
+| 9 | `cover` 场景里出现 `groups` | `scene-field-unused` |
+| 10 | 一整句没有标点，切不出 ≤24 字的字幕块 | `subtitle-too-long`，报出最长一块的宽度 |
+
+**三条判据取舍**
+
+- **字幕的「24 字」按显示宽度折算**：中日韩文字与全角标点算 1，其余算 0.5。24 本来就是屏幕一行的容量，中英混排按折算算才与画面一致；纯中文下与「数汉字个数」等价。已写进 [SPEC-data-format.md](specs/SPEC-data-format.md)，代码在 `contracts/subtitles.ts`（`SUB_LIMIT`）—— **校验与配音共用一份实现**，避免「校验按一套、配音按另一套」。
+- **切不动的块报错，不硬切**：整块没有任何可切点时，硬切会产生半个词。所以切分器原样返回它，由校验器报出来让人改稿。
+- **盘点数量报 warning 不报 blocker**：解说可以取整或概括（「大约七十个代码文件」），只有差得离谱才值得核对；路径与字段这类硬事实才是 blocker。
 
 **这一层的边界**：它只查机器能判断的。**「有没有讲错重点」不是它能管的**，那是 M5 的事。
+
+**留给 M4 的一件事**：schema 只有一份，在 `docs/specs/` 下，校验器按仓库布局找它（**不复制第二份**，否则会多出一个会漂移的权威）。打包成 npm 包分发时要把这两个 schema 一并放进包里，并让校验器认包内布局。
 
 ---
 

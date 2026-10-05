@@ -138,6 +138,9 @@ jobs:
 
       # 配音：runner 上没有 say、也没有 ffmpeg，所以能验的是**前置检查与引导**（退出码非 0
       # 且有可操作的话），以及 durations.json 的校验路径。真配音由本机验收。
+      #
+      # 另外注意：**插件里「缺 ffmpeg 就不配音、照常出静音片」这条路径只在 CI 上跑**，
+      # 本机有 ffmpeg，走不到。所以这一步还兼作那条分支的覆盖。
       - name: 配音阶段的前置检查
         run: |
           set +e
@@ -149,7 +152,8 @@ jobs:
           # mimo 没密钥：退出码 4 + 引导里写明怎么配
           test "$mimo_code" = "4" || { echo "缺密钥应当退出 4，实际是 $mimo_code"; cat voice.log; exit 1; }
           grep -q "MIMO_API_KEY" voice.json || { echo "引导里没有说要配哪个引用名"; cat voice.json; exit 1; }
-          # say 缺命令或 ffmpeg 缺失：退出码 2 + 说清缺什么（runner 两者都没有）
+          # say 这条：runner 上既没有 ffmpeg 也没有 say。要么成功（有工具），要么
+          # 退出码 2 并说清缺什么 —— **不能是崩溃或静默**。
           if [ "$say_code" != "0" ]; then
             test "$say_code" = "2" || { echo "环境缺失应当退出 2，实际是 $say_code"; cat voice-say.log; exit 1; }
             grep -qE "ffmpeg|say" voice-say.log || { echo "没说清缺什么"; cat voice-say.log; exit 1; }

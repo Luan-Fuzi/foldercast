@@ -303,8 +303,8 @@ describe('有讲稿时跑校验', () => {
         return;
       }
 
-      // 没有浏览器的机器：这一步**必须**给出结构化引导，而不是一句失败（C4 的判据）。
-      // 这条分支在 CI 上是有意义的覆盖，不是「跳过」。
+      // 没有浏览器（或没有 ffmpeg，所以配音那一步被跳过）的机器：**必须**给出结构化说明，
+      // 而不是一句失败。这两条分支在 CI 上是有意义的覆盖，不是「跳过」。
       expect(value?.next).toBe('blocked');
       expect(String(value?.nextHint)).toContain('渲染需要浏览器');
       expect(String(value?.nextHint)).toContain('remotion browser ensure');

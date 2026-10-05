@@ -125,6 +125,8 @@ export type CastResult = {
   /** 实际使用的 provider 与音色（从 `durations.json` 读，不是配置里写的）。 */
   voiceProvider?: string;
   voiceName?: string;
+  /** 配音这一步的说明：为什么没配（缺 ffmpeg / say 等）。缺命令时出的是静音片。 */
+  voiceNote?: string;
   /** 整条旁白音轨的落点。 */
   narrationPath: string;
   /** 评审结论的落点（M5）。有没有、是否比讲稿旧，看 `review`。 */
@@ -457,13 +459,33 @@ export async function cast(options: CastOptions): Promise<CastResult> {
   let voiceReport: StageReport | undefined;
   let voiceProvider: string | undefined;
   let voiceName: string | undefined;
+  const warningsForVoice: string[] = [];
   const credentials = options.credentials;
   const scriptVoice = options.scriptVoice ?? readScriptVoice(base.scriptPath);
   const wanted = options.ttsProvider ?? scriptVoice.provider ?? 'say';
   let voiceEnv: Record<string, string> | undefined;
 
+  /**
+   * 配音要的外部命令：ffmpeg 转 wav 与拼音轨、ffprobe 实测时长、以及本地 provider 自己
+   * 要的（`say`）。
+   *
+   * **缺了不是失败，是「这次没配音」**：与「缺浏览器就不出片」同一套态度 —— 出静音片，
+   * 把缺什么写进结果。CI runner 上没有 ffmpeg，这条路径每次都在跑。
+   */
+  const voiceMissing = missingForVoice(wanted, dependencies);
+
   if (options.skipVoice === true) {
     // 显式跳过：不跑配音阶段，也不给渲染喂音轨
+  } else if (voiceMissing.length > 0) {
+    voiceReport = {
+      ok: true,
+      ms: 0,
+      detail: `跳过配音：缺少 ${voiceMissing.join('、')}（不影响出静音片）`,
+    };
+    warningsForVoice.push(
+      `这一步没有配音（缺 ${voiceMissing.join('、')}）：成片是静音的。` +
+        `装上之后再调一次即可（分析、素材、页面、渲染都不受影响）。`,
+    );
   } else if (base.voice === 'fresh') {
     // 配音产物比讲稿新 → 不重新合成（TTS 有配额与费用，判据与成片同构）
     const existing = readDurations(base.durationsPath);
@@ -538,8 +560,11 @@ export async function cast(options: CastOptions): Promise<CastResult> {
 
   // 配音阶段之后才有这些（下面的提前返回要看到它们，所以在这里算）
   const voiceStages = voiceReport === undefined ? allStages : { ...allStages, voice: voiceReport };
-  const withVoice =
-    voiceProvider === undefined ? {} : { voiceProvider, ...(voiceName === undefined ? {} : { voiceName }) };
+  const withVoice = {
+    ...(voiceProvider === undefined ? {} : { voiceProvider }),
+    ...(voiceName === undefined ? {} : { voiceName }),
+    ...(warningsForVoice.length === 0 ? {} : { voiceNote: warningsForVoice.join(' ') }),
+  };
   const voiceFresh = voiceReport !== undefined;
 
   // ── 渲染（M7，评审通过才跑） ─────────────────────────
@@ -653,6 +678,26 @@ function explainRender(result: RunResult): string {
   return detail === undefined
     ? `渲染阶段失败（退出码 ${String(result.exitCode)}）。`
     : `渲染阶段失败（退出码 ${String(result.exitCode)}）：\n${detail}`;
+}
+
+/**
+ * 配音这一步缺哪些外部命令。**空数组表示可以配音**。
+ *
+ * 判据与渲染脚本自己的前置检查一致（`ffmpeg` / `ffprobe` / provider 要的可执行文件），
+ * 差别只是这里**不报错**：缺了就不配音，出静音片。
+ */
+function missingForVoice(provider: string, dependencies: Dependency[]): string[] {
+  const missing: string[] = [];
+  for (const name of ['ffmpeg', 'ffprobe'] as const) {
+    const dependency = dependencies.find((item) => item.name === name);
+    if (dependency !== undefined && !dependency.ok) missing.push(name);
+  }
+  // 本地 provider 还要自己的命令（`say`）；云端 provider 只依赖 ffmpeg/ffprobe
+  if (provider === 'say') {
+    const say = dependencies.find((item) => item.name === 'say');
+    if (say !== undefined && !say.ok) missing.push('say');
+  }
+  return missing;
 }
 
 /** 从讲稿里读配音配置（只读它，不校验 —— 那是校验器的事）。 */

@@ -92,6 +92,7 @@ const OUTPUT_SCHEMA = {
     },
     voiceProvider: { type: 'string', description: '实际使用的 TTS provider' },
     voiceName: { type: 'string', description: '实际使用的音色' },
+    voiceNote: { type: 'string', description: '配音这一步的说明：为什么没配（缺 ffmpeg / say 等）' },
     reviewPath: { type: 'string', description: '评审结论的落点（M5，skill 第六步写到这里）' },
     review: {
       type: 'string',
@@ -201,6 +202,7 @@ type CastLike = {
   voice: string;
   voiceProvider?: string;
   voiceName?: string;
+  voiceNote?: string;
   dependencies: { name: string; ok: boolean; hint: string }[];
   stages: Record<string, { ok: boolean; ms: number; exitCode?: number; error?: string; detail?: string } | undefined>;
   reading?: {
@@ -384,6 +386,7 @@ function registerTool(ctx: Context): void {
       if (result.videoBytes !== undefined) value.videoBytes = result.videoBytes;
       if (result.voiceProvider !== undefined) value.voiceProvider = result.voiceProvider;
       if (result.voiceName !== undefined) value.voiceName = result.voiceName;
+      if (result.voiceNote !== undefined) value.voiceNote = result.voiceNote;
       if (result.reading !== undefined) value.reading = result.reading;
       if (result.validation !== undefined) value.validation = result.validation;
 

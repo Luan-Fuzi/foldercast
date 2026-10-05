@@ -11,6 +11,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import {
   detectDependencies,
+  htmlPathFor,
   readingPathFor,
   reviewPathFor,
   runStage,
@@ -37,10 +38,11 @@ function reviewState(reviewPath: string, scriptPath: string): 'missing' | 'stale
 }
 
 /** 各阶段的预算。素材阶段最慢（要起 LibreOffice 引擎），其余都很快。 */
-const TIMEOUT_MS: Readonly<Record<'analyze' | 'assets' | 'validate', number>> = {
+const TIMEOUT_MS: Readonly<Record<'analyze' | 'assets' | 'validate' | 'html', number>> = {
   analyze: 300_000,
   assets: 600_000,
   validate: 120_000,
+  html: 120_000,
 };
 
 export type StageReport = {
@@ -78,11 +80,15 @@ export type CastResult = {
   nextHint: string;
   readingPath: string;
   scriptPath: string;
+  /** HTML 视图的落点（M6）：一个自包含的静态页面，随时可以打开看。 */
+  htmlPath: string;
+  /** 页面的字节数；没生成成功时不出现在结果里。 */
+  htmlBytes?: number;
   /** 评审结论的落点（M5）。有没有、是否比讲稿旧，看 `review`。 */
   reviewPath: string;
   /** 评审结论的状态：`missing` 还没审、`stale` 审过但讲稿又改了、`fresh` 审的是当前这版。 */
   review: 'missing' | 'stale' | 'fresh';
-  stages: { analyze: StageReport; assets?: StageReport; validate?: StageReport };
+  stages: { analyze: StageReport; assets?: StageReport; html?: StageReport; validate?: StageReport };
   dependencies: Dependency[];
   reading?: {
     files: number;
@@ -198,6 +204,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     label,
     readingPath: readingPathFor(target),
     scriptPath: scriptPathFor(target),
+    htmlPath: htmlPathFor(target),
     reviewPath: reviewPathFor(target),
     review: reviewState(reviewPathFor(target), scriptPathFor(target)),
     dependencies,
@@ -269,18 +276,36 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     // 素材失败不致命：解读与讲稿仍可用，缺的是画面
   }
 
+  // ── HTML 视图（M6） ─────────────────────────────────
+  // 只读解读与素材，**不依赖讲稿**：写完稿之前就该有东西能看。失败不致命，如实报出来即可。
+  const htmlRun = await runStage('html', {
+    args: [target],
+    timeoutMs: TIMEOUT_MS.html,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  const html = reportOf(htmlRun);
+  const htmlStat = statSync(base.htmlPath, { throwIfNoEntry: false });
+
   const readingSummary = summarizeReading(reading);
+  const stages = {
+    analyze,
+    ...(assets === undefined ? {} : { assets }),
+    html,
+  };
+  const withHtml = htmlStat === undefined ? {} : { htmlBytes: htmlStat.size };
 
   // ── 校验（有讲稿才跑） ───────────────────────────────
   if (!existsSync(base.scriptPath)) {
     return {
       ok: true,
       ...base,
+      ...withHtml,
       next: 'needsScript',
       nextHint:
-        `解读已生成（${String(readingSummary.files)} 个文件）。下一步：按 foldercast skill 通读内容并写出 ${base.scriptPath}，` +
-        `再调一次 foldercast_cast 校验；校验通过后由渲染阶段出片（渲染尚未实现）。`,
-      stages: { analyze, ...(assets === undefined ? {} : { assets }) },
+        `解读已生成（${String(readingSummary.files)} 个文件）${htmlRun.ok ? `，页面在 ${base.htmlPath}` : ''}。` +
+        `下一步：按 foldercast skill 通读内容并写出 ${base.scriptPath}，再调一次 foldercast_cast 校验；` +
+        `视频与配音尚未实现（M7 / M8）。`,
+      stages,
       reading: readingSummary,
     };
   }
@@ -292,19 +317,20 @@ export async function cast(options: CastOptions): Promise<CastResult> {
   });
   const validate = reportOf(validateRun);
   if (validateRun.cancelled === true) {
-    return { ok: false, ...base, next: 'blocked', nextHint: '已取消。', stages: { analyze, ...(assets === undefined ? {} : { assets }), validate } };
+    return { ok: false, ...base, ...withHtml, next: 'blocked', nextHint: '已取消。', stages: { ...stages, validate } };
   }
 
   const validation = parseValidation(validateRun.stdout);
 
-  const stages = { analyze, ...(assets === undefined ? {} : { assets }), validate };
+  const allStages = { ...stages, validate };
   if (validation.blocker > 0) {
     return {
       ok: false,
       ...base,
+      ...withHtml,
       next: 'fixScript',
       nextHint: `讲稿有 ${String(validation.blocker)} 个必须修的问题，见 validation.issues（每条都带文件与行号）。修好后重新调用 foldercast_cast。`,
-      stages,
+      stages: allStages,
       reading: readingSummary,
       validation,
     };
@@ -316,13 +342,14 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     return {
       ok: true,
       ...base,
+      ...withHtml,
       next: 'needsReview',
       nextHint:
         `解读与讲稿都通过校验（${String(validation.warning)} 个待确认项）。` +
         `下一步：按 skill 的评审判据起一个独立 subagent 评审，结论写到 ${base.reviewPath}` +
         `${base.review === 'stale' ? '（现有结论早于当前讲稿，已作废）' : ''}。` +
-        `渲染与配音阶段尚未实现。`,
-      stages,
+        `页面已经生成（${base.htmlPath}），视频与配音尚未实现（M7 / M8）。`,
+      stages: allStages,
       reading: readingSummary,
       validation,
     };
@@ -331,11 +358,12 @@ export async function cast(options: CastOptions): Promise<CastResult> {
   return {
     ok: true,
     ...base,
+    ...withHtml,
     next: 'validated',
     nextHint:
       `解读、讲稿与评审都齐了（${String(validation.warning)} 个待确认项）。` +
-      `渲染与配音阶段尚未实现，现在可以看 ${base.readingPath}、${base.scriptPath} 与 ${base.reviewPath}。`,
-    stages,
+      `页面在 ${base.htmlPath}（用浏览器打开），视频与配音尚未实现（M7 / M8）。`,
+    stages: allStages,
     reading: readingSummary,
     validation,
   };

@@ -5,7 +5,7 @@
  * **插件交付的那个东西**，不是一份复制品。工具定义写错在这里就暴露，不必先装进 DSH。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cpSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { apply } from '../index.ts';
@@ -115,6 +115,24 @@ describe('注册的形状符合 DSH 的工具契约', () => {
   it('skill 带 source —— 注册表加载时会复查，缺了读取直接失败', () => {
     // 踩过一次：只给 name/description/content，读取报 `loaded skill "foldercast" source must be a string`
     expect(registeredSkill?.source).toBe('foldercast');
+  });
+});
+
+describe('HTML 视图（M6）', () => {
+  it('一次调用顺手把页面也生成出来，并报出落点与体积', async () => {
+    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+
+    const htmlPath = String(value?.htmlPath);
+    expect(htmlPath.endsWith(join('.foldercast', 'out', 'index.html'))).toBe(true);
+    expect(existsSync(htmlPath)).toBe(true);
+    expect(value?.htmlBytes as number).toBeGreaterThan(2000);
+
+    const html = readFileSync(htmlPath, 'utf8');
+    expect(html).not.toContain('<script');
+    expect(html).not.toMatch(/https?:\/\//);
+
+    const stages = value?.stages as { html?: { ok: boolean } };
+    expect(stages.html?.ok).toBe(true);
   });
 });
 

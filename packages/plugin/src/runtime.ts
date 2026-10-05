@@ -43,13 +43,15 @@ export function findPackageRoot(start: string): string | undefined {
 /** 包根：脚本、随包 schema、依赖的 bin 都相对它定位。 */
 export const PACKAGE_ROOT = findPackageRoot(MODULE_DIR) ?? resolve(MODULE_DIR, '..');
 
-export type StageName = 'analyze' | 'assets' | 'validate';
+export type StageName = 'analyze' | 'assets' | 'validate' | 'html';
 
 /** 阶段脚本所在子目录，两套布局下同名。 */
 const STAGE_DIR: Readonly<Record<StageName, string>> = {
   analyze: 'analyzer',
   assets: 'assets',
   validate: 'validate',
+  // HTML 视图（M6）：只读解读与素材，产出单文件页面。确定性程序，所以归工具做
+  html: 'html',
 };
 
 /** 这份 Node 能不能直接跑 TypeScript（类型剥离，22.19 起默认开）。 */
@@ -115,6 +117,14 @@ export function scriptPathFor(target: string): string {
  * 评审结论（M5）。它由 agent 产出、没有 schema，所以这里只定位、不校验：
  * 校验器管机器能判的，评审管语义。
  */
+/**
+ * HTML 视图的落点（M6）。它就是 `<工作根>/out/` 下的成片之一，
+ * 与 M7 的视频同一个出口目录。
+ */
+export function htmlPathFor(target: string): string {
+  return resolve(workRootFor(target), 'out', 'index.html');
+}
+
 export function reviewPathFor(target: string): string {
   return resolve(workRootFor(target), 'review.md');
 }

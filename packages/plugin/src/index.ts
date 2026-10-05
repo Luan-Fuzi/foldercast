@@ -74,6 +74,8 @@ const OUTPUT_SCHEMA = {
     nextHint: { type: 'string' },
     readingPath: { type: 'string' },
     scriptPath: { type: 'string' },
+    htmlPath: { type: 'string', description: 'HTML 视图的落点（M6）：自包含的单文件页面' },
+    htmlBytes: { type: 'integer', description: '页面字节数' },
     reviewPath: { type: 'string', description: '评审结论的落点（M5，skill 第六步写到这里）' },
     review: {
       type: 'string',
@@ -99,6 +101,11 @@ const OUTPUT_SCHEMA = {
           properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
         },
         assets: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
+        },
+        html: {
           type: 'object',
           additionalProperties: false,
           properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
@@ -160,6 +167,7 @@ type CastLike = {
   nextHint: string;
   readingPath: string;
   scriptPath: string;
+  htmlPath: string;
   dependencies: { name: string; ok: boolean; hint: string }[];
   stages: Record<string, { ok: boolean; ms: number; exitCode?: number; error?: string; detail?: string } | undefined>;
   reading?: {
@@ -241,7 +249,8 @@ function registerTool(ctx: Context): void {
 
   tools.register({
     name: 'foldercast_cast',
-    description: 'Cast a folder into an explainer video: analyze it, build assets, validate the script.',
+    description:
+      'Cast a folder into an explainer video: analyze it, build assets, render a self-contained HTML view, validate the script.',
     timeoutMs: CAST_TIMEOUT_MS,
     parameters: {
       type: 'object',
@@ -282,11 +291,13 @@ function registerTool(ctx: Context): void {
         nextHint: result.nextHint,
         readingPath: result.readingPath,
         scriptPath: result.scriptPath,
+        htmlPath: result.htmlPath,
         reviewPath: result.reviewPath,
         review: result.review,
         dependencies: unavailable,
         stages: result.stages,
       };
+      if (result.htmlBytes !== undefined) value.htmlBytes = result.htmlBytes;
       if (result.reading !== undefined) value.reading = result.reading;
       if (result.validation !== undefined) value.validation = result.validation;
 

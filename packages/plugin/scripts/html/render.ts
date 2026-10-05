@@ -223,7 +223,7 @@ function renderTree(node: TreeNode, model: ViewModel, marks: TreeMarks, depth: n
       const badges = [
         marks.roots.has(child.path) ? badge('入口', 'root') : '',
         marks.hubs.has(child.path) ? badge('枢纽', 'hub') : '',
-        secret === undefined ? '' : badge(`密钥 · ${secret}`, 'secret'),
+        secret === undefined ? '' : badge(`密钥（命中 ${secret}）`, 'secret'),
       ]
         .filter((item) => item !== '')
         .join('');
@@ -358,7 +358,7 @@ function renderCard(card: FileCard, model: ViewModel, images: ReadonlyMap<string
   const marks = [
     card.mark === 'root' ? badge('入口', 'root') : '',
     card.mark === 'hub' ? badge(`枢纽 入${String(card.inDegree ?? 0)}`, 'hub') : '',
-    card.secret !== undefined ? badge(`密钥 · ${card.secret}`, 'secret') : '',
+    card.secret !== undefined ? badge(`密钥（命中判据 ${card.secret}）`, 'secret') : '',
   ]
     .filter((item) => item !== '')
     .join(' ');
@@ -368,8 +368,16 @@ function renderCard(card: FileCard, model: ViewModel, images: ReadonlyMap<string
   if (card.lines !== undefined) meta.push(`${String(card.lines)} 行`);
   if (card.pageCount !== undefined) meta.push(`${String(card.pageCount)} 页`);
   if (card.language !== undefined) meta.push(card.language);
-  if (card.imports.length > 0) meta.push(`引用 ${String(card.imports.length)}`);
-  if (card.importedBy.length > 0) meta.push(`被引用 ${String(card.importedBy.length)}`);
+  const importedByTotal = card.importedByCount ?? card.importedBy.length;
+  const importsTotal = card.importsCount ?? card.imports.length;
+  if (importsTotal > 0) meta.push(importsTotal > card.imports.length ? `引用 ${String(importsTotal)}（清单列 ${String(card.imports.length)} 条）` : `引用 ${String(importsTotal)}`);
+  if (importedByTotal > 0) {
+    meta.push(
+      importedByTotal > card.importedBy.length
+        ? `被引用 ${String(importedByTotal)}（清单列 ${String(card.importedBy.length)} 条）`
+        : `被引用 ${String(importedByTotal)}`,
+    );
+  }
   if (card.mtimeMs !== undefined) meta.push(formatTime(card.mtimeMs));
 
   const image = card.asset === undefined ? undefined : images.get(card.asset.path);
@@ -499,7 +507,7 @@ function hubTiers(model: ViewModel): string {
   }
   if (weak.length > 0) {
     parts.push(
-      `<details><summary class="lead">只被一个文件引用 · ${String(weak.length)} 个</summary>`,
+      `<details><summary class="lead">枢纽榜里只被引用一次 · ${String(weak.length)} 个</summary>`,
       `<ul style="margin:6px 0 0;padding-left:18px">${weak.slice(0, 40).map((hub) => item(hub.path, hub.in)).join('')}`,
       `${weak.length > 40 ? `<li class="lead">…另有 ${String(weak.length - 40)} 个</li>` : ''}</ul></details>`,
     );
@@ -521,6 +529,14 @@ export function formatTime(value: string | number): string {
   const sign = offset < 0 ? '-' : '+';
   const absolute = Math.abs(offset);
   return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`;
+}
+
+/** 被筛掉的文件举几个例子，别让读者猜「为什么少了一个」。 */
+function hiddenExamples(model: ViewModel, images: ReadonlyMap<string, string>, take = 3): string {
+  const hidden = model.cards.filter((card) => !hasSomethingToShow(card, images)).map((card) => card.path);
+  if (hidden.length === 0) return '';
+  const shown = hidden.slice(0, take).join('、');
+  return hidden.length > take ? `${shown} 等` : shown;
 }
 
 /** 生成整个页面。 */
@@ -549,7 +565,7 @@ export function renderPage(model: ViewModel, options: RenderOptions): string {
   const boundary: string[] = [
     `这份解读收录了 <b>${String(model.stats.totalFiles)}</b> 个文件${
       truncated
-        ? `（按重要性截断到 ${String(model.stats.maxFiles)} 个；密钥类文件不占这个配额，所以清单可能比它多几条 —— <b>它不是整个目录</b>）`
+        ? `（按重要性截断到 ${String(model.stats.maxFiles)} 个 —— 分析器按 角色 → 类型 → 路径深度 → 路径 排序后取前 N 个；密钥类文件不占这个配额，所以清单可能比它多几条。**它不是整个目录**）`
         : `（没有触发 ${String(model.stats.maxFiles)} 个的截断上限，但下面那些路径没有走查）`
     }。`,
     `走查时排除了 <b>${String(model.stats.excluded)}</b> 类路径 —— 它们下面的文件不会出现在页面上（构建产物、依赖、版本库等都在其中）：` +
@@ -589,9 +605,9 @@ export function renderPage(model: ViewModel, options: RenderOptions): string {
       <li><b>${String(model.stats.totalFiles)}</b><span>收录文件</span></li>
       <li><b>${formatBytes(model.stats.totalBytes)}</b><span>合计</span></li>
       <li><b>${String(model.stats.maxDepth)}</b><span>最大深度</span></li>
-      <li><b>${String(model.roots.length)}</b><span>入口</span></li>
+      <li><b>${String(model.roots.length)}</b><span>图入口</span></li>
       <li><b>${String(model.hubs.length)}</b><span>枢纽</span></li>
-      <li><b>${String(model.graph.edges.length)}</b><span>引用边</span></li>
+      <li><b>${String(model.graph.summary.totalEdges)}</b><span>引用边（解读记录）</span></li>
     </ul>
   </div>
 </header>
@@ -615,7 +631,7 @@ export function renderPage(model: ViewModel, options: RenderOptions): string {
 
   <section id="overview">
     <h2>内容盘点</h2>
-    <p class="lead">数字来自解读的 <span class="mono">stats</span>，由程序统计，不是估计。</p>
+    <p class="lead">数字来自解读的 <span class="mono">stats</span>，由程序统计。</p>
     <div class="grid">
       <div class="panel">
         <h3 style="margin:0 0 10px;font-size:14px">按类型</h3>
@@ -651,17 +667,19 @@ export function renderPage(model: ViewModel, options: RenderOptions): string {
         }
       </div>
       <div class="panel">
-        <h3 style="margin:0 0 4px;font-size:14px">最大的目录</h3>
-        <p class="lead" style="margin:0 0 10px">按<b>文件数</b>排；解读列的层级不一定相同（顶层目录与子目录会并列）。</p>
+        <h3 style="margin:0 0 4px;font-size:14px">最大的顶层目录</h3>
+        <p class="lead" style="margin:0 0 10px">按<b>体积</b>排（含子目录），避免只看文件数漏掉「文件少但内容重」的块。</p>
         ${
-          model.topDirs.length === 0
+          model.topLevel.length === 0
             ? '<p class="lead" style="margin:0">没有子目录。</p>'
-            : model.topDirs.map((dir) => row(dir.path, `${String(dir.files)} · ${percent(dir.share)}`, dir.share)).join('')
+            : model.topLevel
+                .map((dir) => row(dir.path, `${formatBytes(dir.bytes)} · ${String(dir.files)} 个 · ${percent(dir.share)}`, dir.share))
+                .join('')
         }
       </div>
       <div class="panel">
         <h3 style="margin:0 0 4px;font-size:14px">语言（按行数）</h3>
-        <p class="lead" style="margin:0 0 10px">只统计有行数的文本（${String(model.filesWithLines)} 个文件）；Office / PDF 没有行数，不参与这里的占比。</p>
+        <p class="lead" style="margin:0 0 10px">占比的分母是<b>表内合计行数</b>。参与统计的是「有行数<b>且</b>有语言归属」的 ${String(model.filesWithLanguage)} 个文件：Office / PDF 没有行数，${String(model.filesWithLines - model.filesWithLanguage)} 个文件（如 .gitignore、LICENSE）有行数但没有语言，都不进这张表。</p>
         ${
           model.languages.length === 0
             ? '<p class="lead" style="margin:0">没有可统计的文本。</p>'
@@ -681,7 +699,7 @@ export function renderPage(model: ViewModel, options: RenderOptions): string {
 
   <section id="marks">
     <h2>入口与枢纽</h2>
-    <p class="lead">由解读的引用关系算出：<b>入口</b>（<span class="mono">graph.roots</span>）是没有任何文件引用它、并且它引用了别人（或本身是说明 / 入口文件）的起点；<b>枢纽</b>（<span class="mono">graph.hubs</span>）是被引用最多的文件。</p>
+    <p class="lead">由解读的引用关系算出：<b>入口</b>（<span class="mono">graph.roots</span>）是没有任何文件引用它、并且它引用了别人（或本身是说明 / 入口文件）的起点；<b>枢纽</b>（<span class="mono">graph.hubs</span>）是被引用最多的文件（解读最多给 20 个，并列时按路径取前几个 —— 所以「被引用 1 次」的文件里只有一部分上榜）。这里的「入口」是<b>引用图的起点</b>，与内容盘点里的角色「主入口（entry）」不是一回事：那个说的是文件类型。</p>
     <div class="grid">
       <div class="panel">
         <h3 style="margin:0 0 10px;font-size:14px">入口 · ${String(model.roots.length)}</h3>
@@ -706,7 +724,7 @@ export function renderPage(model: ViewModel, options: RenderOptions): string {
 
   <section id="graph">
     <h2>引用依赖图<span class="count">画了 ${String(model.graph.summary.drawn)} 个点 · ${String(model.graph.edges.length)} 条边</span></h2>
-    <p class="lead">谁引用谁，由解读的 <span class="mono">manifest[].imports</span> 得出：<b>只有代码与文档里的 import / 链接算边</b>，音频、图片、二进制靠路径字符串被引用，不进这张图。绿色是入口，土黄是枢纽。</p>
+    <p class="lead">谁引用谁，由解读的 <span class="mono">manifest[].imports</span> 得出：<b>只有代码与文档里的 import / 链接算边</b>，音频、图片、二进制靠路径字符串被引用，不进这张图；**正文里写的「见 八股/02_SFT八股.md」这类中文提及也不算** —— 解读只认链接语法与 import。绿色是入口，土黄是枢纽。</p>
     <p class="lead">解读记录 <b>${String(model.graph.summary.totalEdges)}</b> 条引用边、<b>${String(model.graph.summary.involved)}</b> 个文件参与其中；
     这里画的是连接最多的 ${String(model.graph.summary.drawn)} 个点<b>以及它们之间的</b> ${String(model.graph.edges.length)} 条边 —— 三个数不是一回事。</p>
     ${renderGraph(model)}
@@ -717,7 +735,7 @@ export function renderPage(model: ViewModel, options: RenderOptions): string {
     <p class="lead">摘要来自程序读取，缩略图来自素材阶段。${
       hidden === 0
         ? ''
-        : `另有 ${String(hidden)} 个文件既没有摘要也没有配图（音频、二进制这类），不单独列卡片 —— 结构树里有全部 ${String(model.cards.length)} 个文件。`
+        : `另有 ${String(hidden)} 个文件既没有摘要、也没有配图与引用关系，所以没有单独列卡片（例如 ${hiddenExamples(model, options.images)}）—— 结构树里有全部 ${String(model.cards.length)} 个文件。`
     }</p>
     ${shown.map((card) => renderCard(card, model, options.images)).join('')}
   </section>

@@ -40,6 +40,9 @@ export type FileCard = {
   preview?: string;
   imports: string[];
   importedBy: string[];
+  /** 解读记下的真实引用数（列表本身有上限：>`imports` 最多 40 条、`importedBy` 最多 5 条）。 */
+  importsCount?: number;
+  importedByCount?: number;
   /** 素材清单里登记的主产物（相对工作根），以及它的类型。 */
   asset?: { path: string; role: string; width?: number; height?: number };
   /** Office / PDF 的页数（素材清单的 `meta.pageCount`）。 */
@@ -107,6 +110,10 @@ export type ViewModel = {
   rolesUnclassified: number;
   /** 有行数可统计的文件数：Office / PDF 没有行数，不能混进语言占比的分母。 */
   filesWithLines: number;
+  /** 有行数**且**有语言归属的文件数（`.gitignore`、`LICENSE` 有行数但没语言，不进语言表）。 */
+  filesWithLanguage: number;
+  /** 按顶层目录聚合的文件数与体积。解读的 `topDirs` 只按文件数、且层级不统一，回答不了「哪块最多」。 */
+  topLevel: { path: string; files: number; bytes: number; share: number }[];
   /** 解读的排除规则（原样列出，页面用它解释「为什么看不到 out/ 里的成片」）。 */
   excludedPatterns: string[];
   topDirs: DirCount[];
@@ -349,6 +356,23 @@ function share(count: number, total: number): number {
   return total === 0 ? 0 : count / total;
 }
 
+/** 按顶层目录聚合：`a/b/c.md` 记到 `a`，根目录下的散文件记到 `（根目录）`。 */
+function topLevelDirs(manifest: readonly ManifestEntry[]): { path: string; files: number; bytes: number; share: number }[] {
+  const buckets = new Map<string, { files: number; bytes: number }>();
+  for (const entry of manifest) {
+    const cut = entry.path.indexOf('/');
+    const key = cut === -1 ? '（根目录）' : entry.path.slice(0, cut);
+    const bucket = buckets.get(key) ?? { files: 0, bytes: 0 };
+    bucket.files += 1;
+    bucket.bytes += entry.bytes ?? 0;
+    buckets.set(key, bucket);
+  }
+  const total = manifest.reduce((sum, entry) => sum + (entry.bytes ?? 0), 0);
+  return [...buckets.entries()]
+    .map(([path, bucket]) => ({ path, files: bucket.files, bytes: bucket.bytes, share: total === 0 ? 0 : bucket.bytes / total }))
+    .sort((left, right) => right.bytes - left.bytes || left.path.localeCompare(right.path, 'en'));
+}
+
 /** 组装视图模型。解读是唯一的事实来源，素材清单只补「有没有图可看」。 */
 export function collectViewModel(
   document: FoldercastDocument,
@@ -411,6 +435,8 @@ export function collectViewModel(
       if (entry.bytes !== undefined) card.bytes = entry.bytes;
       if (entry.lines !== undefined) card.lines = entry.lines;
       if (entry.language !== undefined) card.language = entry.language;
+      if (entry.importsCount !== undefined) card.importsCount = entry.importsCount;
+      if (entry.importedByCount !== undefined) card.importedByCount = entry.importedByCount;
       if (entry.title !== undefined && entry.title !== '') card.title = entry.title;
       if (entry.preview !== undefined && entry.preview !== '') card.preview = entry.preview;
       if (product !== undefined && product.path !== '') {
@@ -480,6 +506,8 @@ export function collectViewModel(
     roles,
     rolesUnclassified: document.stats.totalFiles - roles.reduce((sum, group) => sum + group.count, 0),
     filesWithLines: document.manifest.filter((entry) => entry.lines !== undefined).length,
+    filesWithLanguage: document.manifest.filter((entry) => entry.language !== undefined).length,
+    topLevel: topLevelDirs(document.manifest),
     excludedPatterns: [...(document.sources.exclude ?? [])],
     topDirs,
     languages,

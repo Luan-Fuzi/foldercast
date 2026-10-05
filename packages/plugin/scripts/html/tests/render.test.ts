@@ -120,8 +120,9 @@ describe('内容正确性', () => {
 describe('文件卡片的取舍', () => {
   it('没有摘要也没有配图的文件不单独列卡片，但要说明漏了多少', () => {
     const html = page();
-    // public/clip.wav 没有摘要、也不是入口/枢纽/密钥
-    expect(html).toContain('另有 1 个文件既没有摘要也没有配图');
+    // public/clip.wav 没有摘要、也没有配图与引用关系
+    expect(html).toContain('另有 1 个文件既没有摘要、也没有配图与引用关系');
+    expect(html).toContain('public/clip.wav'); // 举例说明是哪一个，别让读者猜
     expect(html).toContain('结构树里有全部 5 个文件');
   });
 

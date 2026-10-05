@@ -17,6 +17,9 @@ const FIXTURES = import.meta.dirname;
 const SAMPLE = resolve(FIXTURES, '../../analyzer/tests/fixtures/sample');
 const BAD_SCRIPT = join(FIXTURES, 'fixtures/bad-script.json');
 
+/** 夹具里的 `source.root` 是占位路径；测试时换成分析器写进解读的那个。 */
+const ROOT_PATTERN = /"root": "[^"]*"/;
+
 /** 每个夹具错误对应的一条期望。`scene` 与 `field` 用于验证「指到具体位置」。 */
 type Expectation = {
   code: string;
@@ -72,7 +75,11 @@ beforeAll(() => {
   workRoot = mkdtempSync(join(tmpdir(), 'foldercast-validate-'));
   mkdirSync(workRoot, { recursive: true });
   writeFileSync(join(workRoot, 'foldercast.json'), `${JSON.stringify(document, null, 2)}\n`);
-  writeFileSync(join(workRoot, 'script.json'), readFileSync(BAD_SCRIPT, 'utf8'));
+  // 夹具里的 source.root 是占位路径，按实际解读里的那个改写（不依赖仓库绝对路径，CI 上也能过）
+  writeFileSync(
+    join(workRoot, 'script.json'),
+    readFileSync(BAD_SCRIPT, 'utf8').replace(ROOT_PATTERN, `"root": ${JSON.stringify(document.source.root)}`),
+  );
 
   report = validateContracts({ target: SAMPLE, readingPath: join(workRoot, 'foldercast.json'), workRoot, scriptPath: join(workRoot, 'script.json') });
 });
@@ -146,6 +153,22 @@ describe('只报真问题：不误伤写得对的地方', () => {
   it('inventory 里与解读一致的 count 不报，不一致的才报', () => {
     const reported = report.issues.filter((issue) => issue.pointer.startsWith('/scenes/5/groups'));
     expect(reported.map((issue) => issue.pointer)).toEqual(['/scenes/5/groups/0/count']);
+  });
+
+  it('讲稿与解读的 source.root 不一致时报错（夹具的占位 root 必须被改写）', () => {
+    // 用夹具原样的占位 root（/tmp/target）跑一遍：解读的 root 是真实路径，两者必须对不上
+    writeFileSync(join(workRoot, 'script.json'), readFileSync(BAD_SCRIPT, 'utf8'));
+    const mismatched = validateContracts({
+      target: SAMPLE,
+      readingPath: join(workRoot, 'foldercast.json'),
+      workRoot,
+      scriptPath: join(workRoot, 'script.json'),
+    });
+
+    const issues = mismatched.issues.filter((issue) => issue.code === 'source-root-mismatch');
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.pointer).toBe('/source/root');
+    expect(issues[0]?.line).toBeGreaterThan(0);
   });
 
   it('没引用不存在的路径时不报幻觉路径', () => {

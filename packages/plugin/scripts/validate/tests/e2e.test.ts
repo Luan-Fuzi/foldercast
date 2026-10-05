@@ -15,14 +15,17 @@ const SAMPLE = resolve(import.meta.dirname, '../../analyzer/tests/fixtures/sampl
 const BAD_SCRIPT = resolve(import.meta.dirname, 'fixtures/bad-script.json');
 const GOOD_SCRIPT = resolve(import.meta.dirname, 'fixtures/good-script.json');
 
-/** 夹具里的 source.root 是仓库内路径；临时目录里要换成实际路径，否则会报 root 不一致。 */
-const PLACEHOLDER_ROOT = SAMPLE;
+/** 夹具里的 `source.root` 是仓库内路径（只为人读）；实际校验时换成分析器写进解读的那个。 */
+const ROOT_PATTERN = /"root": "[^"]*"/;
 
 let source = '';
 let workRoot = '';
 
-function scriptWithRealRoot(file: string, root: string): string {
-  return readFileSync(file, 'utf8').replaceAll(PLACEHOLDER_ROOT, root);
+/** 用解读里的 `source.root` 改写讲稿夹具的 root，避免依赖任何硬编码路径。 */
+function scriptWithRealRoot(file: string): string {
+  const reading: unknown = JSON.parse(readFileSync(join(workRoot, 'foldercast.json'), 'utf8'));
+  const root = (reading as { source: { root: string } }).source.root;
+  return readFileSync(file, 'utf8').replace(ROOT_PATTERN, `"root": ${JSON.stringify(root)}`);
 }
 
 type Run = { status: number; stdout: string; stderr: string };
@@ -70,14 +73,14 @@ describe('CLI 端到端', () => {
   });
 
   it('讲解稿写得对：退出码 0，报「通过」', () => {
-    writeFileSync(join(workRoot, 'script.json'), scriptWithRealRoot(GOOD_SCRIPT, source));
+    writeFileSync(join(workRoot, 'script.json'), scriptWithRealRoot(GOOD_SCRIPT));
     const { status, stdout } = run([source]);
     expect(stdout).toContain('契约校验通过');
     expect(status).toBe(0);
   });
 
   it('讲稿写得坏：退出码 1，问题带文件行号', () => {
-    writeFileSync(join(workRoot, 'script.json'), scriptWithRealRoot(BAD_SCRIPT, source));
+    writeFileSync(join(workRoot, 'script.json'), scriptWithRealRoot(BAD_SCRIPT));
     const { status, stdout } = run([source]);
     expect(status).toBe(1);
     // 行号形如 :31:15，能直接跳到出问题的那一行
@@ -86,7 +89,7 @@ describe('CLI 端到端', () => {
   });
 
   it('--json 输出机器可读的报告', () => {
-    writeFileSync(join(workRoot, 'script.json'), scriptWithRealRoot(BAD_SCRIPT, source));
+    writeFileSync(join(workRoot, 'script.json'), scriptWithRealRoot(BAD_SCRIPT));
     const { status, stdout } = run([source, '--json']);
     expect(status).toBe(1);
 

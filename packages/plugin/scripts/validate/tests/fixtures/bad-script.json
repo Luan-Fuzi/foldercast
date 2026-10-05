@@ -3,10 +3,10 @@
   "generatedAt": "2026-10-05T10:00:00+08:00",
 
   "source": {
-    "root": "/Users/scliang/work/foldercast/packages/plugin/scripts/analyzer/tests/fixtures/sample"
+    "root": "/tmp/target"
   },
 
-  "title": "故意写坏的讲稿（M3 验收夹具）",
+  "title": "故意写坏的讲稿（M3 验收夹具；source.root 由测试按实际解读改写）",
 
   "scenes": [
     {

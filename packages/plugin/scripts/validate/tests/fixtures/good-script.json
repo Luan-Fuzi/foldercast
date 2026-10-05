@@ -3,7 +3,7 @@
   "generatedAt": "2026-10-05T10:00:00+08:00",
 
   "source": {
-    "root": "/Users/scliang/work/foldercast/packages/plugin/scripts/analyzer/tests/fixtures/sample"
+    "root": "/tmp/target"
   },
 
   "title": "夹具目录 · 导览",

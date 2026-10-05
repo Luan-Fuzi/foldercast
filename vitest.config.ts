@@ -8,6 +8,7 @@ export default defineConfig({
       'packages/plugin/scripts/analyzer/tests/*.test.ts',
       'packages/plugin/scripts/assets/tests/*.test.ts',
       'packages/plugin/scripts/validate/tests/*.test.ts',
+      'packages/plugin/scripts/html/tests/*.test.ts',
       'packages/plugin/src/tests/*.test.ts',
       'scripts/**/*.test.ts',
     ],

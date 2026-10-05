@@ -35,6 +35,7 @@
     "analyze": "node scripts/analyzer/main.ts",
     "assets": "node scripts/assets/main.ts",
     "validate": "node scripts/validate/main.ts",
+    "html": "node scripts/html/main.ts",
     "sync-schemas": "node scripts/tools/sync-schemas.ts",
     "prepack": "node scripts/tools/sync-schemas.ts && pnpm run build",
     "test": "vitest run",

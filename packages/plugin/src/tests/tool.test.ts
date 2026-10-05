@@ -5,7 +5,7 @@
  * **插件交付的那个东西**，不是一份复制品。工具定义写错在这里就暴露，不必先装进 DSH。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { apply } from '../index.ts';
@@ -24,6 +24,17 @@ type ToolDefinition = {
 let tool: ToolDefinition | undefined;
 let registeredSkill: { name: string; description: string; content: string; source?: string } | undefined;
 let source = '';
+
+/**
+ * 把文件的 mtime 设到 N 秒前。
+ *
+ * 评审是否作废靠 mtime 比较，而**测试不能靠「谁后写」制造时间差** —— 文件系统时间戳精度不够时，
+ * 两次写入会落在同一毫秒，`review >= script` 直接判成「新」，用例就随机红（CI 上踩过）。
+ */
+function setMtimeAgo(path: string, seconds: number): void {
+  const when = new Date(Date.now() - seconds * 1000);
+  utimesSync(path, when, when);
+}
 
 /** 假 ctx：只提供插件用到的两个能力（工具注册表与 skill 注册表）。 */
 function fakeContext(): { ctx: unknown; tool: () => ToolDefinition; skill: () => typeof registeredSkill } {
@@ -227,6 +238,10 @@ describe('有讲稿时跑校验', () => {
   it('评审比讲稿新：validated', async () => {
     const workRoot = join(source, '.foldercast');
     writeFileSync(join(workRoot, 'review.md'), '# 评审：通过\n');
+    // 显式设 mtime：靠「谁后写」制造时间差，在文件系统时间戳精度粗的机器上会翻车（CI 上踩过：
+    // 两次写入落在同一毫秒，`>=` 判成 fresh，这条用例就红了）
+    setMtimeAgo(join(workRoot, 'script.json'), 60);
+    setMtimeAgo(join(workRoot, 'review.md'), 1);
 
     const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
 
@@ -240,6 +255,8 @@ describe('有讲稿时跑校验', () => {
     writeFileSync(join(workRoot, 'review.md'), '# 评审：通过（针对上一版）\n');
     const script = JSON.parse(readFileSync(join(workRoot, 'script.json'), 'utf8')) as Record<string, unknown>;
     writeFileSync(join(workRoot, 'script.json'), `${JSON.stringify(script, null, 2)}\n`);
+    setMtimeAgo(join(workRoot, 'review.md'), 60);
+    setMtimeAgo(join(workRoot, 'script.json'), 1);
 
     const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
 

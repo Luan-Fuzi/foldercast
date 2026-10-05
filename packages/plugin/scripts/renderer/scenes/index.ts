@@ -10,7 +10,7 @@
  * 3. **不认识的场景类型由 `plan.ts` 提前跳过**；这里再兜一层，画成只有标题的普通场景而不是崩。
  */
 import { createElement as h, type ReactNode } from 'react';
-import { AbsoluteFill, Img, OffthreadVideo, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from 'remotion';
 import {
   fileMetaText,
   fitSize,
@@ -25,7 +25,7 @@ import { kindColor } from '../styles.ts';
 import { progressStyle } from './captions.ts';
 import { assetUrl, contentBox, panel, sceneHeader, useAppear } from './common.ts';
 
-/** 场景组件的统一入参。只有纯数据，没有环境。 */
+/** 场景组件的统一入参：只有纯数据（素材已在 `plan.ts` 里解析成 `data:` URI）。 */
 export type SceneProps<S extends PlanScene> = {
   scene: S;
   plan: Plan;
@@ -390,11 +390,18 @@ const Gallery = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'gallery
 
 /* ----------------------------------------------------------------- clip */
 
+/**
+ * `clip`：**展示封面图，不播活动画面**。
+ *
+ * 不是偷懒：Remotion 的 `<OffthreadVideo>` 只接受 `http(s)://`（实测报
+ * `Can only download URLs starting with http:// or https://, got "file://…"`），而素材在
+ * 被讲解目录里、没有 HTTP 服务。所以画面用素材阶段抽的封面图 + 文件名 + 片段区间，
+ * 讲稿的 `clipRange` 仍然会显示出来。真播视频要等有一个能服务本地文件的层（第一版不做）。
+ */
 const Clip = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'clip' }>>) => {
   const appear = useAppear();
   const tokens = plan.tokens;
-  const url = assetUrl(scene.video);
-  const poster = assetUrl(scene.poster);
+  const poster = assetUrl(scene.poster) ?? assetUrl(scene.video);
   return h(
     'div',
     { style: { ...appear, display: 'flex', flexDirection: 'column', gap: 14, height: '100%', minHeight: 0 } },
@@ -408,18 +415,16 @@ const Clip = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'clip' }>>)
       { style: { flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' } },
       poster !== undefined
         ? h(Img, { src: poster, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' } })
-        : url === undefined
-          ? h('div', { style: { fontSize: tokens.bodySize, color: 'var(--muted)' } }, '这个片段没有可用素材')
-          : h(OffthreadVideo, {
-              src: url,
-              muted: true,
-              ...(scene.range === undefined ? {} : { startFrom: Math.round(scene.range[0] * plan.composition.fps) }),
-              style: { maxWidth: '100%', maxHeight: '100%' },
-            }),
+        : h('div', { style: { fontSize: tokens.bodySize, color: 'var(--muted)' } }, '这个片段没有封面图可展示'),
     ),
-    scene.range === undefined
-      ? null
-      : h('div', { style: { fontSize: Math.round(tokens.bodySize * 0.72), color: 'var(--muted)' } }, `取片段 ${scene.range[0]}s – ${scene.range[1]}s`),
+    h(
+      'div',
+      { style: { fontSize: Math.round(tokens.bodySize * 0.72), color: 'var(--muted)' } },
+      metaLine([
+        scene.range === undefined ? undefined : `讲稿指定片段 ${scene.range[0]}s – ${scene.range[1]}s`,
+        '画面是封面图（第一版不播活动画面）',
+      ]),
+    ),
   );
 };
 

@@ -532,10 +532,12 @@ function galleryScene(scene: Scene, common: SceneCommon, build: SceneBuild): Gal
 
 function clipScene(scene: Scene, common: SceneCommon, build: SceneBuild): ClipScene {
   const source = scene.source ?? '';
+  // 逐个候选试：视频文件的主产物是**封面图**（素材阶段抽的），它内联进画面；
+  // 候选里的视频路径本身内联不了，会被跳过。
   const video = resolveProduct(source, scene.asset, 'clip', build);
   const poster = scene.poster === undefined ? undefined : resolveProduct(source, scene.poster, 'clip', build);
   if (video?.media === undefined) {
-    build.warnings.push(`clip 场景 ${scene.id} 没有可用素材，画面只显示文件名：${source}`);
+    build.warnings.push(`clip 场景 ${scene.id} 没有封面图可用，画面只显示文件名：${source}`);
   }
   return {
     ...common,

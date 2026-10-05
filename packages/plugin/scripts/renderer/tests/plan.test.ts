@@ -218,6 +218,50 @@ describe('计划构建', () => {
     expect(gallery?.type === 'gallery' && gallery.items[0]?.path).toBe('assets/thumbs/other.png');
   });
 
+  it('clip 场景拿到封面图与片段区间（画面不播活动画面）', () => {
+    const plan = buildPlan({
+      script: script({
+        scenes: [
+          {
+            id: 'clip',
+            type: 'clip',
+            title: '片段',
+            source: 'demo.mp4',
+            poster: 'assets/posters/demo.mp4.jpg',
+            clipRange: [0, 2],
+            narration: '这是一段测试片段。',
+          },
+        ],
+      }),
+      reading: reading(),
+      assets: {
+        assets: 1,
+        generatedAt: '2026-10-05T00:00:00.000Z',
+        source: { root: '/tmp/demo' },
+        entries: [
+          {
+            path: 'demo.mp4',
+            kind: 'video',
+            mtimeMs: 3,
+            size: 40_000,
+            hash: 'sha256:cc',
+            products: [
+              { role: 'poster', path: 'assets/posters/demo.mp4.jpg', width: 640, height: 360 },
+              { role: 'frame', path: 'assets/frames/demo_f2.jpg' },
+            ],
+          },
+        ],
+      },
+    });
+    const scene = plan.scenes[0];
+    // 主产物是封面图（poster 在 file 场景的偏好顺序里排在 frame 前面），视频路径本身进不了画面
+    expect(scene?.type === 'clip' && scene.video.path).toBe('assets/posters/demo.mp4.jpg');
+    expect(scene?.type === 'clip' && scene.video.file).toBe('demo.mp4');
+    expect(scene?.type === 'clip' && scene.range).toEqual([0, 2]);
+    // 唯一的提醒应当只是「没给预设」，而不是「没有素材」
+    expect(plan.warnings.filter((warning) => warning.includes('素材'))).toEqual([]);
+  });
+
   it('document 场景逐页取图，页数写进页脚', () => {
     const plan = buildPlan({
       script: script({

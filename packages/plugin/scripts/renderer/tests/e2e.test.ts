@@ -18,11 +18,18 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { hasCommand } from '../../assets/run.ts';
 import { resolveBrowser } from '../browser.ts';
 import { DEFAULT_VIDEO } from '../plan.ts';
 
 const MAIN = resolve(import.meta.dirname, '../main.ts');
 const browser = resolveBrowser();
+/**
+ * ffmpeg / ffprobe 是**系统工具**，不是 npm 依赖：本机有、CI runner 上没有。
+ * 所以「能不能出片」（要浏览器）与「能不能核对容器」（要 ffprobe，或要 ffmpeg 造夹具）
+ * 分成两层判据 —— 缺 ffprobe 时仍然跑两次渲染比 sha256，只是不核对 h264 与帧数。
+ */
+const hasFfprobe = hasCommand('ffprobe');
 
 let source = '';
 let workRoot = '';
@@ -177,6 +184,7 @@ describe.skipIf(browser.kind === 'missing')('出片', () => {
       expect(sha256(first)).toBe(sha256(second));
 
       // 用 ffprobe 核对容器：规格来自 plan，编码是 h264，没有音轨（M8 才配音）
+      if (!hasFfprobe) return;
       const probe = execFileSync(
         'ffprobe',
         ['-v', 'error', '-show_entries', 'stream=codec_type,codec_name,width,height,nb_frames', '-of', 'json', first],
@@ -189,7 +197,7 @@ describe.skipIf(browser.kind === 'missing')('出片', () => {
     },
   );
 
-  it(
+  it.skipIf(!hasFfprobe)(
     '--frames 出一小段（调画面用），帧数与容器时长对得上',
     { timeout: 300_000 },
     () => {

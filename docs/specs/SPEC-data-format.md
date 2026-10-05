@@ -411,7 +411,7 @@ token 清单见 [../rd/风格预设系统.md](../rd/风格预设系统.md)。
   },
   {
     "id": "video-demo",
-    "type": "clip",               // 视频片段（关键帧 + 片段播放）
+    "type": "clip",               // 视频片段（画面用封面图 + 片段区间标注；第一版不播活动画面）
     "narration": "……",
     "source": "demo.mp4",
     "poster": "assets/demo_poster.png",
@@ -437,7 +437,7 @@ token 清单见 [../rd/风格预设系统.md](../rd/风格预设系统.md)。
 | `inventory` | 内容盘点：分几块、各是什么（需求 2） | `groups` |
 | `file` | 单个文件展示（代码/文本） | `file`，可选 `asset`/`focusLines` |
 | `gallery` | 图片墙 | `items` |
-| `clip` | 视频片段 | `source`，可选 `poster`/`clipRange` |
+| `clip` | 视频片段（画面是封面图；第一版不播活动画面，见 ROADMAP M7 边界） | `source`，可选 `poster`/`clipRange` |
 | `document` | Office/PDF 分页 | `source`、`pages` |
 | `outro` | 结尾 | `title` |
 

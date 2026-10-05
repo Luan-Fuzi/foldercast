@@ -15,7 +15,14 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { hasCommand } from '../../assets/run.ts';
 import { embedImage, isImagePath, pickScaler, resetScalerCache, sniffMime, MAX_INLINE_BYTES } from '../embed-node.ts';
+
+/**
+ * 夹具图片用 ffmpeg 现场造（不往仓库里塞二进制）。ffmpeg 是**系统工具**：本机有、CI runner
+ * 上没有 —— 缺它时相关的两条跳过，其余的照样跑。
+ */
+const hasFfmpeg = hasCommand('ffmpeg');
 
 let workRoot = '';
 
@@ -27,7 +34,7 @@ function makePng(path: string, width: number, height: number): void {
 beforeAll(() => {
   workRoot = mkdtempSync(join(tmpdir(), 'foldercast-embed-'));
   mkdirSync(join(workRoot, 'assets', 'pages'), { recursive: true });
-  makePng(join(workRoot, 'assets', 'pages', 'big.png'), 2000, 1000);
+  if (hasFfmpeg) makePng(join(workRoot, 'assets', 'pages', 'big.png'), 2000, 1000);
   writeFileSync(join(workRoot, 'assets', 'code.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>');
   writeFileSync(join(workRoot, 'assets', 'notes.txt'), 'not an image');
 });
@@ -52,7 +59,7 @@ describe('mime 判定', () => {
 });
 
 describe('内联', () => {
-  it('位图缩到目标宽度并声明成 JPEG（缩图工具的产物就是 JPEG）', () => {
+  it.skipIf(!hasFfmpeg)('位图缩到目标宽度并声明成 JPEG（缩图工具的产物就是 JPEG）', () => {
     const result = embedImage({ path: 'assets/pages/big.png', workRoot, width: 800 });
     if (result === undefined || !result.scaled) {
       // 机器上既没有 sips 也没有 ffmpeg：这时应当内联原图，并在 note 里说明

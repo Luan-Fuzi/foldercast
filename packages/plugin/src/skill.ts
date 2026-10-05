@@ -94,7 +94,7 @@ export const SKILL_CONTENT = `# 目录放映（foldercast）
 | \`inventory\` | 盘点内容构成 | \`groups\`（每项 \`kind\` + \`count\`，取自解读的 \`kindCounts\` / \`roles\`） |
 | \`file\` | 讲某个具体文件 | \`file\`（相对源目录，必须在 manifest 里） |
 | \`gallery\` | 展示一组图片 | \`items\`（素材路径，相对工作根） |
-| \`clip\` | 播放一段视频 | \`source\`（相对源目录） |
+| \`clip\` | 讲一段视频（**画面是封面图，不播活动画面**） | \`source\`（相对源目录） |
 | \`document\` | 翻 Office / PDF 的页 | \`source\` + \`pages\`（素材路径） |
 | \`outro\` | 结尾，一个场景 | \`title\` |
 
@@ -103,6 +103,9 @@ export const SKILL_CONTENT = `# 目录放映（foldercast）
 - **有具体文件可指，就用 \`file\`**。空泛的概括不如指出「\`src/components.tsx\` 是枢纽，被 12 个文件引用」。
 - **讲整体构成用 \`inventory\`，讲结构用 \`tree\`**，两者不要互相代替：tree 只有路径，inventory 只有数量。
 - **素材里有图就考虑 \`gallery\`**，有 Office/PDF 且值得翻页就用 \`document\`。没有素材就不要编。
+- **\`clip\` 的画面是封面图**（第一版不播活动画面，渲染层读不了本地视频）。所以讲视频时
+  别说「接下来播放这段」——说「这是它的封面」或直接讲内容；\`clipRange\` 仍然有用，它会被
+  标在画面上，配音（M8）也可以按它取音。
 - **顺序**：\`cover\` → \`tree\` → \`inventory\` → 若干 \`file\` / \`gallery\` / \`document\` / \`clip\` → \`outro\`。
   中间部分按 \`roots\` → \`hubs\` → 其余 的顺序讲，比按目录树字母顺序更接近真实阅读顺序。
 - **规模**：整片 8–15 个场景（上千文件的大目录可以到 20 —— 上限是节奏建议，不是内容上限）。

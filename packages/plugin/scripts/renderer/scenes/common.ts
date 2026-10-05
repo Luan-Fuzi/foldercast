@@ -8,11 +8,15 @@ import type { Media, Plan, SceneCommon } from '../plan.ts';
 import { fitSize } from '../plan.ts';
 
 /**
- * 素材 → 浏览器能读的地址。
+ * 素材 → 浏览器能读的地址。**只有 `media.src`**（`data:` URI）。
  *
- * **只用 `media.src`**：图片已经内联成 `data:` URI（`embed.ts` 说明为什么必须内联），
- * 视频是 `file://`。拼不出来的素材返回 `undefined`，画面应当落到占位说明上 ——
- * 这比让 `<img>` 去 fetch 一个必然被跨源策略拦掉的 `file://` 好：那样整片渲染会失败。
+ * 为什么没有第二条路：渲染时页面在 `http://localhost:<端口>`，`file://` 资源会被跨源拦掉。
+ * 图片内联成 `data:`（`embed.ts`）；**视频连内联都不行** —— Remotion 的 `<OffthreadVideo>`
+ * 只认 `http(s)://`（实测：`Can only download URLs starting with http:// or https://`），
+ * 所以 `clip` 场景放的是素材阶段抽出来的**封面图**，不是活动画面。
+ *
+ * 拼不出地址时返回 `undefined`，画面落到占位说明上 —— 比让 `<img>` 去 fetch 一个必然被拦的
+ * `file://` 好。
  */
 export function assetUrl(media: Media | undefined): string | undefined {
   return media?.src;

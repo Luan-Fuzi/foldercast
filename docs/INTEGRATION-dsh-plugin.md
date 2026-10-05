@@ -39,7 +39,7 @@ DSH 进程
 
 | 能力 | 机制 | 前置 | 验证状态 |
 |---|---|---|---|
-| 注册工具 | `ctx.tools.register(defineTool(...))` | 无 | 文档记载 |
+| 注册工具 | `ctx.tools.register(defineTool(...))` | 无 | **已实测**（M4；也验证了不用 `defineTool` 的直传写法，见 §3.8） |
 | 注册 Cordis 服务 | `ctx.plugin(SomeService)` | 无 | 文档记载 |
 | 暴露配置 schema | `Config`（`@deepseek-ai/schemastery`），放在 `dependencies` | 无 | 文档记载 |
 | **贡献 Web / Desktop UI** | `ctx.slots.register()` | 需另发客户端包 | 文档记载（本机未注册过插槽） |
@@ -55,6 +55,49 @@ DSH 进程
 ## 二、Manifest 规范
 
 ### 2.1 完整 `package.json`
+
+**实际使用的清单是 [packages/plugin/package.json](../packages/plugin/package.json)** —— 它是唯一真源，
+下面只列出与通用插件不同、或踩过坑的字段：
+
+```jsonc
+{
+  "name": "dsh-foldercast",
+  "type": "module",
+
+  // 入口。发布版是编译产物：src/ 与 scripts/ 由 tsc 编到 lib/
+  // （见 §3.8 第 1 条：Node 不允许在 node_modules 里剥离 TypeScript 类型）
+  "main": "lib/src/index.js",
+
+  "exports": {
+    ".": "./lib/src/index.js",
+    "./package.json": "./package.json",     // 必需：供展示元信息回退读取
+    "./locale/en.json": "./locale/en.json", // 必需：供标题/描述读取
+    "./locale/zh.json": "./locale/zh.json"
+  },
+  "files": ["lib", "scripts", "schemas", "locale", "cordis.patch.yml", "README.md"],
+
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  },
+
+  // 运行时真的 import 的只有 schemastery（Config）。**没有 dsh-tools、没有 cordis** —— 理由见 §3.8 第 2 条
+  "dependencies": {
+    "@deepseek-ai/schemastery": "~3.18.4",
+    "ajv": "^8.20.0", "ajv-formats": "^3.0.1", "jsonc-parser": "^3.3.1",
+    "ignore": "^7.0.5", "officeparser": "^8.1.0", "shiki": "^4.5.0"
+  },
+  "optionalDependencies": { "@deepseek-ai/libreoffice-kit": "^0.1.5" }
+}
+```
+
+**`scripts` 里的 `prepack`**：`node scripts/tools/sync-schemas.ts && pnpm run build`。
+校验器要读契约 schema，而 `docs/` 不在包里，所以复制进 `schemas/`（构建产物，见 §2.7）；同时把
+TypeScript 编成 `lib/`。**这两个都不进版本库**（`.gitignore`）。
+
+### 2.1b 参考形状（官方包的写法）
+
+下面是官方 `@deepseek-ai/dsh-tool-*` 的清单形状，供对照。注意官方包用 `peerDependencies` 声明框架包，
+**foldercast 不照抄这一条** —— 原因见 §3.8 第 2 条（实测装进去会让宿主加载器起不来）。
 
 ```jsonc
 {
@@ -295,17 +338,89 @@ ctx.tools.register(defineTool({
 - 监听并处理子进程的 `'exit'` 与 `'close'`
 - 不留下悬空的 Promise
 
+### 3.8 六条实测结论（M4，本机 DSH `0.2.0-rc.2`）
+
+这些都是「写的时候看不出来、装上去才炸」的坑。每条都给出了证据与做法。
+
+**1. 插件入口可以是 `.ts`，但发布版必须编译成 JS。**
+仓库内直跑 `.ts` 没问题（Node 的类型剥离），但 **Node 拒绝在 `node_modules` 里剥离类型**：
+实测 `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`（v26.8.1，`node_modules/probe-ts/index.ts`）。
+从 npm 装出来的插件正落在 `node_modules` 下，所以：
+
+- 开发：`main` 曾指向 `src/index.ts`，用隔离 profile 实测能加载、能注册工具
+- **发布**：`tsc -p tsconfig.build.json` 编到 `lib/`（`rewriteRelativeImportExtensions: true`
+  把 `.ts` 后缀重写成 `.js`），`main` 指向 `lib/src/index.js`
+
+**2. 不要依赖 `@deepseek-ai/dsh-tools`。**
+把它作为插件依赖装进 profile 后，宿主的加载器起不来：
+
+```
+dsh: UNKNOWN: Cannot read properties of undefined (reading 'prepare')
+```
+
+连 `dsh --dump-config` 都跑不了（dump-config 也会挂载）。`dsh-tools` 的依赖被装进 profile 的
+`node_modules`，与宿主自带的那份冲突。**做法**：用 `ctx.tools.register()` 直传定义对象，
+参数与输出用原生 JSON Schema —— 工具侧**零框架依赖**。`dsh-tools` 的 `defineTool` 也只是
+「把 DSL 编译成这个定义对象再 register」，直传没有损失能力。
+
+`@deepseek-ai/schemastery` 可以依赖（只带 `@standard-schema/spec` 与 `cosmokit` 两个叶子包，
+实测不破坏宿主），`Config` 用它。
+
+**3. 参数与输出 schema 只支持一个子集。**
+
+| 支持 | 不支持 |
+|---|---|
+| `type`（**单个**字符串）、`oneOf`、`properties`、`required`、`additionalProperties`、`items`、`enum`、`const` | **类型数组**（`type: ['integer','null']`）、`pattern`、`format`、`minimum`… |
+| 注解：`description`、`title`、`default`、`examples` | 与 `oneOf` 并列的 `properties` / `required` / `items` / `enum` / `const` |
+
+踩过一次：`exitCode` 写成可空类型，注册时抛
+`schema.…exitCode.type must be a single type string (type arrays are not supported)`。
+**失败方式是插件不激活**（只有一条启动警告，页面上看不出原因），所以要靠测试钉住白名单
+（`packages/plugin/src/tests/schema.test.ts`）。
+
+**4. `ctx.skills.register()` 必须带 `source`。**
+注册时不查，**加载时**才用 `validateDefinition` 复查，缺了报
+`loaded skill "foldercast" source must be a string`。同样地，`skills` 不放进 `inject`
+（缺席时工具仍要能用），用 `ctx.get('skills')` 取，取不到就跳过注册。
+
+**5. `exec.signal` 可能在调用之前就已取消。**
+先 `spawn` 再 `addEventListener('abort')` 会漏掉这个情况：监听器永远等不到事件，子进程白跑。
+**做法**：入口先查 `signal.aborted`，注册监听后再查一次（两者之间有窗口）。
+
+**6. 依赖漏声明在本机看不出来。**
+`ignore`、`ajv`、`ajv-formats`、`jsonc-parser` 都能从仓库根的 `node_modules` 解析到，
+所以本机全绿；装到别处才 `ERR_MODULE_NOT_FOUND`。**做法**：守卫测试用 TypeScript 解析器
+扫 `scripts/` 与 `src/` 的 import，裸包名必须在 `dependencies` 里（`src/tests/dependencies.test.ts`）。
+
 ---
 
 ## 四、工具设计建议
 
-### 第一版只注册一个工具
+### 第一版只注册一个工具（**已实现**）
 
 ```
-foldercast_cast       一条龙：分析 → 文案 → 渲染 → 配音
+foldercast_cast       事实层一条龙：分析 → 素材 → 校验
 ```
 
-**一个参数**：目录路径。判据是「除了指向哪个目录，不需要任何其他输入」（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)）。
+**一个必需参数**：目录路径。判据是「除了指向哪个目录，不需要任何其他输入」
+（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)）。另有一个可选的 `skipAssets`
+（跳过素材阶段，快一些，但讲稿就引用不了画面）。
+
+**它不写稿。** 写稿要判断，那是模型的事（ADR 0008：编排层是 agent）。工具做的事与交接点：
+
+| 阶段 | 谁做 | 产物 |
+|---|---|---|
+| 分析 | 工具（子进程跑 `scripts/analyzer`） | `foldercast.json` |
+| 素材 | 工具（子进程跑 `scripts/assets`） | `assets/` |
+| **写稿** | **模型**（按 skill 的流程） | `script.json` |
+| 校验 | 工具（子进程跑 `scripts/validate`） | 带行号的问题清单 |
+
+返回值里的 `next` 就是交接信号：`needsScript`（该写稿了）、`fixScript`（讲稿有问题）、
+`validated`、`blocked`（环境或目标有问题）。渲染与配音尚未实现（M7 / M8），工具不声称出片。
+
+**三条实现约束**：分析、素材、校验都以**子进程**跑（遍历几万个文件、起 LibreOffice 都不该占
+宿主进程）；`exec.signal` 取消时杀子进程；单个阶段失败变成结构化结果，而不是抛异常
+（INTEGRATION §3.5）。
 
 ### 押后：细粒度工具
 
@@ -343,7 +458,8 @@ foldercast_voice  — "Synthesize narration audio and burn subtitles"
 |---|---|
 | 发布 | npm。包名 **`dsh-foldercast`**（2026-10-04 定）。两个候选在 registry 上都未被占用（均返回 404），选带前缀的理由见表后 |
 | 发现 | GitHub 仓库加 **`dsh-plugin` 话题** —— 这是官方指定的发现机制 |
-| 安装 | `dsh plugin --profile web add dsh-foldercast` |
+| 安装 | `dsh plugin --profile web add dsh-foldercast`（本地路径也可以：`… add /path/to/packages/plugin`，pnpm 会 link） |
+| **构建** | `pnpm --filter dsh-foldercast prepack`（= `sync-schemas` + `tsc`）。**发布前必须跑** —— 理由见 §3.8 第 1 条；`pnpm pack` / `pnpm publish` 会自动触发 `prepack` |
 | 市场 | 会被 `dsh-plugin.org`、`dsh-market`、`dsh-find-plugin` 等自动索引（它们抓 `dsh-plugin` 话题） |
 | 精选列表 | 向 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) 提 PR（社区唯一开放的外部 PR 通道） |
 

@@ -161,7 +161,11 @@ dsoffice      →  这份文档渲染成 12 页 PNG
 ```
 packages/
   plugin/                     DSH 插件（第一版唯一的入口，也是全部代码）
-    ├── (npm 包根)             工具注册、Config schema、skill、locale
+    ├── src/                 插件本体：工具注册（`index.ts`）、编排（`cast.ts`）、
+    │                        环境与子进程（`runtime.ts`）、Config、skill 正文
+    ├── (包根其他)            `cordis.patch.yml`（组合层）、`locale/`（标题与描述）
+    ├── schemas/             随包分发的 schema（构建产物，由 prepack 从 docs/specs 复制）
+    ├── lib/                 发布版编译产物（Node 不允许在 node_modules 里剥离 TS 类型）
     └── scripts/
         ├── contracts/        两个 JSON 契约的 TypeScript 类型 + 字幕切分，各阶段共用
         ├── analyzer/          TypeScript：目录 → 解读（M1）

@@ -232,3 +232,5 @@
 | 2026-10-04 | **M1 完成**：分析器落地（`packages/plugin/scripts/analyzer/`），四条验收全部通过 | 新增 `packages/plugin` 包与 workspace；契约类型在 `scripts/contracts/`；实测 21.3 万文件 0.34 秒、124 MB。office/pdf/video 的 preview 深化提取顺延到 M2 |
 | 2026-10-05 | **M2 完成**：素材阶段落地（`packages/plugin/scripts/assets/`），office/pdf/video 的 preview 已补齐 | 新增依赖 `officeparser` / `shiki` / `@deepseek-ai/libreoffice-kit`（optional）；`assets/manifest.json` 契约定型；代码素材用 SVG；`.gitignore` 的 `assets/` 改为 `/assets/`（原写法把产品代码目录也忽略了） |
 | 2026-10-05 | **M3 完成**：契约校验脚本落地（`packages/plugin/scripts/validate/`），验收「故意写坏的讲稿全部报出」通过 | 新增 `contracts/script.ts`（讲稿类型）与 `contracts/subtitles.ts`（字幕切分，校验与配音共用）；`script.schema.json` 用 `allOf` 补上各场景的必需字段；字幕的「24 字」明确为按显示宽度折算 |
+| 2026-10-05 | **契约补第三份 schema**：`docs/specs/assets.schema.json`（素材清单原来只有人读说明），校验器顺带校验它 | 三处表示同步的规矩从两份契约扩到三份；`check-examples` 负责 schema 自身的写法 |
+| 2026-10-05 | **M4 完成**：插件 `dsh-foldercast` 落地（一个工具 `foldercast_cast` + 一个随包 skill + 空 `Config`），三条验收通过两条、第三条数据面已验 | 插件侧零框架依赖（不用 `dsh-tools`/`cordis`）；发布版必须 `tsc` 编译（`node_modules` 里禁止 TS 类型剥离）；随包 `schemas/` 由 `prepack` 生成 |

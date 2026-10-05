@@ -178,26 +178,57 @@ pnpm validate <目录> --json     # 机器可读报告（M4 的工具与 CI 用�
 
 **这一层的边界**：它只查机器能判断的。**「有没有讲错重点」不是它能管的**，那是 M5 的事。
 
-**留给 M4 的一件事**：schema 只有一份，在 `docs/specs/` 下，校验器按仓库布局找它（**不复制第二份**，否则会多出一个会漂移的权威）。打包成 npm 包分发时要把这两个 schema 一并放进包里，并让校验器认包内布局。
+**留给 M4 的一件事（已完成）**：schema 只有一份，在 `docs/specs/` 下，校验器按仓库布局找它（**不复制第二份**，否则会多出一个会漂移的权威）。M4 的做法是：`prepack` 把三份 schema 复制进包的 `schemas/`（构建产物，不入库），校验器从模块位置**往上找第一个含 `script.schema.json` 的目录** —— 包内优先，仓库兜底，不依赖「上溯几级」。
 
 ---
 
-## M4 · 插件骨架
+## M4 · 插件骨架（已完成）
 
 目标：**一个能装进 DSH 的插件，agent 能调起 M1 的分析器。**
 
-- [ ] npm 包 + `dsh.bundle.patch` 声明（**必需**，漏了会静默不激活）
-- [ ] `locale/zh.json` + `locale/en.json`（插件管理页的标题与描述）
-- [ ] `Config` schema 声明（**第一版不暴露字段**，只立机制 —— 宿主据此生成设置页，见 [ADR 0009](decisions/0009-settings-via-config-schema.md)）
-- [ ] 一个工具：`foldercast_cast`，**一个参数**（目录路径）
-- [ ] skill：工作流步骤 + 「不读哪些文件」的约束
-- [ ] 依赖探测与清晰报错（不是裸 `ENOENT`）
+- [x] npm 包 + `dsh.bundle.patch` 声明（**必需**，漏了会静默不激活）
+- [x] `locale/zh.json` + `locale/en.json`（插件管理页的标题与描述）
+- [x] `Config` schema 声明（**第一版不暴露字段**，只立机制 —— 宿主据此生成设置页，见 [ADR 0009](decisions/0009-settings-via-config-schema.md)）
+- [x] 一个工具：`foldercast_cast`，**一个必需参数**（目录路径）+ 一个可选的 `skipAssets`
+- [x] skill：工作流步骤 + 「不读哪些文件」的约束
+- [x] 依赖探测与清晰报错（不是裸 `ENOENT`）
 
-**验收**
+**工具做什么**：一次调用把**事实层**做完 —— 分析（M1）→ 素材（M2）→ 校验（M3），返回结构化结果。
+**它不写稿**：讲什么、按什么顺序讲要靠判断，那是模型的事，所以它在需要写稿时返回
+`next: needsScript` 并把 `script.json` 的路径交回给 agent。渲染与配音尚未实现（M7 / M8），
+所以工具不声称产出了视频。
 
-1. 装进 DSH 后，对话里说「把这个目录讲一遍」能触发工具
-2. 分析器缺失或失败时，报错**可操作**（说清哪个依赖、怎么装）
-3. 插件管理页能看到标题与描述
+**skill 怎么发**：`ctx.skills.register()` 注册**内存 skill**，随包走 —— 不需要往用户的项目目录里放
+文件，装到哪台机器上都有效。
+
+**六条实测结论**（都写进了 [INTEGRATION](INTEGRATION-dsh-plugin.md)，本机 DSH `0.2.0-rc.2`）：
+
+1. **插件入口可以直接是 `.ts`**，但**只在仓库内开发时成立**：Node 拒绝在 `node_modules` 里剥离
+   类型（`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`，实测 v26.8.1）。所以**发布版必须编译**：
+   `src/` 与 `scripts/` 由 `tsc` 编到 `lib/`，`main` 指向 `lib/src/index.js`。仓库内仍可直跑 `.ts`。
+2. **不能依赖 `@deepseek-ai/dsh-tools`**。把 `defineTool` 当插件依赖装进 profile，会让宿主的
+   加载器起不来（`Cannot read properties of undefined (reading 'prepare')`）。改用
+   `ctx.tools.register()` 直传定义 + 原生 JSON Schema，**工具侧零框架依赖**。
+   `@deepseek-ai/schemastery` 可以依赖（装在哪一侧都安全），`Config` 用它。
+3. **参数与输出 schema 有子集限制**：不支持类型数组（`type: ['integer','null']` 会被拒），
+   只认 `type / oneOf / properties / required / additionalProperties / items / enum / const`
+   与四个注解关键字。不合法时**插件不激活**，只在启动日志里留一条警告 —— 所以加了测试钉住白名单。
+4. **`ctx.skills.register()` 必须带 `source`**，否则读取时报
+   `loaded skill "foldercast" source must be a string`（注册时能过，加载时才查）。
+5. **`exec.signal` 可能在调用前就已取消**：不先查 `signal.aborted` 就 spawn，监听器永远等不到事件。
+6. **依赖漏声明在本机看不出来**：`ignore`、`ajv`、`ajv-formats`、`jsonc-parser` 都能从仓库根的
+   `node_modules` 解析到，只有装到别处才会 `ERR_MODULE_NOT_FOUND`。加了守卫测试。
+
+**验收（2026-10-05 实测）**
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 对话里一句话触发工具 | ✅ 用隔离 profile（`DSH_HOME` 指向临时目录）跑 `dsh --profile <p> "把这个目录讲一遍：…"`：工具被调用并返回解读；接着按 skill 写出 `script.json`，再调一次工具，校验 **0 blocker**、`next: validated` |
+| 2 | 依赖缺失时**可操作** | ✅ 目录不存在 → 「目录不存在：…」；缺 `dsoffice` → 「装上后重试：pnpm add @deepseek-ai/libreoffice-kit」；缺 `ffmpeg`（用受限 PATH 实测）→ 「视频抽帧需要 ffmpeg（macOS：brew install ffmpeg）」，且其余照常 |
+| 3 | 插件管理页显示标题与描述 | ⚠️ 数据面已验：用宿主自己的 `readPluginMeta()` 读到 `{zh: 目录放映 / FolderCast, 描述…}`；页面本身**未截图**（本机未授予屏幕录制与辅助访问权限）。请在插件页确认 |
+
+**另外验过的**：打包装到仓库外（临时目录）后 —— 入口 `lib/src/index.js` 能被 import 并注册工具、
+随包脚本以 JS 正常运行、校验器从**包内** `schemas/` 解析契约。包内容 48 个文件，不含测试与产物。
 
 **这一步才做骨架的理由**：骨架/技能只服务于「让 agent 调脚本」。先有脚本，才有东西可调。
 

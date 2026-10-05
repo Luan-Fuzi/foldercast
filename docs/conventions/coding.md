@@ -17,7 +17,19 @@
 
 **仓库工具不经过构建**：Node 22.19+ 直接运行 `.ts`（类型剥离），所以 `pnpm run check` 没有编译步骤；`pnpm run typecheck` 只做类型检查，不产出文件。这也是 `erasableSyntaxOnly` 打开的原因——只用可擦除的语法，禁 `enum` 与参数属性。
 
-**产品脚本同样直跑**（`pnpm analyze` / `assets` / `validate`，M1–M3），所以 CI 不需要为它们加构建步骤。
+**产品脚本同样直跑**（`pnpm analyze` / `assets` / `validate`，M1–M3）：仓库内不编译，CI 的测试与检查都不需要构建。
+
+**只有分发要编译**（M4 起）。原因是一条硬限制：**Node 拒绝在 `node_modules` 里剥离 TypeScript
+类型**（实测 `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`），而从 npm 装的插件正落在那里。
+所以 `packages/plugin` 用 `tsc -p tsconfig.build.json` 编到 `lib/`：
+
+| 场景 | 跑什么 | 需要构建吗 |
+|---|---|---|
+| 仓库内开发、测试、CI | `node packages/plugin/scripts/<阶段>/main.ts` | 不要 |
+| 从 npm 装出来的插件 | `lib/scripts/<阶段>/main.js` | 要（`prepack` 自动跑） |
+
+`rewriteRelativeImportExtensions: true` 负责把 `.ts` 后缀重写成 `.js`，所以源码里的
+`./foo.ts` 两种跑法都对。`lib/` 与 `schemas/` 都是构建产物，不进版本库。
 
 **连带的收益**：`foldercast.json` 的 TypeScript 类型由分析器、渲染器共用一份定义，不再需要「改一边另一边必须同步」这条纪律兜底。
 

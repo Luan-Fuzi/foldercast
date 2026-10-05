@@ -134,7 +134,7 @@ dsoffice      →  这份文档渲染成 12 页 PNG
 
 | 组件 | 许可 | 对我们的约束 |
 |---|---|---|
-| **Remotion** | 双许可：个人与 ≤3 人公司免费；4 人以上公司需付费 | ⚠️ **必须在 README 里声明**，用户自行判断。见 [ADR 0003 附注](decisions/0003-remotion-as-renderer.md) |
+| **Remotion** | 双许可（2026-10-05 复核官方定价页）：**Free License** 覆盖个人与 ≤3 人公司，含无限商业使用；4 人以上公司另有两档 —— **Creators**（25 美元/月/座，手工做片）与 **Automators**（构建视频创作工具，0.01 美元/次渲染、100 美元/月起） | ⚠️ **README 里必须声明**，用户自行判断自家适用哪一档。见 [ADR 0003 附注](decisions/0003-remotion-as-renderer.md) |
 | **`@deepseek-ai/libreoffice-kit`** | **MPL-2.0** | 文件级 copyleft。我们只调用、不修改其文件，**自己的代码不受影响**；**再分发要带它的 LICENSE / NOTICE**（包内已有） |
 | Chromium / Chrome | BSD 系 | 无。**我们不分发它**（用系统的或让 Remotion 下载） |
 | React | MIT | 无 |
@@ -172,7 +172,13 @@ packages/
         ├── assets/            TypeScript：解读 → 素材（M2）
         ├── validate/          TypeScript：解读与讲稿的契约校验（M3）
         ├── html/              TypeScript：解读 + 素材 → 单文件静态页（M6）
-        └── renderer/          TypeScript + Remotion：讲稿 + 素材 → 视频（M7）
+        └── renderer/          TypeScript + Remotion：讲稿 + 素材 → 静音视频（M7）
+            ├── estimate.ts    时长预估（字数）与字幕块时序
+            ├── plan.ts        讲稿 + 解读 + 素材 → 纯数据的渲染计划
+            ├── styles.ts      预设 JSON + style.overrides → token → CSS 变量
+            ├── embed*.ts      图片内联（类型与 Node 实现分家，见 §4.7）
+            ├── scenes/        八种场景组件 + 字幕（唯一的 Remotion 组件层）
+            └── main.ts        CLI：加载 → 计划 → 打包 → 渲染
 styles/                        风格预设（数据，非代码）
 docs/                          文档
 examples/                      示例
@@ -324,9 +330,9 @@ $ ffmpeg -filters | grep -xE 'subtitles|drawtext'
 
 | 项 | 做法 |
 |---|---|
-| 获取顺序 | ① 系统已有的 Chrome / Chromium → ② `npx remotion browser ensure` 下载 |
+| 获取顺序 | ① 系统已有的 Chrome / Chromium / Edge → ② Remotion 已经下过的 Headless Shell → ③ 结构化引导 |
 | 何时检查 | **首次渲染之前**，不是安装时 |
-| 缺失时的行为 | 返回结构化引导，**不是崩溃** |
+| 缺失时的行为 | 返回结构化引导（三种办法 + 找过的路径），退出码 3，**不崩溃、也不静默下载** |
 | 网络 | **仅获取需要网络**。渲染本身全本地，符合"分析 + 渲染不需要网络"的非功能要求 |
 
 **它不是插件加载的硬条件。** 缺浏览器时：
@@ -339,13 +345,41 @@ $ ffmpeg -filters | grep -xE 'subtitles|drawtext'
 
 **所以"要不要装浏览器"的门槛设在渲染那一步，不设在整个插件。** 这与 TTS 密钥的处理同构（缺 key 不影响分析，只影响配音）。
 
+「不自动下载」是刻意的：150–300 MB 的下载由用户决定，不由插件在背后发起。`foldercast_cast`
+的 `dependencies` 里有一项 `browser`，状态只是「能不能出片」，不触发任何下载。
+
+### 4.8 浏览器侧的输入只有数据
+
+渲染分两侧，边界是一条硬线：
+
+| 侧 | 能做什么 | 不能做什么 |
+|---|---|---|
+| **CLI（Node）** | 读讲稿/解读/素材，算时长与帧号，读图片并内联，起浏览器与编码 | —— |
+| **浏览器（bundle）** | 按 `inputProps` 里的计划画每一帧 | 读文件系统（连 `node:*` 都不许 import） |
+
+这条线是为了「讲稿运行时加载」（C1）：**bundle 里没有任何讲稿**，所以加一个目录不需要改代码。
+代价是素材必须**先**变成浏览器能读的东西 —— 图片内联成 `data:` URI，因为渲染时页面在
+`http://localhost:<端口>`，`file://` 图片会被跨源拦掉（实测会让整片渲染直接失败）。
+
+边界由测试钉住（`scripts/renderer/tests/boundary.test.ts` 走可达 import 图）：`plan.ts` 与它
+引到的一切都不许出现 `node:` 模块，也不许出现 `react` / `remotion` 之外的裸包。
+
+### 4.9 画面确定性的来源
+
+「同一份讲稿渲染两次逐帧一致」不是自然得到的，靠三件事：
+
+1. **计划里没有时钟与随机数**：帧号、字幕窗口、素材顺序全部由讲稿唯一决定；
+2. **渲染并发固定为 1**：多页面并行时 Chrome 的字形缓存与排版状态不一致，实测同一份讲稿
+   连渲三次帧哈希互不相同；单并发下两次渲染的 mp4 字节完全相同；
+3. **素材地址在计划里定死**：不用 `staticFile()` 那种依赖运行时目录解析的方式。
+
 ---
 
 ## 五、非功能性要求
 
 | 维度 | 要求 | 说明 |
 |---|---|---|
-| 确定性 | 同一讲稿 + 同素材 → 逐帧一致 | 渲染阶段不得有任何模型调用或随机性 |
+| 确定性 | 同一讲稿 + 同素材 → 逐帧一致（M7 实测：整片渲两次字节相同） | 计划里没有时钟与随机数；渲染并发固定为 1（见 §4.9） |
 | 增量 | 源文件未变则跳过重算 | 素材按 mtime + hash 判定 |
 | 规模 | 21 万文件目录不 OOM | 靠默认排除 + `maxFiles` 截断 |
 | 离线 | 分析 + 渲染不需要网络 | 仅 TTS 与叙事层需要 |

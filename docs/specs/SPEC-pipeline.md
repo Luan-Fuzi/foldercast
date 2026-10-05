@@ -82,10 +82,32 @@ silent.mp4              配音 mp4 + srt    │
 - 渲染器：Remotion（React 组件 → 无头浏览器逐帧截图 → 编码）
 - 样式来源：风格预设的 token（见 [../rd/风格预设系统.md](../rd/风格预设系统.md)）
 - **此阶段不产生音频**，场景时长由预估字数决定
+- 落地：`packages/plugin/scripts/renderer/`，CLI 是 `pnpm render <目录>`，成片落
+  `<工作根>/out/video.mp4`
+
+**讲稿在运行时加载**（C1）。脚本读 `script.json` 算出一份**纯数据的渲染计划**，经 `inputProps`
+交给浏览器；bundle 里没有讲稿，所以加一个目录不需要改任何 TypeScript 源码。
+
+**确定性怎么保证**（这一条比看起来难，实测出来的）：
+
+| 手段 | 为什么需要 |
+|---|---|
+| 计划里没有时钟、没有随机数 | 帧号、字幕窗口、素材顺序全部由讲稿唯一决定 |
+| 时长为整数帧，在 CLI 里算好 | 浏览器侧不再做第二份时长计算（`calculateMetadata` 只搬运） |
+| **渲染并发固定为 1** | 多页面并行时 Chrome 的字形缓存与排版状态不一致：实测同一份讲稿连渲三次，帧 sha256 互不相同；单并发下两次渲染的 mp4 **字节完全相同** |
+| 图片内联成 `data:` URI | bundle 挂在 `http://localhost:<端口>`，页面里的 `file://` 图片会被跨源拦掉（整片渲染失败） |
+
+**验收判据是「整片渲染两次比 sha256」**，不是「抽几帧比对」：Remotion 4.0.532 的 `renderFrames`
+在按帧范围出图时会画错帧（最小复现见 `scripts/renderer/render.ts` 的注释），所以逐帧核对必须
+走整片。
 
 **为什么先出静音版**：画面定稿是迭代最频繁的环节。静音渲染快、可反复调，不需要每次调用 TTS。
 
 **为什么不用「先做 HTML 再转视频」**：Remotion 本身就是 HTML 渲染器（无头浏览器逐帧截图）。先做 HTML 再转视频等于渲染两遍、动效写两遍、时序维护两处。Remotion Studio 已经提供浏览器实时预览，不需要自建预览层。
+
+**字幕画在渲染层**，不走 ffmpeg：本机 ffmpeg 未编译 libass，`subtitles` / `drawtext` 都不可用
+（见 [数据格式](SPEC-data-format.md) 第四节注）。字幕块来自 `contracts/subtitles.ts`
+（与校验器、配音阶段同一份切分），渲染层只负责把时间轴分给它们。
 
 ---
 

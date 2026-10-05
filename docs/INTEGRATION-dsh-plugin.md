@@ -338,7 +338,7 @@ ctx.tools.register(defineTool({
 - 监听并处理子进程的 `'exit'` 与 `'close'`
 - 不留下悬空的 Promise
 
-### 3.8 八条实测结论（M4，本机 DSH `0.2.0-rc.2`）
+### 3.8 实测结论（M4 起，本机 DSH `0.2.0-rc.2`）
 
 这些都是「写的时候看不出来、装上去才炸」的坑。每条都给出了证据与做法。
 
@@ -419,6 +419,22 @@ Cordis 加载器是裸 `await import(url)`（`cordis-plugin-loader/lib/index.js`
 子进程用 `process.execPath`（Electron 二进制）+ 继承来的 `ELECTRON_RUN_AS_NODE=1`，
 实测该运行时是 Node 24.18.1、类型剥离可用，`scripts/*/main.ts` 照常跑。
 
+**9. 渲染阶段的超时要单独放宽，而且它的失败有一条专用路径。**
+`foldercast_cast` 里 `render` 阶段的预算是 40 分钟（本机实测 1920×1080 约 7 帧/秒，5 分钟的片子
+要 20 分钟出头）；其余阶段最多 10 分钟。缺浏览器时渲染脚本退出码是 **3**（不是 1）：工具据此把
+脚本给出的结构化引导原样交回给模型，`next` 置 `blocked`，**其余阶段的结论照常返回**。
+
+**10. 需要浏览器的探测只做「有没有」，不做下载。**
+`detectDependencies()` 里多了一项 `browser`（系统 Chrome / Chromium / Edge，或 Remotion 已下过的
+Headless Shell），与渲染脚本共用同一份判据（`scripts/renderer/browser.ts`）。它只查文件是否存在，
+**不触发 150–300 MB 的下载** —— 下载与否由用户决定。缺浏览器时 `dependencies` 里会多一条
+`browser`，`hint` 写明三种办法；分析、素材、校验、HTML 视图都不受影响。
+
+**11. 界面里的渲染要等重启，但脚本不用。**
+M7 新增的 `render` 阶段入口与 `videoPath` 都在 `scripts/` 与 `src/` 两侧：**脚本侧**（渲染本身）
+改完立即生效（每次新起子进程）；**`src/` 侧**（工具的输出 schema、阶段名、依赖探测）要重启宿主
+（第 8 条）。所以「工具里多了 `render` 阶段」这件事，只有重启后才在 GUI 里可见。
+
 ---
 
 ## 四、工具设计建议
@@ -426,12 +442,13 @@ Cordis 加载器是裸 `await import(url)`（`cordis-plugin-loader/lib/index.js`
 ### 第一版只注册一个工具（**已实现**）
 
 ```
-foldercast_cast       事实层一条龙：分析 → 素材 → 校验
+foldercast_cast       确定性一条龙：分析 → 素材 → HTML 视图 → 校验 → （评审通过后）出片
 ```
 
 **一个必需参数**：目录路径。判据是「除了指向哪个目录，不需要任何其他输入」
-（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)）。另有一个可选的 `skipAssets`
-（跳过素材阶段，快一些，但讲稿就引用不了画面）。
+（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)）。另有两个可选的跳过开关：
+`skipAssets`（跳过素材阶段，快一些，但讲稿就引用不了画面）与 `skipRender`（只要事实层与页面，
+不等出片 —— 渲染要浏览器且慢）。
 
 **它不写稿。** 写稿要判断，那是模型的事（ADR 0008：编排层是 agent）。工具做的事与交接点：
 
@@ -443,12 +460,17 @@ foldercast_cast       事实层一条龙：分析 → 素材 → 校验
 | **页面** | 工具（子进程跑 `scripts/html`，M6） | `out/index.html`（单文件静态页，不依赖讲稿） |
 | 校验 | 工具（子进程跑 `scripts/validate`） | 带行号的问题清单 |
 | **评审** | **另一个 subagent**（按 skill 的评审判据，换一条上下文） | `review.md` |
+| 出片 | 工具（子进程跑 `scripts/renderer`，M7；**评审通过后才跑**） | `out/video.mp4`（静音） |
 
 返回值里的 `htmlPath` 是页面的落点 —— 它在第一次调用时就有，用户与模型都能直接打开核对理解。
+`videoPath` 是成片的落点（静音 mp4），只有渲染成功时才带 `videoBytes`；`video` 是它的状态
+（`missing` / `stale` / `fresh`）。**`video: fresh` 时工具不重渲**：成片比讲稿新就直接报现状，
+否则每次调用都要重出一次片（本机 5 分钟的片子 20 分钟）—— 渲染是最贵的一步，判据与评审同构。
 `next` 就是交接信号：`needsScript`（该写稿了）、`needsReview`（讲稿过了、该评审）、
-`validated`（讲稿与评审都齐了）、`fixScript`（讲稿有问题）、`blocked`（环境或目标有问题）。
+`validated`（讲稿与评审齐了但还没出片，例如传了 `skipRender`）、`rendered`（成片已生成）、
+`fixScript`（讲稿有问题）、`blocked`（环境或目标有问题，**含缺浏览器**）。
 `review` 与 `reviewPath` 报告评审的状态：`missing` 还没审、`stale` 审过但讲稿又改了、`fresh`。
-渲染与配音尚未实现（M7 / M8），工具不声称出片。
+**配音尚未实现（M8）**，所以工具说的是「静音成片」，不声称配了音。
 
 **为什么工具要管评审的状态**：校验（M3）只能判机器能判的，「有没有讲错重点」判不了（M5）。
 所以讲稿通过校验**不等于**做完 —— 工具不跑评审（那是 agent 的事），但必须如实报告

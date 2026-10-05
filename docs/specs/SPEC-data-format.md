@@ -299,6 +299,14 @@ id_rsa  id_dsa  id_ecdsa  id_ed25519
 
 `targetDurationSec` 是**软约束**：写稿阶段用它反推字数上限（中文按约 4.3 字/秒估算），不硬截断。
 
+**讲稿里也有一份同形状的 `video`**（第二节），渲染阶段（M7）**以讲稿那份为准**：同一个目录可以出
+不同尺寸的片子，那是讲稿的选择，不是目录的属性。两份都没有时用 1920×1080 / 30fps。
+
+**没写 `targetDurationSec` 时，时长由字数预估**：每个场景的时长 = 朗读时间（宽度单位 ÷ 4.3 字/秒）
++ 标点停顿 + 留白（0.45 秒 + 7%），并夹在 4.5–90 秒之间。写了目标时长就按比例缩放各场景，
+缩放后总帧数精确等于目标帧数（余数给最后一场）。估算常量在
+`packages/plugin/scripts/renderer/estimate.ts`，M8 拿到实测音频后按实测重渲染，格式不变。
+
 ---
 
 ### `voice` —— 配音配置（维度 1）
@@ -521,6 +529,11 @@ dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
 **PDF 的文字提取**：`officeparser` v8 起对**带文本层**的 PDF 产出 heading 层级与表格节点，因此不为 PDF 单独引入文本库。扫描版 PDF 没有文本层，只能靠页面图，narration 由叙事层依据画面与文件名决定（[ADR 0006](../decisions/0006-narration-layer-moves-up.md) 允许它读内容）。
 
 **注**：本机 ffmpeg **未编译 libass/freetype**，`subtitles` 与 `drawtext` 滤镜不可用。因此字幕不走 ffmpeg 烧录，而是由渲染阶段（Remotion）绘制。这与 [SPEC-pipeline.md](SPEC-pipeline.md) 的「字幕由渲染层负责」一致。
+
+**渲染阶段实际读哪些字段**（M7）：`id` / `type` / `title` / `subtitle` / `narration`，加上该场景类型的
+必需字段与可选字段；`durationSec` 写了就用它（配音回填后重渲染的入口），没写就按字数预估。
+**素材字段指的是工作根下的路径**（`asset` / `items` / `poster` / `pages`），渲染前会读成
+`data:` URI —— 浏览器里读不了 `file://`。
 
 ---
 

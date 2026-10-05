@@ -205,7 +205,13 @@
 **无孤儿需求**：每条需求至少被一个里程碑承接。
 **无孤儿里程碑**：每个里程碑都在承接需求。
 
-**押后的部分**：R7 的用户自定义、R8 / R9 整体、R2 的多视频切分形态不属第一版，见 [ROADMAP.md 押后表](ROADMAP.md#押后设计已定第一版不做)。
+**押后的部分**：R7 的用户自定义、R9 的自然语言风格解析、R2 的多视频切分形态不属第一版，
+见 [ROADMAP.md 押后表](ROADMAP.md#押后设计已定第一版不做)。
+
+**R8 的现状（M7 落地后）**：四套预设（`console` / `deck` / `paper` / `swiss`）**都能用**，
+`style.overrides` 也生效，但**默认只有一套**（`deck`，16:9 深色）—— 换预设要写进讲稿的
+`style.preset` 或用 `pnpm render --style <名字>`，还没有面向用户的开关。等看到真实成片、
+知道想改什么之后再暴露（与 ADR 0009 的配置策略一致）。
 
 ---
 
@@ -238,3 +244,4 @@
 | 2026-10-05 | **修分析器的密钥审计漏洞**：密钥类文件会被 `maxFiles` 截断一起丢掉，于是既不在清单、也不在 `stats.secrets.excluded` 里（实测：200 文件的目录里 `lecture-videos/.mimo_api_key` 就是这样消失的） | 密钥文件不占 `maxFiles` 配额、也不被截断 —— 它们本来就不读内容，而审计必须完整；补测试钉住「截断后密钥仍在清单与审计里」 |
 | 2026-10-05 | **M6 完成**：HTML 视图落地（`packages/plugin/scripts/html/`），解读 + 素材 → 单文件静态页；对三个真实目录各生成一份，三名不知情的读者只读页面复述目录结构，据此修掉数字口径、标签定义与图像呈现上的六处问题 | 页面**零 JavaScript、零外部资源**（CSS 内联、图片按页面尺寸缩小后内联，超预算的退相对路径并在页脚说明）；依赖图在生成时算好分层（稠密列号，避免空列把画布撑到上万像素）；工具新增 `html` 阶段与 `htmlPath`，**不依赖讲稿**所以写完稿之前就能看 |
 | 2026-10-05 | **M5 完成**：写稿 + 评审 agent 落地。skill 从 97 行扩到 200 行（六步工作流、通读策略与降级路径、场景选择判据、写稿要求、六条评审判据）；三个真实目录各出一份讲稿并过契约校验；评审由**独立 subagent** 执行、结论落盘 | 工作根新增 `review.md`（agent 产出，不入 schema——校验器管机器能判的，评审管语义）；工具新增 `next: needsReview` 与 `reviewPath` / `review`（`missing` / `stale` / `fresh`），**改过讲稿旧评审自动作废**；skill 与 schema 的一致性交给 `src/tests/skill.test.ts` |
+| 2026-10-05 | **M7 完成**：渲染阶段落地（`packages/plugin/scripts/renderer/`，Remotion），讲稿 + 素材 → 静音 mp4；讲稿在运行时加载（bundle 里没有讲稿），浏览器缺失时给结构化引导而不是静默下载 | 新增依赖 `remotion` / `@remotion/bundler` / `@remotion/renderer` / `react` / `react-dom`；图片必须内联成 `data:` URI（渲染时页面在 `http://localhost`，`file://` 图片被跨源拦掉）；**渲染并发固定为 1**（多并发会让同一份讲稿渲出不同的帧）；`script.schema.json` 增加可选的 `video` 与 `style`（讲稿那两份优先于解读里的）；工具新增 `render` 阶段、`next: rendered`、`videoPath` / `videoBytes` 与 `skipRender` |

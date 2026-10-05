@@ -104,8 +104,21 @@ export type TtsProvider = {
   /** 前置检查：缺密钥/缺命令时返回引导。**在发起合成之前调用**。 */
   preflight(env: VoiceEnv): { ok: true } | { ok: false; reason: string; hint: string };
   synth(request: SynthRequest, env: VoiceEnv): Promise<SynthResult>;
-  /** 可选的音色列表；不支持就返回空数组（`voices` 能力）。 */
+  /**
+   * 可选的音色列表；不支持就返回空数组（`voices` 能力）。
+   *
+   * **要跑命令的 provider 可以不实现它**（`say` 就是这样：列表在 `say -v '?'` 的输出里），
+   * 那种情况用 `resolveVoice`。
+   */
   listVoices?(): string[];
+  /**
+   * 解析「实际会用哪个音色」。**在合成之前调用**，理由是实测出来的：
+   *
+   * - 报告与 `durations.json` 要记**实际用的**音色，不是配置里写的；
+   * - 而「自动挑一个」的动作原本藏在 `synth` 里，于是**全部命中缓存的那一次就不知道用了谁**
+   *   （`say` 会挑系统里的中文音色，跳过合成之后这个信息就丢了）。
+   */
+  resolveVoice?(request: { voice?: string; style?: string }, env: VoiceEnv): Promise<string | undefined>;
 };
 
 /** 外部命令的执行结果。**stdout 与 stderr 都要留**：`say -v '?'` 把音色表写在 stderr 上。 */

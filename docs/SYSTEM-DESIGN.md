@@ -172,7 +172,12 @@ packages/
         ├── assets/            TypeScript：解读 → 素材（M2）
         ├── validate/          TypeScript：解读与讲稿的契约校验（M3）
         ├── html/              TypeScript：解读 + 素材 → 单文件静态页（M6）
-        └── renderer/          TypeScript + Remotion：讲稿 + 素材 → 静音视频（M7）
+        ├── voice/             TypeScript：讲稿 → 逐场景音频 + 实测时长（M8）
+        │   ├── providers/     say / mimo 两个 provider + 注册表
+        │   ├── env.ts         密钥从哪来、命令探测
+        │   ├── audio.ts       ffprobe 实测 + 按场景拼音轨
+        │   └── synth.ts       调度：合成 → 实测 → 分配字幕 → 写 durations.json
+        └── renderer/          TypeScript + Remotion：讲稿 + 素材（+ 音轨）→ 视频（M7）
             ├── estimate.ts    时长预估（字数）与字幕块时序
             ├── plan.ts        讲稿 + 解读 + 素材 → 纯数据的渲染计划
             ├── styles.ts      预设 JSON + style.overrides → token → CSS 变量

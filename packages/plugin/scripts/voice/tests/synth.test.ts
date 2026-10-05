@@ -189,6 +189,28 @@ describe.skipIf(!hasFfmpeg)('合成调度', () => {
     expect(report.cached).toBe(2);
   });
 
+  it('全部命中缓存时仍然报出「实际用的音色」（不能因为没合成就不写）', async () => {
+    // 这条是实测踩出来的：`say` 会在合成时自动挑中文音色，而全缓存那一次合成根本不跑，
+    // 于是 durations.json 里的 voice 变成空 —— 报告与产物都要记「实际用的」。
+    const naming: TtsProvider = {
+      ...fake,
+      async resolveVoice() {
+        return '自动挑的音色';
+      },
+    };
+    const report = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: naming });
+    expect(report.cached).toBe(2);
+    expect(report.voice).toBe('自动挑的音色');
+    const document = JSON.parse(readFileSync(report.durationsPath, 'utf8')) as DurationsDocument;
+    expect(document.voice).toBe('自动挑的音色');
+  });
+
+  it('provider 说不出音色时退回上一次产物里记的那个', async () => {
+    const forgetful: TtsProvider = { ...fake, resolveVoice: async () => undefined };
+    const report = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: forgetful });
+    expect(report.voice).toBe('自动挑的音色');
+  });
+
   it('--force 重新合成', async () => {
     const report = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake, force: true });
     expect(report.synthesized).toBe(2);

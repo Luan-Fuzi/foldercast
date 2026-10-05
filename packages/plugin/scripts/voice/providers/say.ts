@@ -95,16 +95,24 @@ export const sayProvider: TtsProvider = {
   },
 
   listVoices(): string[] {
-    // 列表要跑命令，放在 `synth` 里按需取；这里给不出静态列表
+    // 列表要跑命令（`say -v '?'`），拿不到静态列表 —— 用 `resolveVoice`
     return [];
   },
 
-  async synth(request: SynthRequest, env: VoiceEnv): Promise<SynthResult> {
-    // `say -v '?'` 把音色表写在 **stderr** 上（实测），stdout 是空的
+  /**
+   * 实际用哪个音色：显式指定就用它，否则挑系统里的中文音色。
+   *
+   * 这一步**必须能在不合成的情况下调用**：全部命中缓存时报告仍然要记「实际用的音色」。
+   */
+  async resolveVoice(request, env) {
+    if (request.voice !== undefined && request.voice !== '') return request.voice;
     const listing = await env.exec('say', ['-v', '?']);
-    const voices = parseVoiceList(`${listing.stderr}${listing.stdout}`);
+    return pickChineseVoice(parseVoiceList(`${listing.stderr}${listing.stdout}`))?.name;
+  },
+
+  async synth(request: SynthRequest, env: VoiceEnv): Promise<SynthResult> {
     const wanted = request.voice;
-    const chosen = wanted ?? pickChineseVoice(voices)?.name;
+    const chosen = await this.resolveVoice?.(request, env);
 
     const dir = mkdtempSync(join(tmpdir(), 'foldercast-say-'));
     const raw = join(dir, 'speech.aiff');

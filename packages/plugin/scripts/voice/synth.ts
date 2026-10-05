@@ -34,7 +34,7 @@ import {
 import { allocateByWidth } from '../contracts/spans.ts';
 import { splitSubtitles } from '../contracts/subtitles.ts';
 import type { ScriptDocument } from '../contracts/script.ts';
-import { buildTrack, probeDurationSec } from './audio.ts';
+import { buildTrack, probeDurationSec, readJsonIfExists } from './audio.ts';
 import { findProvider, providerNames, DEFAULT_PROVIDER } from './providers/index.ts';
 
 /** 每个场景末尾的留白（秒）。**算进场景时长**，所以画面与配音不会因此错开。 */
@@ -89,6 +89,12 @@ export type SynthOptions = {
   now?: Date;
   /** 进度回调。 */
   onProgress?: (event: { sceneId: string; index: number; total: number; cached: boolean; seconds: number }) => void;
+  /**
+   * 已知的实际音色（上一次跑出来的）。**全部命中缓存时靠它**：`say` 会自动挑音色，
+   * 而挑的动作发生在合成里，跳过合成之后就没地方知道了 —— 报告与 `durations.json`
+   * 都要记「实际用的」，不能因为这次没合成就不写。
+   */
+  voiceOverride?: string;
 };
 
 export type SynthReport = {
@@ -188,8 +194,23 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
     );
   }
 
-  const voice = options.voice ?? spec.voice;
   const style = options.style ?? spec.style;
+  // 上一轮的产物：provider 说不出音色时的兜底（见 `voiceOverride`）
+  const previous = readJsonIfExists<DurationsDocument>(join(workRoot, 'durations.json'));
+  const requestedVoice = options.voice ?? spec.voice ?? options.voiceOverride ?? previous?.voice;
+  // **在合成之前**解析实际音色：报告要记「实际用的」，而全部命中缓存时合成根本不会跑
+  // provider 说得出来就用它说的；说不出来（返回 undefined）就退回请求里那个 / 上一次记的
+  const resolvedVoice =
+    provider.resolveVoice === undefined
+      ? undefined
+      : await provider.resolveVoice(
+          {
+            ...(requestedVoice === undefined ? {} : { voice: requestedVoice }),
+            ...(style === undefined ? {} : { style }),
+          },
+          env,
+        );
+  const voice = resolvedVoice ?? requestedVoice;
   const pauseSec = options.pauseSec ?? DEFAULT_PAUSE_SEC;
   const notes: string[] = [provider.describe()];
   if (provider.requiresKey) {
@@ -272,8 +293,7 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
     rmSync(join(workRoot, 'tmp', 'voice'), { recursive: true, force: true });
   }
 
-  // 实际用的音色：显式给的优先，否则从 provider 的说明里认（`say` 会自动挑中文音色）。
-  // 报告与 `durations.json` 都要记**实际用的**那个。
+  // 兜底：provider 说不出音色时，从它在合成说明里留下的痕迹里认（`say` 的说明里带音色名）
   const actualVoice = voice ?? voiceFromNotes(notes);
 
   const document: DurationsDocument = {

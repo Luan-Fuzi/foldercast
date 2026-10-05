@@ -539,34 +539,60 @@ dsoffice recalculate --input budget.xlsx --output recalculated.xlsx
 
 ## 四、`durations.json`（阶段③产物）
 
+**已实现（M8）。** 由 `pnpm voice <目录>` 产出，落 `<工作根>/durations.json`。
+schema 见 [durations.schema.json](durations.schema.json)，校验由 `pnpm validate` 负责。
+
 ```jsonc
 {
-  "provider": "mimo",               // 实际使用的 provider，覆盖 foldercast.json 的 voice 配置
-  "voice": "白桦",
+  "durations": 1,                   // 格式版本
+  "generatedAt": "2026-10-05T21:00:00+08:00",
+  "provider": "say",                // **实际用的**，不是配置里写的（say 会自动挑中文音色）
+  "voice": "Eddy (中文（中国大陆）)",
+  "style": "自然、清晰",             // 「怎么读」的原样记录
+  "track": "audio/narration.wav",   // 拼好的整条音轨，长度 = 所有场景 duration 之和
+  "pause": 0.45,                    // 每个场景末尾的留白
   "scenes": [
     {
-      "id": "cover",
-      "audio": "audio/scene-0.wav",
-      "duration": 12.48,          // ffprobe 实测
-      "subs": [                   // [文本, 该块时长秒]
-        ["这是……", 6.2],
-        ["……", 6.28]
+      "id": "cover",                // 对应讲稿里的场景 id
+      "audio": "audio/cover.wav",   // 相对工作根
+      "audioSec": 9.049,            // ffprobe 实测
+      "duration": 9.499,            // = audioSec + pause：这个场景在成片里占多久
+      "subs": [                     // [文本, 该块时长秒]，各块之和 = duration
+        ["这是……", 3.022],
+        ["……", 6.477]
       ]
     }
   ]
 }
 ```
 
+**`audioSec` 与 `duration` 是两个数，不是冗余**：前者是音频的实测长度，后者是画面里这个场景
+占的长度（多出来的 `pause` 是说完话之后的留白）。**帧号换算以 `duration` 为准**，音轨长度
+等于所有 `duration` 之和 —— 于是画面与配音只有一条时间轴。校验器核的就是这条算术：
+`duration = audioSec + pause`、`subs` 之和 = `duration`、音轨长度 = 各场景之和。
+
+**时长以实测为准，不以字数为准**（C3）：字数只用来**分配字幕块**，不用来定场景时长。
+不同引擎读同一段文字差 30%，用预估会一路漂，到片子后半段字幕与配音完全对不上。
+
 字幕切分规则（沿用 `lecture-videos` 已验证的做法）：
 
 1. 先按句末标点切：`。！？；：`
 2. 超过 24 字的块，再在 `，、` 处二次切分
 3. 相邻块若合并后仍 ≤24 字则合并（避免孤行）
-4. 每块时长按**字符数**占比分配实测总时长
+4. 每块时长按**显示宽度**占比分配实测总时长
 
-**「24 字」按显示宽度折算**：中日韩文字与全角标点算 1，其余（半角标点、拉丁字母、数字）算 0.5。24 本来就是屏幕上一行的容量，中英混排按折算算才与画面一致；纯中文文本下它与「数汉字个数」等价。算法与常量在 `packages/plugin/scripts/contracts/subtitles.ts`（`SUB_LIMIT`），校验器与配音阶段共用同一份实现。
+**「24 字」按显示宽度折算**：中日韩文字与全角标点算 1，其余（半角标点、拉丁字母、数字）算 0.5。24 本来就是屏幕上一行的容量，中英混排按折算算才与画面一致；纯中文文本下它与「数汉字个数」等价。切分在 `packages/plugin/scripts/contracts/subtitles.ts`（`SUB_LIMIT`），**分配在 `contracts/spans.ts`** —— 校验器、配音阶段、渲染阶段三处共用同一份实现，各写一遍必然漂移。
 
 **切不动时校验器会报错**：整块没有任何可切点（例如一长串没有标点的文字）时，硬切会产生半个词，所以切分器原样保留该块，由校验器报出来让人改稿。
+
+**校验器查什么**（`durations-*` 那组）：
+
+| 查什么 | 判据 |
+|---|---|
+| 场景对得上 | id 在讲稿里、不重复、不漏（漏了是 warning：没有声音，画面照出） |
+| 音频真的在 | 文件存在；与 `audioSec` 的差超过 50ms 就警告（改了音频没重跑配音的典型症状） |
+| 算术自洽 | `duration = audioSec + pause`、`subs` 之和 = `duration`、音轨长度 = 各场景之和 |
+| 字幕合规 | 每块 ≤24 宽度单位；块与当前讲稿一致（改了讲稿没重跑配音就报警告） |
 
 ---
 

@@ -208,6 +208,10 @@
 **押后的部分**：R7 的用户自定义、R9 的自然语言风格解析、R2 的多视频切分形态不属第一版，
 见 [ROADMAP.md 押后表](ROADMAP.md#押后设计已定第一版不做)。
 
+**R6 的现状（M8 落地后）**：适配层与两个 provider（`say` 免密钥 / `mimo` 云端）都能用，
+**多 provider 的暴露**（配置界面里选音色、试听）仍然押后 —— 第一版换 provider 靠讲稿的
+`voice.provider` 或工具参数 `ttsProvider`。
+
 **R8 的现状（M7 落地后）**：四套预设（`console` / `deck` / `paper` / `swiss`）**都能用**，
 `style.overrides` 也生效，但**默认只有一套**（`deck`，16:9 深色）—— 换预设要写进讲稿的
 `style.preset` 或用 `pnpm render --style <名字>`，还没有面向用户的开关。等看到真实成片、
@@ -245,3 +249,4 @@
 | 2026-10-05 | **M6 完成**：HTML 视图落地（`packages/plugin/scripts/html/`），解读 + 素材 → 单文件静态页；对三个真实目录各生成一份，三名不知情的读者只读页面复述目录结构，据此修掉数字口径、标签定义与图像呈现上的六处问题 | 页面**零 JavaScript、零外部资源**（CSS 内联、图片按页面尺寸缩小后内联，超预算的退相对路径并在页脚说明）；依赖图在生成时算好分层（稠密列号，避免空列把画布撑到上万像素）；工具新增 `html` 阶段与 `htmlPath`，**不依赖讲稿**所以写完稿之前就能看 |
 | 2026-10-05 | **M5 完成**：写稿 + 评审 agent 落地。skill 从 97 行扩到 200 行（六步工作流、通读策略与降级路径、场景选择判据、写稿要求、六条评审判据）；三个真实目录各出一份讲稿并过契约校验；评审由**独立 subagent** 执行、结论落盘 | 工作根新增 `review.md`（agent 产出，不入 schema——校验器管机器能判的，评审管语义）；工具新增 `next: needsReview` 与 `reviewPath` / `review`（`missing` / `stale` / `fresh`），**改过讲稿旧评审自动作废**；skill 与 schema 的一致性交给 `src/tests/skill.test.ts` |
 | 2026-10-05 | **M7 完成**：渲染阶段落地（`packages/plugin/scripts/renderer/`，Remotion），讲稿 + 素材 → 静音 mp4；讲稿在运行时加载（bundle 里没有讲稿），浏览器缺失时给结构化引导而不是静默下载 | 新增依赖 `remotion` / `@remotion/bundler` / `@remotion/renderer` / `react` / `react-dom`；图片必须内联成 `data:` URI（渲染时页面在 `http://localhost`，`file://` 图片被跨源拦掉）；**渲染并发固定为 1**（多并发会让同一份讲稿渲出不同的帧）；`script.schema.json` 增加可选的 `video` 与 `style`（讲稿那两份优先于解读里的）；工具新增 `render` 阶段、`next: rendered`、`videoPath` / `videoBytes` 与 `skipRender` |
+| 2026-10-05 | **M8 完成**：配音阶段落地（`packages/plugin/scripts/voice/`），讲稿 → 逐场景音频 + `ffprobe` 实测时长 + `durations.json`，渲染阶段自动用实测时长并带上旁白；默认 provider 是免密钥的 macOS `say`，第二个是小米 MiMo（需 `MIMO_API_KEY`）；四套 provider 接口可插拔 | 新增契约第四份 `durations.schema.json` 与校验（算术自洽、字幕块、与讲稿一致）；字幕**分配**算法上移到 `contracts/spans.ts`，校验器/配音/渲染三处共用；讲稿 schema 增加可选 `voice`（讲稿那两份优先于解读里的）；音轨必须内联成 `data:` URI（Remotion 取资源只认 http(s) 与 data）；`say` 的输出格式只认字节（新系统神经音色写的是 CAF 里的 AAC）；插件新增 `voice` 阶段、`next` 增 `durationsPath` / `narrationPath` / `voice` / `voiceProvider` / `voiceName`，参数增 `skipVoice` / `ttsProvider` / `ttsVoice` |

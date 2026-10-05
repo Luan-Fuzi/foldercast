@@ -432,10 +432,16 @@ Headless Shell），与渲染脚本共用同一份判据（`scripts/renderer/bro
 本机装了 Chrome 时，「没有浏览器」这条路径走不到，`FOLDERCAST_IGNORE_SYSTEM_BROWSER=1`
 可以强制它（CI 上本来就走这条，本地要靠这个开关才能验）。
 
-**11. 界面里的渲染要等重启，但脚本不用。**
+**12. 凭据经环境变量传进子进程，不进命令行、不进报告。**
+配音阶段要 TTS 密钥时，插件先 `describe`（缺了就返回引导、**不发起合成**）、再 `resolve`，
+然后只在 `spawn` 的环境里带上 `MIMO_API_KEY=…`。命令行参数会进日志与进程列表，所以密钥不走
+那里；报告里只有引用名。这也让「配置里只放引用名」这条设计在插件层就成立 ——
+被讲解目录的 `.env` 与 `$DSH_HOME/.env` 是脚本自己的兜底，不是主路径。
+
+**13. 界面里的渲染要等重启，但脚本不用。**
 M7 新增的 `render` 阶段入口与 `videoPath` 都在 `scripts/` 与 `src/` 两侧：**脚本侧**（渲染本身）
 改完立即生效（每次新起子进程）；**`src/` 侧**（工具的输出 schema、阶段名、依赖探测）要重启宿主
-（第 8 条）。所以「工具里多了 `render` 阶段」这件事，只有重启后才在 GUI 里可见。
+（第 8 条）。所以「工具里多了 `render` / `voice` 阶段」这件事，只有重启后才在 GUI 里可见。
 
 ---
 
@@ -448,9 +454,10 @@ foldercast_cast       确定性一条龙：分析 → 素材 → HTML 视图 →
 ```
 
 **一个必需参数**：目录路径。判据是「除了指向哪个目录，不需要任何其他输入」
-（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)）。另有两个可选的跳过开关：
-`skipAssets`（跳过素材阶段，快一些，但讲稿就引用不了画面）与 `skipRender`（只要事实层与页面，
-不等出片 —— 渲染要浏览器且慢）。
+（[ROADMAP.md](ROADMAP.md#第一版的规模判据无可配置空间)）。其余都是可选的：
+`skipAssets`（跳过素材阶段）、`skipVoice`（只要静音片）、`skipRender`（只要事实层与页面）、
+`ttsProvider` / `ttsVoice`（换配音的 provider 与音色）。**默认全跑**：默认 provider 是免密钥的
+`say`，所以「不配任何东西就出带旁白的片」这条路是通的。
 
 **它不写稿。** 写稿要判断，那是模型的事（ADR 0008：编排层是 agent）。工具做的事与交接点：
 
@@ -462,7 +469,8 @@ foldercast_cast       确定性一条龙：分析 → 素材 → HTML 视图 →
 | **页面** | 工具（子进程跑 `scripts/html`，M6） | `out/index.html`（单文件静态页，不依赖讲稿） |
 | 校验 | 工具（子进程跑 `scripts/validate`） | 带行号的问题清单 |
 | **评审** | **另一个 subagent**（按 skill 的评审判据，换一条上下文） | `review.md` |
-| 出片 | 工具（子进程跑 `scripts/renderer`，M7；**评审通过后才跑**） | `out/video.mp4`（静音） |
+| **配音** | 工具（子进程跑 `scripts/voice`，M8；评审通过后才跑） | `audio/` + `durations.json` |
+| 出片 | 工具（子进程跑 `scripts/renderer`，M7；用实测时长与音轨） | `out/video.mp4`（带旁白） |
 
 返回值里的 `htmlPath` 是页面的落点 —— 它在第一次调用时就有，用户与模型都能直接打开核对理解。
 `videoPath` 是成片的落点（静音 mp4），只有渲染成功时才带 `videoBytes`；`video` 是它的状态
@@ -470,9 +478,11 @@ foldercast_cast       确定性一条龙：分析 → 素材 → HTML 视图 →
 否则每次调用都要重出一次片（本机 5 分钟的片子 20 分钟）—— 渲染是最贵的一步，判据与评审同构。
 `next` 就是交接信号：`needsScript`（该写稿了）、`needsReview`（讲稿过了、该评审）、
 `validated`（讲稿与评审齐了但还没出片，例如传了 `skipRender`）、`rendered`（成片已生成）、
-`fixScript`（讲稿有问题）、`blocked`（环境或目标有问题，**含缺浏览器**）。
+`fixScript`（讲稿有问题）、`blocked`（环境或目标有问题，**含缺浏览器与缺 TTS 密钥**）。
 `review` 与 `reviewPath` 报告评审的状态：`missing` 还没审、`stale` 审过但讲稿又改了、`fresh`。
-**配音尚未实现（M8）**，所以工具说的是「静音成片」，不声称配了音。
+`voice` 是配音产物的状态（判据与 `video` 同构：比讲稿新才算 `fresh`），
+`voiceProvider` / `voiceName` 是**实际用的** provider 与音色 —— `say` 会自己挑一个中文音色，
+报告必须如实（配置里写什么都没关系）。字段清单：`durationsPath`、`narrationPath`、`voice`。
 
 **为什么工具要管评审的状态**：校验（M3）只能判机器能判的，「有没有讲错重点」判不了（M5）。
 所以讲稿通过校验**不等于**做完 —— 工具不跑评审（那是 agent 的事），但必须如实报告

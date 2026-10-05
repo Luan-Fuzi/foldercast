@@ -8,7 +8,7 @@
  * 讲稿是**创作产物**：重跑会得到不同结果，删了就丢了。所以这里的类型只描述形状，
  * 判据（路径是否存在、字幕是否超长）在 `scripts/validate/` 里查。
  */
-import type { Kind } from './foldercast.ts';
+import type { Kind, StyleSpec, VideoSpec } from './foldercast.ts';
 
 /** 场景类型。开放枚举：渲染器遇到不认识的类型应跳过并警告，而不是崩溃。 */
 export const SCENE_TYPES = [
@@ -113,5 +113,12 @@ export type ScriptDocument = {
   };
   /** 整片标题，可选。 */
   title?: string;
+  /**
+   * 出片规格。与解读里的 `video` 同形状（`VideoSpec`），**讲稿这一份优先**：同一个目录可以出
+   * 不同尺寸的片子，那是讲稿的选择，不是目录的属性。渲染阶段（M7）读它，缺省 1920×1080 / 30fps。
+   */
+  video?: VideoSpec;
+  /** 风格：预设名 + token 覆盖。渲染阶段（M7）读它，见 docs/specs/SPEC-data-format.md 第一节。 */
+  style?: StyleSpec;
   scenes: Scene[];
 };

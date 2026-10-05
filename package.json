@@ -18,6 +18,7 @@
     "assets": "node packages/plugin/scripts/assets/main.ts",
     "validate": "node packages/plugin/scripts/validate/main.ts",
     "html": "node packages/plugin/scripts/html/main.ts",
+    "render": "node packages/plugin/scripts/renderer/main.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

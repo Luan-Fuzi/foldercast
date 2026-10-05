@@ -26,9 +26,15 @@ export function listProviders(): { name: string; requiresKey: boolean; capabilit
   }));
 }
 
-/** 按名字取 provider。未注册的名字**不静默回落到默认** —— 那会让用户以为在用 A、实际用了 B。 */
+/**
+ * 按名字取 provider。
+ *
+ * - `name` 给空（`undefined` 或空串）→ 默认 provider（`say`，免密钥那个）；
+ * - 给了名字但没注册 → `undefined`，**调用方要报错**，不静默回落（否则用户以为在用 A、
+ *   实际用了 B）。
+ */
 export function findProvider(name: string | undefined): TtsProvider | undefined {
-  if (name === undefined) return PROVIDERS.find((provider) => provider.name === DEFAULT_PROVIDER);
+  if (name === undefined || name === '') return PROVIDERS.find((provider) => provider.name === DEFAULT_PROVIDER);
   return PROVIDERS.find((provider) => provider.name === name);
 }
 

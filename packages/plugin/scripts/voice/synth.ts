@@ -176,8 +176,12 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
   const script = JSON.parse(readFileSync(scriptPath, 'utf8')) as ScriptDocument;
   const spec: VoiceSpec = script.voice ?? {};
 
+  // 优先级：**命令行/参数显式给的 > 讲稿里的 > 默认**。
+  // 反过来会把「用户明确要求的那一个」悄悄换掉（实测踩过：`--provider mimo` 被讲稿里的
+  // `voice.provider: say` 顶掉，于是缺密钥那条路径永远测不到）。
   const injected = typeof options.provider === 'object' ? options.provider : undefined;
-  const providerName = injected?.name ?? (typeof options.provider === 'string' ? options.provider : undefined) ?? spec.provider ?? DEFAULT_PROVIDER;
+  const fromOption = typeof options.provider === 'string' ? options.provider : undefined;
+  const providerName = injected?.name ?? fromOption ?? spec.provider ?? DEFAULT_PROVIDER;
   const provider: TtsProvider | undefined = injected ?? findProvider(providerName);
   if (provider === undefined) {
     throw new SynthError(

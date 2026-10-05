@@ -146,12 +146,6 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  // 提前把「缺 ffmpeg / ffprobe」说清楚：它们是这一阶段的硬条件（合成后的转码与实测）
-  if (!parsed.listVoices && !env.has('ffmpeg')) {
-    console.error('配音需要 ffmpeg（转 wav 与拼接音轨）。macOS：brew install ffmpeg');
-    return 2;
-  }
-
   const providerName = parsed.provider ?? undefined;
   const provider = findProvider(providerName);
   if (provider === undefined) {
@@ -184,6 +178,17 @@ async function main(): Promise<number> {
       console.error(`provider ${provider.name} 还不能用（${preflight.reason}）：\n${preflight.hint}`);
     }
     return preflight.reason === 'credential-missing' ? EXIT_CREDENTIAL_MISSING : 2;
+  }
+
+  // 缺命令的检查放在**前置检查之后**：先说「你选的 provider 缺密钥」（可操作、要用户决定），
+  // 再说「这台机器缺 ffmpeg」。反过来的话，缺 ffmpeg 的机器上永远看不到密钥引导 ——
+  // 而 CI 恰好就是那台机器（实测踩过：缺密钥本该退出 4，却因为先撞上缺 ffmpeg 退成了 2）。
+  if (!env.has('ffmpeg')) {
+    console.error(
+      '配音需要 ffmpeg（把 say 的输出转成 wav、按场景拼接音轨）。macOS：brew install ffmpeg\n' +
+        '注意：缺它只影响配音，分析、素材、页面与静音出片都不受影响。',
+    );
+    return 2;
   }
 
   if (parsed.check) {

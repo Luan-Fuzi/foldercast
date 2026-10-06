@@ -260,16 +260,6 @@
           "type": "string",
           "description": "file 场景：已生成的素材路径"
         },
-        "focusLines": {
-          "type": "array",
-          "items": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "file 场景：高亮行区间 [起, 止]"
-        },
         "items": {
           "type": "array",
           "items": {

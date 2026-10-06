@@ -35,8 +35,6 @@ const EXPECTED: Expectation[] = [
   { code: 'scene-field-missing', pointer: '/scenes/0/title', scene: 'cover', field: 'title', about: 'title' },
   // ② 幻觉路径：src/main.ts 不在 manifest 里，并且要给出相近的候选
   { code: 'path-hallucinated', pointer: '/scenes/3/file', scene: 'entry', field: 'file', about: 'src/main.ts' },
-  // ③ 高亮行区间超出文件行数（src/index.ts 只有 6 行）
-  { code: 'focus-lines-out-of-range', pointer: '/scenes/2/focusLines', scene: 'entry', field: 'focusLines', about: '只有 6 行' },
   // ④ 场景 id 重复：配音产物按 id 命名，重复会互相覆盖
   { code: 'scene-id-duplicate', pointer: '/scenes/3/id', scene: 'entry', field: 'id', about: '重复' },
   // ⑤ 素材基准写错：清单登记的是相对工作根的路径，这里多了一层 assets/

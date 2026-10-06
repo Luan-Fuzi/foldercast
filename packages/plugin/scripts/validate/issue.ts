@@ -53,7 +53,6 @@ export type IssueCode =
   | 'source-root-mismatch'
   | 'inventory-group-count-mismatch'
   | 'inventory-group-kind-unknown'
-  /** `focusLines` 超出文件的真实行数。 */
   | 'focus-lines-out-of-range'
   | 'clip-range-invalid'
   // ── 配音产物（durations.json） ───────────────────

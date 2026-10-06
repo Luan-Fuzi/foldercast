@@ -263,17 +263,6 @@ export function checkScript(input: ScriptInput): IssueCollector {
       });
     }
 
-    // file：高亮行区间不能超出文件真实行数
-    if (scene.type === 'file' && scene.file !== undefined && scene.focusLines !== undefined) {
-      const [start, end] = scene.focusLines;
-      const lines = plan.sourceEntry(scene.file)?.lines;
-      if (start !== undefined && end !== undefined && start > end) {
-        add('focusLines', 'blocker', 'focus-lines-out-of-range', `${label} 的 focusLines 是 [${String(start)}, ${String(end)}]，起点在终点之后。`, '写成 [起, 止]，起 ≤ 止。');
-      } else if (end !== undefined && lines !== undefined && end > lines) {
-        add('focusLines', 'blocker', 'focus-lines-out-of-range', `${label} 高亮到第 ${String(end)} 行，但 ${scene.file} 只有 ${String(lines)} 行。`, '把区间收在文件行数之内。');
-      }
-    }
-
     // clip：片段区间的方向
     if (scene.type === 'clip' && scene.clipRange !== undefined) {
       const [start, end] = scene.clipRange;

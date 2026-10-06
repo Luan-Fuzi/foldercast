@@ -52,7 +52,7 @@ export const SCENE_ALLOWED_FIELDS: Readonly<Record<SceneType, readonly string[]>
   cover: ['id', 'type', 'title', 'subtitle', 'narration', 'durationSec'],
   tree: ['id', 'type', 'title', 'narration', 'durationSec', 'highlight'],
   inventory: ['id', 'type', 'title', 'narration', 'durationSec', 'groups'],
-  file: ['id', 'type', 'title', 'narration', 'durationSec', 'file', 'asset', 'focusLines'],
+  file: ['id', 'type', 'title', 'narration', 'durationSec', 'file', 'asset'],
   gallery: ['id', 'type', 'title', 'narration', 'durationSec', 'items'],
   clip: ['id', 'type', 'title', 'narration', 'durationSec', 'source', 'poster', 'clipRange'],
   document: ['id', 'type', 'title', 'narration', 'durationSec', 'source', 'pages'],
@@ -89,7 +89,6 @@ export type Scene = {
   /** file：已生成的素材路径，相对工作根。 */
   asset?: string;
   /** file：高亮行区间 [起, 止]。 */
-  focusLines?: [number, number];
   /** gallery：图片素材路径列表，相对工作根。 */
   items?: string[];
   /** clip / document：源文件路径，相对 source.root。 */

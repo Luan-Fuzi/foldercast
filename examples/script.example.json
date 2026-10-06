@@ -1,14 +1,11 @@
 {
   "foldercast": 1,
   "generatedAt": "2026-10-04T17:30:00+08:00",
-
   "source": {
     "root": "/Users/scliang/work/qiuzhao202608/lecture-videos",
     "label": "lecture-videos"
   },
-
   "title": "lecture-videos · 导览",
-
   "scenes": [
     {
       "id": "cover",
@@ -23,7 +20,12 @@
       "type": "tree",
       "title": "目录结构",
       "narration": "整个目录分成四块。content 放讲稿，scripts 放配音脚本，src 是渲染工程，public 存放图片和音频素材。",
-      "highlight": ["content", "scripts", "src", "public"],
+      "highlight": [
+        "content",
+        "scripts",
+        "src",
+        "public"
+      ],
       "durationSec": null
     },
     {
@@ -32,10 +34,26 @@
       "title": "这里面有什么",
       "narration": "一共二十四个文件。其中 TypeScript 源码六个，讲稿和数据十个，图片四张，还有两个说明文档。",
       "groups": [
-        { "kind": "code", "count": 6, "note": "Remotion 工程与 TTS 脚本" },
-        { "kind": "data", "count": 10, "note": "七讲讲稿与时长清单" },
-        { "kind": "image", "count": 4, "note": "notebook 跑出的结果图" },
-        { "kind": "text", "count": 2, "note": "README 与说明" }
+        {
+          "kind": "code",
+          "count": 6,
+          "note": "Remotion 工程与 TTS 脚本"
+        },
+        {
+          "kind": "data",
+          "count": 10,
+          "note": "七讲讲稿与时长清单"
+        },
+        {
+          "kind": "image",
+          "count": 4,
+          "note": "notebook 跑出的结果图"
+        },
+        {
+          "kind": "text",
+          "count": 2,
+          "note": "README 与说明"
+        }
       ],
       "durationSec": null
     },
@@ -46,7 +64,6 @@
       "narration": "Root.tsx 是整个渲染工程的入口，被四个文件引用。它注册了七个组合，每个组合对应一讲。它用 calculateMetadata 从时长清单里累加总帧数，所以改文案不需要手动对时间轴。",
       "file": "src/Root.tsx",
       "asset": "assets/code/src_Root_tsx.png",
-      "focusLines": [40, 62],
       "durationSec": null
     },
     {

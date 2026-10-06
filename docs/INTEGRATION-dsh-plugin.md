@@ -422,7 +422,7 @@ Cordis 加载器是裸 `await import(url)`（`cordis-plugin-loader/lib/index.js`
 **9. 渲染阶段的超时要单独放宽，而且它的失败有一条专用路径。**
 `foldercast_cast` 里 `render` 阶段的预算是 40 分钟（本机实测 1920×1080 约 7 帧/秒，5 分钟的片子
 要 20 分钟出头）；其余阶段最多 10 分钟。缺浏览器时渲染脚本退出码是 **3**（不是 1）：工具据此把
-脚本给出的结构化引导原样交回给模型，`next` 置 `blocked`，**其余阶段的结论照常返回**。
+脚本给出的结构化引导原样交回给模型（`ok: false` 加 `error`），**其余阶段的结论照常返回**。
 
 **10. 需要浏览器的探测只做「有没有」，不做下载。**
 `detectDependencies()` 里多了一项 `browser`（系统 Chrome / Chromium / Edge，或 Remotion 已下过的
@@ -466,23 +466,16 @@ foldercast_cast       确定性一条龙：分析 → 素材 → HTML 视图 →
 | 分析 | 工具（子进程跑 `scripts/analyzer`） | `foldercast.json` |
 | 素材 | 工具（子进程跑 `scripts/assets`） | `assets/` |
 | **写稿** | **模型**（按 skill 的流程） | `script.json` |
-| **页面** | 工具（子进程跑 `scripts/html`，M6） | `out/index.html`（单文件静态页，不依赖讲稿） |
 | 校验 | 工具（子进程跑 `scripts/validate`） | 带行号的问题清单 |
 | **评审** | **另一个 subagent**（按 skill 的评审判据，换一条上下文） | `review.md` |
-| **配音** | 工具（子进程跑 `scripts/voice`，M8；评审通过后才跑） | `audio/` + `durations.json` |
-| 出片 | 工具（子进程跑 `scripts/renderer`，M7；用实测时长与音轨） | `out/video.mp4`（带旁白） |
+| **配音** | 工具（显式传 `voice: true` 才跑） | `audio/` + `durations.json` |
+| 出片 | 工具（显式传 `render: true` 才跑；渲染阶段自己认音轨） | `out/video.mp4` |
 
-返回值里的 `htmlPath` 是页面的落点 —— 它在第一次调用时就有，用户与模型都能直接打开核对理解。
-`videoPath` 是成片的落点（静音 mp4），只有渲染成功时才带 `videoBytes`；`video` 是它的状态
-（`missing` / `stale` / `fresh`）。**`video: fresh` 时工具不重渲**：成片比讲稿新就直接报现状，
-否则每次调用都要重出一次片（本机 5 分钟的片子 20 分钟）—— 渲染是最贵的一步，判据与评审同构。
-`next` 就是交接信号：`needsScript`（该写稿了）、`needsReview`（讲稿过了、该评审）、
-`validated`（讲稿与评审齐了但还没出片，例如传了 `skipRender`）、`rendered`（成片已生成）、
-`fixScript`（讲稿有问题）、`blocked`（环境或目标有问题，**含缺浏览器与缺 TTS 密钥**）。
-`review` 与 `reviewPath` 报告评审的状态：`missing` 还没审、`stale` 审过但讲稿又改了、`fresh`。
-`voice` 是配音产物的状态（判据与 `video` 同构：比讲稿新才算 `fresh`），
-`voiceProvider` / `voiceName` 是**实际用的** provider 与音色 —— `say` 会自己挑一个中文音色，
-报告必须如实（配置里写什么都没关系）。字段清单：`durationsPath`、`narrationPath`、`voice`。
+返回值里**没有「下一步做什么」**：`artifacts` 是一张现状表 —— 解读、素材清单、讲稿、评审、
+时长表、旁白音轨、成片，每个带 `state`（`missing` / `stale` / `fresh`）与 `path`；`ran` 是
+这次实际跑了哪些阶段。该走哪一步由 skill 与模型判断。
+**渲染与配音默认不跑**（`render` / `voice` 都默认 false）：渲染要浏览器、本机几分钟到几十分钟，
+配音会消耗 TTS 配额 —— 误触发一次渲染的代价必须为零。
 
 **为什么工具要管评审的状态**：校验（M3）只能判机器能判的，「有没有讲错重点」判不了（M5）。
 所以讲稿通过校验**不等于**做完 —— 工具不跑评审（那是 agent 的事），但必须如实报告

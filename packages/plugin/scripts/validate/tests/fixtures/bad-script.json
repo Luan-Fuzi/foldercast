@@ -1,13 +1,10 @@
 {
   "foldercast": 1,
   "generatedAt": "2026-10-05T10:00:00+08:00",
-
   "source": {
     "root": "/tmp/target"
   },
-
   "title": "故意写坏的讲稿（M3 验收夹具；source.root 由测试按实际解读改写）",
-
   "scenes": [
     {
       "id": "cover",
@@ -20,7 +17,11 @@
       "type": "tree",
       "title": "目录结构",
       "narration": "这个目录分成源码、文档和素材三块。源码在 src 下，文档在 docs 下，图片素材放在 assets 里。",
-      "highlight": ["src", "docs", "nowhere"],
+      "highlight": [
+        "src",
+        "docs",
+        "nowhere"
+      ],
       "durationSec": null
     },
     {
@@ -29,7 +30,6 @@
       "title": "主入口",
       "narration": "先把入口文件讲清楚，再往下看各个模块。它引用了工具函数。",
       "file": "src/index.ts",
-      "focusLines": [700, 720],
       "durationSec": null
     },
     {
@@ -46,7 +46,9 @@
       "type": "gallery",
       "title": "素材墙",
       "narration": "这里的图片素材来自素材阶段。",
-      "items": ["assets/thumbs/does-not-exist.png"],
+      "items": [
+        "assets/thumbs/does-not-exist.png"
+      ],
       "durationSec": null
     },
     {
@@ -55,9 +57,19 @@
       "title": "内容盘点",
       "narration": "一共十三个文件，其中源码五个，图片一张。",
       "groups": [
-        { "kind": "code", "count": 9, "note": "实际是 5 个" },
-        { "kind": "image", "count": 1 },
-        { "kind": "pdf", "count": 0 }
+        {
+          "kind": "code",
+          "count": 9,
+          "note": "实际是 5 个"
+        },
+        {
+          "kind": "image",
+          "count": 1
+        },
+        {
+          "kind": "pdf",
+          "count": 0
+        }
       ],
       "durationSec": null
     },

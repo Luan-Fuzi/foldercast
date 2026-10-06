@@ -23,16 +23,10 @@
 ├── audio/scene-N.wav   逐场景音频（阶段③）
 ├── durations.json      实测时长（阶段③）
 └── out/                产物出口
-    ├── index.html      HTML 视图（M6）：自包含单文件页面
-    └── *.mp4           成片（M7）
+    └── *.mp4           成片
 ```
 
 **为什么放在源目录下**：源目录只多一个隐藏目录，不散落文件；解读、讲稿、素材同处一处，重跑分析不会碰到讲稿。
-
-**`out/index.html` 只读解读与素材**（M6）：它不依赖讲稿，所以写完稿之前就能看 —— 结构树、
-内容盘点、入口与枢纽、引用依赖图、文件卡片、密钥审计都在里面。**没有 JavaScript、没有外部资源**：
-图片按页面尺寸缩小后内联成 data URI（素材阶段已经有缩小版的直接用），超过内联预算的退回相对路径
-并在页脚说明。生成方式是 `pnpm html <目录>`，插件里由 `foldercast_cast` 顺手跑（阶段名 `html`）。
 
 **`review.md` 为什么是 Markdown，不是 JSON**：它由评审 subagent 产出（[ROADMAP M5](../ROADMAP.md)），每条判据都要带
 「文件路径 + 原文片段」这类证据，给人抽查用。它没有机器判据——校验器（M3）不读它，渲染也不消费它，
@@ -68,7 +62,6 @@
   "sources": { /* 内容筛选，见下 */ },
   "stats":   { /* 分析统计，见下 */ },
   "manifest": [ /* 文件清单，见下 */ ],
-  "graph":   { /* 引用依赖图，见下 */ },
 
   "video": { /* 输出规格，见下 */ },
   "voice": { /* 配音配置，见下 */ },
@@ -153,75 +146,22 @@ id_rsa  id_dsa  id_ecdsa  id_ed25519
     "video": 3, "office": 4, "pdf": 2,
     "data": 8, "archive": 0, "other": 4
   },
-  "languages": {               // 按代码行数排序，Top 10
-    "TypeScript": 4200, "Python": 1800, "CSS": 900
-  },
-  "topDirs": [                 // 文件数最多的子目录，Top 8
-    { "path": "src/components", "files": 34 },
-    { "path": "docs", "files": 18 }
-  ],
-  "roles": {                   // 按识别出的角色
-    "readme": ["README.md"],
-    "entry": ["src/index.ts", "package.json"],
-    "config": ["tsconfig.json"],
-    "test": ["src/index.test.ts"],
-    "doc": ["docs/SPEC-pipeline.md"],
-    "asset": ["public/img/math01_eig.png"],
-    "license": ["LICENSE"],
-    "build": ["scripts/tts.py"]
-  },
 
   "secrets": { /* 密钥文件的排除审计，见下 */ }
 }
 ```
 
-8 个角色（与 schema 的 `$defs.role` 一致）：
-
-| role | 判据 | 例 |
-|---|---|---|
-| `readme` | 根或子目录的说明文件 | `README.md` |
-| `entry` | 主入口 | `src/index.ts`、`src/Root.tsx`、`package.json` |
-| `config` | 配置 | `tsconfig.json`、`remotion.config.ts` |
-| `test` | 测试 | `src/index.test.ts` |
-| `doc` | 文档 | `docs/SPEC-pipeline.md` |
-| `asset` | 被引用的素材 | 图片、音频、`public/**` 下的文件 |
-| `license` | 许可证 | `LICENSE` |
-| `build` | 构建产物与构建脚本 | `dist/**`、`scripts/build.py` |
-
-一个文件**最多一个角色**，无法判定则缺省。统计里某角色没有文件时，该键不出现。
+**只有机械聚合**：数数、加字节、按类型归类。「哪些文件重要」「谁是入口」不在这一层判断 ——
+那要读内容才知道，是模型的事。程序负责的是模型自己得不到的东西：
+规模上的穷尽性（21 万文件也数得清）与可复现性（同一目录跑两次结果一致）。
 
 ---
 
-### `graph` —— 引用依赖图（理解的组成部分）
+### 为什么解读里没有引用关系
 
-只放**骨架**，边挂在上面的 `manifest` 里。这样图很大时不必整体读入。
-
-```jsonc
-"graph": {
-  "nodes": 128,
-  "edges": 274,
-  "roots": ["README.md", "src/index.ts"],           // 无入边 = 入口
-  "hubs": [                                          // 入度最高 = 最该先讲的
-    { "path": "docs/SPEC-pipeline.md", "in": 10, "out": 2 },
-    { "path": "docs/SYSTEM-DESIGN.md", "in": 8, "out": 9 }
-  ],
-  "leaves": ["docs/conventions/git.md"],             // 无出边 = 末端
-  "dangling": ["src/missing-util.ts"]                // 指向不存在的路径，可能是坏引用
-}
-```
-
-**这节回答的问题**：哪些文件是入口、哪些是枢纽、依赖方向是什么。靠文件大小和数量看不出来。写稿时按 `roots` → `hubs` → 其余的顺序讲，比按目录树字母顺序讲更接近真实的阅读顺序。
-
-依赖的识别按 `kind` 分：
-
-| kind | 识别方式 |
-|---|---|
-| `code` / `markup` | `import` / `require` / `from` 语句，按语言语法 |
-| `text` / `data` | Markdown 链接与图片引用；JSON/YAML 里的相对路径字符串 |
-| `office` / `pdf` | 文档里出现的其他文件名（弱信号，记入但不计入度数） |
-| 其他 | 不识别 |
-
----
+**这一版不做。** 引用关系本身是可核对的机械事实（谁 import 了谁），但「谁是枢纽、按什么顺序讲」
+是判断 —— 判断交给模型，而模型读文件时自然能看到 import。程序算它需要跨语言的正则抽取
+（336 行）与一套排名规则，收益与成本不成比例。要看引用关系时再单独算，不必进契约。
 
 ### `stats.secrets` —— 密钥文件的排除审计
 
@@ -251,27 +191,25 @@ id_rsa  id_dsa  id_ecdsa  id_ed25519
 
 ### `manifest` —— 文件清单
 
-每个文件一条。**这是写稿阶段模型看到的主要内容**。
+每个文件一条。**每条只放机械事实**：看得见的（路径、类别、字节、行数）与数得出来的
+（截断预览）。**没有「角色」「语言」「重要性排名」** —— 那些要读内容才知道，由模型判断。
 
 ```jsonc
 "manifest": [
   {
     "path": "src/index.ts",        // 相对 source.root
     "kind": "code",                // 见 kinds 枚举
-    "role": "entry",               // 见 roles，无则缺省
     "bytes": 2048,
     "lines": 78,
-    "language": "TypeScript",      // 代码/标记文件才有
-    "title": "主入口",              // 从首个注释或标题提取，可缺省
-    "preview": "export function main() { ... }",  // 截断预览，≤200 字
-    "asset": "assets/src_index_thumb.png",        // 若已生成素材
-    "imports": ["src/util.ts", "src/types.ts"],   // 它引用了谁（≤40 条，超出记 importsCount）
-    "importsCount": 2,
-    "importedBy": ["src/app.ts", "src/cli.ts"],   // 谁引用它：按引用方出度排序取前 5
-    "importedByCount": 7                          // 真实入度，反映枢纽地位
+    "preview": "export function main() { ... }",  // 机械截断，≤200 字
+    "asset": "assets/pages/report.docx_p1.png"    // 素材阶段回填
   }
 ]
 ```
+
+**清单之外还有多少文件**：解读不含这个数，它在分析器 `--json` 报告的
+`report.droppedByMaxFiles` / `report.skippedForSize` 里（校验器也会在 `--json` 报告里带上）。
+「这份解读有没有漏掉文件」是讲稿该如实说明的事，所以这个数必须能拿到，而不是只打在终端上。
 
 `preview` 的提取策略按类型分：
 
@@ -401,7 +339,6 @@ token 清单见 [../rd/风格预设系统.md](../rd/风格预设系统.md)。
     "narration": "……",
     "file": "src/index.ts",
     "asset": "assets/src_index_code.png",
-    "focusLines": [1, 20]         // 高亮行区间
   },
   {
     "id": "image-demo",
@@ -435,7 +372,7 @@ token 清单见 [../rd/风格预设系统.md](../rd/风格预设系统.md)。
 | `cover` | 封面 | `title` |
 | `tree` | 组织结构（需求 1） | `highlight` |
 | `inventory` | 内容盘点：分几块、各是什么（需求 2） | `groups` |
-| `file` | 单个文件展示（代码/文本） | `file`，可选 `asset`/`focusLines` |
+| `file` | 单个文件展示（代码/文本） | `file`，可选 `asset` |
 | `gallery` | 图片墙 | `items` |
 | `clip` | 视频片段（画面是封面图；第一版不播活动画面，见 ROADMAP M7 边界） | `source`，可选 `poster`/`clipRange` |
 | `document` | Office/PDF 分页 | `source`、`pages` |
@@ -454,7 +391,6 @@ assets/
   thumbs/        每个文件的缩略图（图片直接缩放，视频抽首帧）
   pages/         Office/PDF 逐页转图
   frames/        视频关键帧
-  code/          语法高亮的代码图（SVG）
   posters/       视频封面图
   text/          Office/PDF 提取出的文本（Markdown，供叙事层通读）
   manifest.json  素材清单
@@ -498,7 +434,7 @@ office / pdf / video 的 `preview`（M1 读不了这些格式，留给本阶段�
 }
 ```
 
-**`role` 取值**：`thumb`（缩略图）、`page`（Office/PDF 逐页）、`poster`（视频封面）、`frame`（视频关键帧）、`code`（语法高亮图）。路径**相对工作根**，与讲稿里 `asset` / `items` / `pages` 的基准一致。
+**`role` 取值**：`thumb`（缩略图）、`page`（Office/PDF 逐页）、`poster`（视频封面）、`frame`（视频关键帧）。路径**相对工作根**，与讲稿里 `asset` / `items` / `pages` 的基准一致。**代码文件不产出素材**（语法高亮图已从 MVP 删掉）—— 要讲代码就讲内容，不用截图。
 
 **增量重算**：`mtimeMs` + `size` 与上次一致、且产物文件仍在，就跳过该文件（不重算、不重新过滤）。哈希只在 mtime 变化时重算，用于确认内容真的变了。
 
@@ -513,7 +449,6 @@ office / pdf / video 的 `preview`（M1 读不了这些格式，留给本阶段�
 | `pdf` | **逐页转 PNG**（文字层提取走 `officeparser`） | **`dsoffice render`** —— 接受 PDF 输入，不需要 `pdftoppm`/poppler |
 | `office` `.docx/.pptx` | 文本结构化提取（大纲、幻灯片标题）；**转图直接用 `dsoffice render`** | `officeparser`（Node，带层级 AST）+ `dsoffice` |
 | `office` `.xlsx` | 表头与数据提取；**公式值用 `dsoffice recalculate` 重算** | `officeparser` + `dsoffice` |
-| `code` | 语法高亮图（**SVG**：渲染器本来就是浏览器，不需要截图工具） | `shiki`（npm） |
 | `text` | 无需素材，直接排版 | — |
 
 **`dsoffice` 是什么**：`@deepseek-ai/libreoffice-kit`，DeepSeek 随 DSH 分发的**预编译 LibreOffice 引擎**（MPL-2.0，147 MB / 平台，作为 optionalDependency 按平台安装）。它**不查找也不需要系统装的 LibreOffice**。
@@ -602,7 +537,7 @@ schema 见 [durations.schema.json](durations.schema.json)，校验由 `pnpm vali
 - `foldercast.json` 与 `script.json` **各自独立版本化**。解读格式升版不必要求讲稿同步升版，只要 `script.json` 声明的版本仍被支持。
 - 读取方遇到未知版本应报错而非猜测。
 - 场景 `type` 是开放枚举：遇到不认识的 type，渲染器应跳过并警告，而不是崩溃。
-- **schema 在各层都是封闭的**（`additionalProperties: false`）：出现未声明的字段就是错误，拼错的键名会被拦住。例外只有真正的映射字段——`stats.languages`、`stats.kindCounts`、`stats.roles`、`sources.kinds`、`style.overrides`，它们允许自由键。加字段意味着**同时**改 schema、本文件与 `packages/plugin/scripts/contracts/` 的类型。
+- **schema 在各层都是封闭的**（`additionalProperties: false`）：出现未声明的字段就是错误，拼错的键名会被拦住。例外只有真正的映射字段——`stats.kindCounts`、`sources.kinds`、`style.overrides`，它们允许自由键。加字段意味着**同时**改 schema、本文件与 `packages/plugin/scripts/contracts/` 的类型。
 
 ### 契约校验（`pnpm validate <目录>`）
 
@@ -613,7 +548,7 @@ schema 只能表达**形状**，另有一层校验查形状之外的东西，两
 | JSON Schema | 类型、枚举、必需字段、封闭性 | `specs/*.schema.json` |
 | **解读自洽** | `stats` 是 `manifest` 的投影、图上路径都是真实节点、度数对得上 | 本文第一节 |
 | **跨文件引用** | 讲稿里的 `file` / `source` 必须在解读的 `manifest` 里；`asset` / `items` / `poster` / `pages` 必须在素材清单里（**幻觉路径拦截**） | 本文第二节「工作目录」的两条基准 |
-| 场景语义 | 该场景类型用不上的字段、`highlight` 是不是真实子路径、`focusLines` 是否超出文件行数 | 本文第二节的场景类型清单 |
+| 场景语义 | 该场景类型用不上的字段、`highlight` 是不是真实子路径 | 本文第二节的场景类型清单 |
 | 字幕 | `narration` 能否切成每块 ≤24 字的字幕块 | 本文第四节 |
 
 **边界**：它只查机器能判断的。**「有没有讲错重点」不在这一层**，那是写稿之后的评审 agent（M5）。

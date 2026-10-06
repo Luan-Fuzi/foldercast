@@ -26,18 +26,14 @@ function reading(over: Partial<FoldercastDocument> = {}): FoldercastDocument {
       totalBytes: 4096,
       maxDepth: 2,
       kindCounts: { code: 2, text: 1, image: 1 },
-      languages: { TypeScript: 120 },
-      topDirs: [{ path: 'src', files: 3 }],
-      roles: { entry: ['src/index.ts'], readme: ['README.md'] },
       secrets: { excluded: [{ path: '.env', match: '.env' }], rescanned: [] },
     },
     manifest: [
-      { path: 'README.md', kind: 'text', bytes: 900, lines: 20, title: '说明', preview: '这个项目做一件事。' },
-      { path: 'src/index.ts', kind: 'code', role: 'entry', bytes: 300, lines: 12, language: 'TypeScript', importsCount: 1, importedByCount: 12 },
-      { path: 'src/util.ts', kind: 'code', bytes: 200, lines: 8, language: 'TypeScript' },
+      { path: 'README.md', kind: 'text', bytes: 900, lines: 20, preview: '这个项目做一件事。' },
+      { path: 'src/index.ts', kind: 'code', bytes: 300, lines: 12 },
+      { path: 'src/util.ts', kind: 'code', bytes: 200, lines: 8 },
       { path: 'docs/graph.png', kind: 'image', bytes: 1024 },
     ],
-    graph: { nodes: 4, edges: 1, roots: ['src/index.ts'], hubs: [{ path: 'src/index.ts', in: 12 }], leaves: [], dangling: [] },
     ...over,
   };
 }
@@ -54,7 +50,7 @@ function assets(): AssetManifest {
         mtimeMs: 1,
         size: 300,
         hash: 'sha256:aa',
-        products: [{ role: 'code', path: 'assets/code/src_index.ts.svg' }],
+        products: [{ role: 'page', path: 'assets/pages/src_index.ts_p1.png' }],
       },
       {
         path: 'docs/graph.png',
@@ -77,7 +73,7 @@ function script(over: Partial<ScriptDocument> = {}): ScriptDocument {
       { id: 'cover', type: 'cover', title: '演示目录', subtitle: '一句话说明', narration: '这是封面，交代目录是什么。' },
       { id: 'layout', type: 'tree', title: '结构', highlight: ['src', 'docs'], narration: '结构分三块。' },
       { id: 'kinds', type: 'inventory', title: '构成', groups: [{ kind: 'code', count: 2, note: '两个源文件' }, { kind: 'text', count: 1 }], narration: '内容以代码为主。' },
-      { id: 'entry', type: 'file', title: '入口', file: 'src/index.ts', asset: 'assets/code/src_index.ts.svg', focusLines: [1, 8], narration: '这是入口，被引用十二次。' },
+      { id: 'entry', type: 'file', title: '入口', file: 'src/index.ts', asset: 'assets/pages/src_index.ts_p1.png', narration: '这是入口，被引用十二次。' },
       { id: 'figures', type: 'gallery', title: '图', items: ['assets/thumbs/docs_graph.png.png'], narration: '这里有一张图。' },
       { id: 'outro', type: 'outro', title: '小结', narration: '就这些。' },
     ],
@@ -99,9 +95,8 @@ describe('计划构建', () => {
     const file = plan.scenes.find((scene) => scene.type === 'file');
     const gallery = plan.scenes.find((scene) => scene.type === 'gallery');
 
-    expect(file?.type === 'file' && file.media?.path).toBe('assets/code/src_index.ts.svg');
+    expect(file?.type === 'file' && file.media?.path).toBe('assets/pages/src_index.ts_p1.png');
     expect(file?.type === 'file' && file.media?.file).toBe('src/index.ts');
-    expect(file?.type === 'file' && file.code?.focusLines).toEqual([1, 8]);
     expect(gallery?.type === 'gallery' && gallery.items[0]?.width).toBe(640);
   });
 
@@ -195,7 +190,7 @@ describe('计划构建', () => {
         return { src: `data:image/png;base64,AAAA`, bytes: 3, scaled: true };
       },
     });
-    expect(calls.sort()).toEqual(['assets/code/src_index.ts.svg', 'assets/thumbs/docs_graph.png.png']);
+    expect(calls.sort()).toEqual(['assets/pages/src_index.ts_p1.png', 'assets/thumbs/docs_graph.png.png']);
     const gallery = plan.scenes.find((scene) => scene.type === 'gallery');
     expect(gallery?.type === 'gallery' && gallery.items[0]?.src).toContain('data:image/png');
     expect(gallery?.type === 'gallery' && gallery.items[0]?.inlineBytes).toBe(3);

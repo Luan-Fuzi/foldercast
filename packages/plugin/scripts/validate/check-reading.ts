@@ -8,7 +8,7 @@
 import { isAbsolute, basename } from 'node:path';
 import {
   KIND_VALUES,
-  ROLE_VALUES,
+
   type FoldercastDocument,
   type ManifestEntry,
 } from '../contracts/foldercast.ts';
@@ -72,7 +72,7 @@ function checkCounts(
   locator: Locator,
   path: string,
 ): void {
-  const { stats, graph } = document;
+  const { stats } = document;
 
   const add = (pointer: string, message: string, fix: string, severity: IssueSeverity = 'blocker'): void => {
     const at = locator.at(pointer);
@@ -96,57 +96,30 @@ function checkCounts(
     }
   }
 
-  // 语言统计只覆盖「识别出语言且读到行数」的文件，所以只能查上限
-  for (const [language, lines] of Object.entries(stats.languages)) {
-    const actual = entries
-      .filter((entry) => entry.language === language)
-      .reduce((sum, entry) => sum + (entry.lines ?? 0), 0);
-    if (lines > actual) {
-      add(`/stats/languages/${language}`, `stats.languages.${language} 是 ${String(lines)} 行，manifest 里同语言的文件合计只有 ${String(actual)} 行。`, '重新跑分析器。');
-    }
-  }
-
   const deepest = entries.reduce((max, entry) => Math.max(max, entry.path.split('/').length), 0);
   if (stats.maxDepth !== deepest) {
     add('/stats/maxDepth', `stats.maxDepth 是 ${String(stats.maxDepth)}，manifest 里最深的路径有 ${String(deepest)} 段。`, '重新跑分析器。', 'warning');
   }
-
-  if (graph.nodes !== entries.length) {
-    add('/graph/nodes', `graph.nodes 是 ${String(graph.nodes)}，manifest 有 ${String(entries.length)} 条。`, '重新跑分析器；节点数即清单条数。');
-  }
-
-  const edgeSum = entries.reduce((sum, entry) => sum + (entry.importsCount ?? entry.imports?.length ?? 0), 0);
-  if (graph.edges !== edgeSum) {
-    add('/graph/edges', `graph.edges 是 ${String(graph.edges)}，manifest 的出度合计是 ${String(edgeSum)}。`, '重新跑分析器。');
-  }
 }
 
-function checkPathLists(
+/**
+ * 审计里的路径必须真实存在于清单里。
+ *
+ * 密钥审计是隐私边界，它报出来的东西必须能在解读里对上号 —— 「这里有个 .env」本身有信息量
+ * （SPEC-data-format.md），所以被排除的文件仍进结构树与计数。
+ */
+function checkSecretAudit(
   document: FoldercastDocument,
   byPath: ReadonlyMap<string, ManifestEntry>,
   collector: IssueCollector,
   locator: Locator,
   path: string,
 ): void {
-  const add = (pointer: string, message: string, fix: string, code: 'stats-path-missing' | 'graph-mismatch' = 'stats-path-missing'): void => {
+  const add = (pointer: string, message: string, fix: string): void => {
     const at = locator.at(pointer);
-    collector.add({ path, pointer, severity: 'blocker', code, message, fix, ...(at === undefined ? {} : { at }) });
+    collector.add({ path, pointer, severity: 'blocker', code: 'stats-path-missing', message, fix, ...(at === undefined ? {} : { at }) });
   };
 
-  for (const role of ROLE_VALUES) {
-    const paths = document.stats.roles[role];
-    if (paths === undefined) continue;
-    paths.forEach((rolePath, index) => {
-      const entry = byPath.get(rolePath);
-      if (entry === undefined) {
-        add(`/stats/roles/${role}/${String(index)}`, `stats.roles.${role} 里的 ${rolePath} 不在 manifest 里。`, '重新跑分析器。');
-      } else if (entry.role !== role) {
-        add(`/stats/roles/${role}/${String(index)}`, `stats.roles.${role} 里有 ${rolePath}，但 manifest 里它的 role 是 ${entry.role ?? '（无）'}。`, '重新跑分析器；一个文件最多一个角色。');
-      }
-    });
-  }
-
-  // 密钥审计里的路径也必须进结构树（「这里有个 .env」本身有信息量，SPEC-data-format.md）
   document.stats.secrets.excluded.forEach((hit, index) => {
     if (!byPath.has(hit.path)) {
       add(`/stats/secrets/excluded/${String(index)}/path`, `stats.secrets.excluded 里的 ${hit.path} 不在 manifest 里。`, '密钥文件仍应进结构树与计数，只是不读内容。');
@@ -163,39 +136,8 @@ function checkPathLists(
       add(`/sources/rescan/${String(index)}`, `sources.rescan 里的 ${rescanned} 不在 manifest 里。`, 'rescan 的路径必须是被分析目录里真实存在的文件。');
     }
   }
-
-  // 图上列出的路径都必须是真实节点
-  document.graph.roots.forEach((rootPath, index) => {
-    if (!byPath.has(rootPath)) add(`/graph/roots/${String(index)}`, `graph.roots 里的 ${rootPath} 不在 manifest 里。`, '重新跑分析器。', 'graph-mismatch');
-  });
-  document.graph.leaves.forEach((leafPath, index) => {
-    if (!byPath.has(leafPath)) add(`/graph/leaves/${String(index)}`, `graph.leaves 里的 ${leafPath} 不在 manifest 里。`, '重新跑分析器。', 'graph-mismatch');
-  });
-  document.graph.hubs.forEach((hub, index) => {
-    const entry = byPath.get(hub.path);
-    if (entry === undefined) {
-      add(`/graph/hubs/${String(index)}/path`, `graph.hubs 里的 ${hub.path} 不在 manifest 里。`, '重新跑分析器。', 'graph-mismatch');
-      return;
-    }
-    const inDegree = entry.importedByCount ?? entry.importedBy?.length ?? 0;
-    if (hub.in !== inDegree) {
-      add(`/graph/hubs/${String(index)}/in`, `graph.hubs 里 ${hub.path} 的入度写作 ${String(hub.in)}，manifest 里是 ${String(inDegree)}。`, '重新跑分析器。', 'graph-mismatch');
-    }
-    if (hub.out !== undefined) {
-      const outDegree = entry.importsCount ?? entry.imports?.length ?? 0;
-      if (hub.out !== outDegree) {
-        add(`/graph/hubs/${String(index)}/out`, `graph.hubs 里 ${hub.path} 的出度写作 ${String(hub.out)}，manifest 里是 ${String(outDegree)}。`, '重新跑分析器。', 'graph-mismatch');
-      }
-    }
-  });
-
-  // dangling 是「指向不存在的路径」，所以它自己不能命中 manifest
-  document.graph.dangling.forEach((dangling, index) => {
-    if (byPath.has(dangling)) {
-      add(`/graph/dangling/${String(index)}`, `graph.dangling 里的 ${dangling} 其实存在于 manifest 里。`, '能解析到的引用不算坏引用。', 'graph-mismatch');
-    }
-  });
 }
+
 
 /** 校验一份解读。返回的问题里 blocker 表示解读不能用。 */
 export function checkReading(input: ReadingInput): IssueCollector {
@@ -245,7 +187,7 @@ export function checkReading(input: ReadingInput): IssueCollector {
 
   const byPath = indexManifest(document.manifest, collector, locator, path);
   checkCounts(document, document.manifest, collector, locator, path);
-  checkPathLists(document, byPath, collector, locator, path);
+  checkSecretAudit(document, byPath, collector, locator, path);
 
   return collector;
 }

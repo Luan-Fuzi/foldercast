@@ -3,12 +3,13 @@
  *
  * 原则：
  * - **单文件超过 `maxFileSizeMb` 就不读内容**（仍进结构树与计数，SPEC-data-format.md）。
- * - 读到的文本同时供依赖提取使用，避免同一次分析读两遍文件。
- * - 媒体类只读文件头拿尺寸；office / pdf / video 的深化提取属于 M2（`dsoffice`、
- *   `officeparser`、`ffprobe`），M1 不引入这些依赖，预览留空而不是编一个。
+ * - 预览是**机械截断**：取首个标题 / 首段 / 首个注释，截到 200 字。不做摘要、不做判断。
+ * - 媒体类只读文件头拿尺寸；office / pdf / video 的深化提取属于素材阶段（`dsoffice`、
+ *   `officeparser`、`ffprobe`），本阶段不引入这些依赖，预览留空而不是编一个。
  */
 import { openSync, readSync, closeSync, readFileSync, statSync } from 'node:fs';
-import { type Classification, extensionOf } from './classify.ts';
+import type { Kind } from '../contracts/foldercast.ts';
+import { extensionOf } from './classify.ts';
 
 /** 预览长度上限，与 schema 的 maxLength: 200 一致。 */
 export const PREVIEW_MAX_LENGTH = 200;
@@ -19,9 +20,7 @@ const IMAGE_HEADER_BYTES = 64 * 1024;
 export type ContentInsight = {
   /** 行数。二进制类为 undefined。 */
   lines?: number;
-  /** 供依赖提取用的文本（只在文本类文件上有）。 */
-  text?: string;
-  title?: string;
+  /** 预览，≤200 字。 */
   preview?: string;
   /** 内容是否因为超过体积上限而没有读。 */
   skippedForSize: boolean;
@@ -233,11 +232,7 @@ export function readImageSize(absolute: string): ImageSize | undefined {
  *
  * `maxBytes` 来自 `sources.maxFileSizeMb`：超过就只拿体积，不读内容。
  */
-export function inspectFile(
-  absolute: string,
-  classification: Classification,
-  maxBytes: number,
-): ContentInsight {
+export function inspectFile(absolute: string, kind: Kind, maxBytes: number): ContentInsight {
   let size: number;
   try {
     size = statSync(absolute).size;
@@ -247,13 +242,13 @@ export function inspectFile(
 
   if (size > maxBytes) return { skippedForSize: true };
 
-  if (classification.kind === 'image') {
+  if (kind === 'image') {
     const dimensions = readImageSize(absolute);
     const preview = dimensions === undefined ? undefined : `${dimensions.width}×${dimensions.height}`;
     return { preview, skippedForSize: false };
   }
 
-  if (!TEXT_KINDS.has(classification.kind)) return { skippedForSize: false };
+  if (!TEXT_KINDS.has(kind)) return { skippedForSize: false };
 
   let text: string;
   try {
@@ -265,20 +260,13 @@ export function inspectFile(
   const lines = countLines(text);
   const extension = extensionOf(absolute.split('/').at(-1) ?? absolute);
 
-  if (classification.kind === 'text') {
-    const { title, preview } = markdownTitleAndPreview(text);
-    return { lines, text, title, preview: preview ?? condense(text), skippedForSize: false };
+  if (kind === 'text') {
+    const { preview } = markdownTitleAndPreview(text);
+    return { lines, preview: preview ?? condense(text), skippedForSize: false };
   }
 
-  if (classification.kind === 'code') {
-    const preview = codePreview(text);
-    const firstComment = /^\s*(?:\/\/|#|--)\s*(.+)$/m.exec(text);
-    return { lines, text, title: firstComment?.[1]?.trim(), preview, skippedForSize: false };
-  }
+  if (kind === 'code') return { lines, preview: codePreview(text), skippedForSize: false };
+  if (kind === 'markup') return { lines, preview: markupPreview(text), skippedForSize: false };
 
-  if (classification.kind === 'markup') {
-    return { lines, text, preview: markupPreview(text), skippedForSize: false };
-  }
-
-  return { lines, text, preview: dataPreview(text, extension), skippedForSize: false };
+  return { lines, preview: dataPreview(text, extension), skippedForSize: false };
 }

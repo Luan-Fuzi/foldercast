@@ -77,14 +77,6 @@ describe('stats 与 manifest 对不上时要报出来', () => {
     expect(pointers).toContain('/stats/kindCounts/code');
   });
 
-  it('stats.roles 里出现了不在清单里的路径', () => {
-    const { codes, pointers } = issuesOf((document) => {
-      document.stats.roles.readme = ['README.md', 'docs/ghost.md'];
-    });
-    expect(codes).toContain('stats-path-missing');
-    expect(pointers).toContain('/stats/roles/readme/1');
-  });
-
   it('stats.maxDepth 与实际深度不符', () => {
     const { pointers } = issuesOf((document) => {
       document.stats.maxDepth = 99;
@@ -97,50 +89,6 @@ describe('stats 与 manifest 对不上时要报出来', () => {
       document.stats.secrets.excluded.push({ path: '.env.local', match: '.env.*' });
     });
     expect(pointers).toContain('/stats/secrets/excluded/2/path');
-  });
-});
-
-describe('引用依赖图的度数要对得上 manifest', () => {
-  it('graph.nodes 与清单条数', () => {
-    const { pointers } = issuesOf((document) => {
-      document.graph.nodes += 1;
-    });
-    expect(pointers).toContain('/graph/nodes');
-  });
-
-  it('graph.edges 与出度合计', () => {
-    const { pointers } = issuesOf((document) => {
-      document.graph.edges += 5;
-    });
-    expect(pointers).toContain('/graph/edges');
-  });
-
-  it('hubs 的入度与 importedByCount', () => {
-    const { codes, pointers } = issuesOf((document) => {
-      const hub = document.graph.hubs[0];
-      if (hub !== undefined) hub.in += 3;
-    });
-    expect(codes).toContain('graph-mismatch');
-    expect(pointers).toContain('/graph/hubs/0/in');
-  });
-
-  it('roots / leaves 必须是真实节点', () => {
-    const before = { roots: clean.graph.roots.length, leaves: clean.graph.leaves.length };
-    const { pointers } = issuesOf((document) => {
-      document.graph.roots.push('src/ghost.ts');
-      document.graph.leaves.push('src/ghost2.ts');
-    });
-    // 新加的排在末尾，指针下标就是原长度
-    expect(pointers).toContain(`/graph/roots/${String(before.roots)}`);
-    expect(pointers).toContain(`/graph/leaves/${String(before.leaves)}`);
-  });
-
-  it('dangling 不能同时存在于清单里（那就是能解析到的引用）', () => {
-    const before = clean.graph.dangling.length;
-    const { pointers } = issuesOf((document) => {
-      document.graph.dangling.push('README.md');
-    });
-    expect(pointers).toContain(`/graph/dangling/${String(before)}`);
   });
 });
 

@@ -38,44 +38,11 @@ describe('分析器端到端（夹具目录）', () => {
     expect(env).toBeDefined();
     expect(env?.preview).toBeUndefined();
     expect(env?.lines).toBeUndefined();
-    expect(env?.imports).toBeUndefined();
 
     const audits = document.stats.secrets.excluded;
     expect(audits.map((hit) => hit.path).sort()).toEqual(['.env', 'credentials.json']);
     expect(audits.find((hit) => hit.path === '.env')?.match).toBe('.env');
     expect(report.secrets).toHaveLength(2);
-  });
-
-  it('角色识别覆盖八类里的常见情形', () => {
-    const roleOf = (path: string): string | undefined =>
-      document.manifest.find((entry) => entry.path === path)?.role;
-    expect(roleOf('README.md')).toBe('readme');
-    expect(roleOf('LICENSE')).toBe('license');
-    expect(roleOf('package.json')).toBe('entry');
-    expect(roleOf('src/index.ts')).toBe('entry');
-    expect(roleOf('tsconfig.json')).toBe('config');
-    expect(roleOf('src/util.test.ts')).toBe('test');
-    expect(roleOf('docs/guide.md')).toBe('doc');
-    expect(roleOf('docs/specs/thing.md')).toBe('doc');
-    expect(roleOf('assets/logo.png')).toBe('asset');
-    expect(roleOf('Makefile')).toBe('build');
-  });
-
-  it('引用关系与坏引用', () => {
-    const readme = document.manifest.find((entry) => entry.path === 'README.md');
-    expect(readme?.imports).toContain('docs/guide.md');
-    expect(readme?.imports).toContain('src/index.ts');
-    expect(readme?.importsCount).toBe(2); // 跨出根目录的那条不算
-
-    const util = document.manifest.find((entry) => entry.path === 'src/util.ts');
-    expect(util?.importedBy).toContain('src/index.ts');
-    expect(util?.importedBy).toContain('src/util.test.ts');
-    expect(util?.importedBy).toContain('docs/guide.md');
-    expect(util?.importedByCount).toBe(3);
-
-    expect(document.graph.dangling).toEqual(['docs/missing-two.md', 'docs/missing.md']);
-    expect(document.graph.roots).toContain('README.md');
-    expect(document.graph.hubs[0]?.path).toBe('src/util.ts');
   });
 
   it('stats 与 manifest 自洽（M3 会核对这一条）', () => {
@@ -85,12 +52,6 @@ describe('分析器端到端（夹具目录）', () => {
     expect(document.stats.totalBytes).toBe(
       document.manifest.reduce((sum, entry) => sum + (entry.bytes ?? 0), 0),
     );
-    expect(document.graph.nodes).toBe(document.manifest.length);
-
-    const paths = new Set(document.manifest.map((entry) => entry.path));
-    for (const rolePaths of Object.values(document.stats.roles)) {
-      for (const path of rolePaths ?? []) expect(paths.has(path)).toBe(true);
-    }
   });
 
   it('产出能通过 foldercast.schema.json 校验', () => {
@@ -110,7 +71,7 @@ describe('分析器端到端（夹具目录）', () => {
     expect(strip(first)).toBe(strip(second));
   });
 
-  it('maxFiles 截断保留最该讲的，且不截掉密钥文件', () => {
+  it('maxFiles 截断：按类型与深度取舍，且不截掉密钥文件', () => {
     const limited = analyze({ maxFiles: 3 });
     const paths = limited.document.manifest.map((entry) => entry.path);
     const audited = new Set(limited.document.stats.secrets.excluded.map((hit) => hit.path));
@@ -122,8 +83,10 @@ describe('分析器端到端（夹具目录）', () => {
     expect([...audited].sort()).toEqual(['.env', 'credentials.json']);
     for (const path of audited) expect(paths).toContain(path);
 
-    // README 是最高优先级，一定留下
+    // 取舍只看机械属性：浅层文本与代码优先，所以 README 与 Makefile 会留下；
+    // 同层按路径字典序，结果可复现
     expect(paths).toContain('README.md');
+    expect(paths).toContain('Makefile');
     expect(limited.report.droppedByMaxFiles).toBeGreaterThan(0);
   });
 

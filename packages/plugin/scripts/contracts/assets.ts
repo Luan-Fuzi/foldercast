@@ -11,7 +11,7 @@ import type { Kind } from './foldercast.ts';
 export const ASSET_MANIFEST_VERSION = 1 as const;
 
 /** 产物角色。讲稿按角色挑选素材（`gallery` 用 thumb，`document` 用 page…）。 */
-export const ASSET_ROLES = ['thumb', 'page', 'poster', 'frame', 'code'] as const;
+export const ASSET_ROLES = ['thumb', 'page', 'poster', 'frame'] as const;
 export type AssetRole = (typeof ASSET_ROLES)[number];
 
 export type AssetProduct = {
@@ -75,7 +75,7 @@ export type AssetManifest = {
 };
 
 /** 主素材：讲稿的 `file` 场景默认引用它。 */
-export const PRIMARY_ROLE_ORDER: readonly AssetRole[] = ['code', 'thumb', 'poster', 'page', 'frame'];
+export const PRIMARY_ROLE_ORDER: readonly AssetRole[] = ['thumb', 'poster', 'page', 'frame'];
 
 /** 从产物列表里挑主素材。 */
 export function primaryProduct(products: readonly AssetProduct[]): AssetProduct | undefined {

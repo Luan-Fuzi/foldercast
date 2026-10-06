@@ -15,17 +15,16 @@ describe('内容读取与预览', () => {
     expect(countLines('a\nb\n')).toBe(2);
   });
 
-  it('Markdown：标题与首段', () => {
+  it('Markdown：标题与首段截成预览', () => {
     const insight = inspectFile(`${FIXTURE}/README.md`, classify('README.md'), BIG);
-    expect(insight.title).toBe('示例目录');
     expect(insight.preview).toContain('夹具目录');
     expect(insight.lines).toBeGreaterThan(5);
   });
 
-  it('代码：首个块注释或前几行', () => {
+  it('代码：首个注释或前几行', () => {
     const insight = inspectFile(`${FIXTURE}/src/index.ts`, classify('index.ts'), BIG);
     expect(insight.preview).toBe('示例入口：把两个数相加');
-    expect(insight.text).toContain('import');
+    expect(insight.lines).toBeGreaterThan(1);
   });
 
   it('JSON：顶层键', () => {
@@ -43,10 +42,9 @@ describe('内容读取与预览', () => {
     expect(insight.skippedForSize).toBe(true);
     expect(insight.preview).toBeUndefined();
     expect(insight.lines).toBeUndefined();
-    expect(insight.text).toBeUndefined();
   });
 
-  it('office / pdf / video 的内容提取属于 M2，现在不猜', () => {
+  it('office / pdf / video 的内容提取属于素材阶段，分析器不猜', () => {
     for (const name of ['report.docx', 'paper.pdf', 'clip.mp4']) {
       const insight = inspectFile(`${FIXTURE}/${name}`, classify(name), BIG);
       expect(insight.preview, name).toBeUndefined();

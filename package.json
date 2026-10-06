@@ -17,7 +17,6 @@
     "analyze": "node packages/plugin/scripts/analyzer/main.ts",
     "assets": "node packages/plugin/scripts/assets/main.ts",
     "validate": "node packages/plugin/scripts/validate/main.ts",
-    "html": "node packages/plugin/scripts/html/main.ts",
     "render": "node packages/plugin/scripts/renderer/main.ts",
     "voice": "node packages/plugin/scripts/voice/main.ts",
     "test": "vitest run",

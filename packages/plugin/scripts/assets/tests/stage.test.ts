@@ -52,30 +52,28 @@ function readManifest(root: string): AssetManifest {
   return JSON.parse(readFileSync(join(root, '.foldercast/assets/manifest.json'), 'utf8')) as AssetManifest;
 }
 
-describe('素材阶段（代码，纯 JS 部分）', () => {
-  it('生成代码高亮图、写清单、回填解读；第二次运行全部命中缓存', async () => {
+describe.skipIf(!hasSips && !hasFfmpeg)('素材阶段（图片，纯 JS 部分）', () => {
+  it('生成缩略图、写清单、回填解读；第二次运行全部命中缓存', async () => {
     const root = makeSourceDir();
 
-    const first = await runAssetsStage({ root, only: new Set(['code']) });
+    const first = await runAssetsStage({ root, only: new Set(['image']) });
     expect(first.processed).toBeGreaterThan(0);
     expect(first.failed).toBe(0);
 
     const manifest = readManifest(root);
-    const codeEntry = manifest.entries.find((entry) => entry.path === 'src/index.ts');
-    expect(codeEntry).toBeDefined();
-    const product = codeEntry?.products.find((item) => item.role === 'code');
-    expect(product?.path).toBe('assets/code/src_index.ts.svg');
-    expect(existsSync(join(root, '.foldercast', product?.path ?? ''))).toBe(true);
-    expect(statSync(join(root, '.foldercast', product?.path ?? '')).size).toBeGreaterThan(100);
+    const imageEntry = manifest.entries.find((entry) => entry.path === 'img/logo.png');
+    expect(imageEntry?.products[0]?.role).toBe('thumb');
 
-    // 回填：解读里的 asset 指向代码图，且 preview 保持 M1 的结果
+    // 回填：解读里的 asset 指向缩略图。**代码文件不再是处理对象**（MVP 删掉了高亮图），
+    // 所以它没有 asset，preview 保持分析器的结果
     const reading = readReading(root);
-    const source = reading.manifest.find((entry) => entry.path === 'src/index.ts');
-    expect(source?.asset).toBe('assets/code/src_index.ts.svg');
-    expect(source?.preview).toBe('示例入口');
+    const image = reading.manifest.find((entry) => entry.path === 'img/logo.png');
+    expect(image?.asset).toBe('assets/thumbs/img_logo.png.png');
+    const code = reading.manifest.find((entry) => entry.path === 'src/index.ts');
+    expect(code?.asset).toBeUndefined();
 
     // 第二次：全部命中缓存，不重算
-    const second = await runAssetsStage({ root, only: new Set(['code']) });
+    const second = await runAssetsStage({ root, only: new Set(['image']) });
     expect(second.processed).toBe(0);
     expect(second.cached).toBe(first.processed);
     expect(second.failed).toBe(0);
@@ -83,29 +81,29 @@ describe('素材阶段（代码，纯 JS 部分）', () => {
 
   it('源文件改了 mtime 才重算（增量判据是 mtime + size）', async () => {
     const root = makeSourceDir();
-    await runAssetsStage({ root, only: new Set(['code']) });
+    await runAssetsStage({ root, only: new Set(['image']) });
 
     // 只改 mtime，不改内容：size 没变但 mtime 变了 → 重算
-    const target = join(root, 'src/index.ts');
+    const target = join(root, 'img/logo.png');
     const future = new Date(Date.now() + 10_000);
     utimesSync(target, future, future);
 
-    const again = await runAssetsStage({ root, only: new Set(['code']) });
+    const again = await runAssetsStage({ root, only: new Set(['image']) });
     expect(again.processed).toBe(1);
 
     // 再跑一次（这次 mtime 稳定了）→ 命中缓存
-    const third = await runAssetsStage({ root, only: new Set(['code']) });
+    const third = await runAssetsStage({ root, only: new Set(['image']) });
     expect(third.processed).toBe(0);
     expect(third.cached).toBe(1);
   });
 
   it('--dry-run 不写任何文件', async () => {
     const root = makeSourceDir();
-    const report = await runAssetsStage({ root, only: new Set(['code']), dryRun: true });
+    const report = await runAssetsStage({ root, only: new Set(['image']), dryRun: true });
     expect(report.dryRun).toBe(true);
     expect(report.processed).toBeGreaterThan(0);
     expect(existsSync(join(root, '.foldercast/assets/manifest.json'))).toBe(false);
-    expect(existsSync(join(root, '.foldercast/code'))).toBe(false);
+    expect(existsSync(join(root, '.foldercast/assets/thumbs'))).toBe(false);
   });
 
   it('缺少解读时给出可操作的错误', async () => {

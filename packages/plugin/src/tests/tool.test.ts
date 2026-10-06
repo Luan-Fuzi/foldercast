@@ -3,6 +3,11 @@
  *
  * 用假的 ctx 调真实 `apply()`，再把拿到的定义当真的用（`execute` 真跑）—— 这样测的是
  * **插件交付的那个东西**，不是一份复制品。工具定义写错在这里就暴露，不必先装进 DSH。
+ *
+ * MVP 之后的判据：
+ * 1. **默认不出片、不配音**：不传 `render` / `voice` 时，这两步一次也不跑。
+ * 2. **报事实**：`artifacts` 说清磁盘上有什么、各自什么状态；`ran` 说清这次跑了什么。
+ * 3. 结果里**没有「下一步做什么」** —— 那是 skill 与模型的判断。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
@@ -11,6 +16,8 @@ import { join, resolve } from 'node:path';
 import { apply } from '../index.ts';
 
 const SAMPLE = resolve(import.meta.dirname, '../../scripts/analyzer/tests/fixtures/sample');
+
+type Artifact = { name: string; path: string; state: string; bytes?: number };
 
 type ToolDefinition = {
   name: string;
@@ -28,8 +35,8 @@ let source = '';
 /**
  * 把文件的 mtime 设到 N 秒前。
  *
- * 评审是否作废靠 mtime 比较，而**测试不能靠「谁后写」制造时间差** —— 文件系统时间戳精度不够时，
- * 两次写入会落在同一毫秒，`review >= script` 直接判成「新」，用例就随机红（CI 上踩过）。
+ * 评审与成片是否作废靠 mtime 比较，而**测试不能靠「谁后写」制造时间差** —— 文件系统时间戳精度
+ * 不够时，两次写入会落在同一毫秒，`>=` 直接判成「新」，用例就随机红（CI 上踩过）。
  */
 function setMtimeAgo(path: string, seconds: number): void {
   const when = new Date(Date.now() - seconds * 1000);
@@ -84,6 +91,35 @@ afterAll(() => {
   if (source !== '') rmSync(source, { recursive: true, force: true });
 });
 
+/** 写一份合法讲稿。`entry` 传一个不存在的路径就制造 blocker。 */
+function writeScript(entryPath: string): void {
+  const workRoot = join(source, '.foldercast');
+  const reading = JSON.parse(readFileSync(join(workRoot, 'foldercast.json'), 'utf8')) as {
+    source: { root: string };
+  };
+  writeFileSync(
+    join(workRoot, 'script.json'),
+    `${JSON.stringify(
+      {
+        foldercast: 1,
+        source: { root: reading.source.root },
+        scenes: [
+          { id: 'cover', type: 'cover', title: '封面', narration: '封面场景。' },
+          { id: 'entry', type: 'file', title: '入口', narration: '这是入口。', file: entryPath },
+          { id: 'outro', type: 'outro', title: '完', narration: '就这些。' },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+function artifactsOf(value: Record<string, unknown> | undefined): Map<string, Artifact> {
+  const list = (value?.artifacts ?? []) as Artifact[];
+  return new Map(list.map((artifact) => [artifact.name, artifact]));
+}
+
 describe('注册的形状符合 DSH 的工具契约', () => {
   it('名字、描述与主动语态', () => {
     expect(tool?.name).toBe('foldercast_cast');
@@ -91,63 +127,57 @@ describe('注册的形状符合 DSH 的工具契约', () => {
     expect(tool?.description.split(' ').length).toBeGreaterThanOrEqual(5);
   });
 
-  it('只有一个必需参数：目录路径', () => {
+  it('参数只有目录路径与三个开关', () => {
     expect(tool?.parameters.required).toEqual(['path']);
-    expect(Object.keys(tool?.parameters.properties ?? {}).sort()).toEqual(['path', 'skipAssets', 'skipRender', 'skipVoice', 'ttsProvider', 'ttsVoice']);
+    expect(Object.keys(tool?.parameters.properties ?? {}).sort()).toEqual([
+      'path',
+      'render',
+      'skipAssets',
+      'ttsProvider',
+      'ttsVoice',
+      'voice',
+    ]);
     expect(tool?.parameters.additionalProperties).toBe(false);
   });
 
   it('声明输出 schema 与 render（注册表强制要求）', () => {
     expect(typeof tool?.output.render).toBe('function');
     expect((tool?.output.schema as { type?: string }).type).toBe('object');
+    // 「下一步做什么」不该出现在输出契约里
+    const properties = (tool?.output.schema as { properties?: Record<string, unknown> }).properties ?? {};
+    expect(Object.keys(properties)).not.toContain('next');
+    expect(Object.keys(properties)).toContain('artifacts');
   });
 
   it('声明自己的时间预算', () => {
     expect(tool?.timeoutMs).toBeGreaterThan(0);
   });
 
-  it('skill 已注册，名字是 kebab-case 且带描述', () => {
+  it('skill 已注册，名字是 kebab-case 且带描述与 source', () => {
     expect(registeredSkill?.name).toBe('foldercast');
     expect(registeredSkill?.description.length).toBeGreaterThan(0);
     expect(registeredSkill?.content).toContain('foldercast_cast');
-  });
-
-  it('skill 带 source —— 注册表加载时会复查，缺了读取直接失败', () => {
     // 踩过一次：只给 name/description/content，读取报 `loaded skill "foldercast" source must be a string`
     expect(registeredSkill?.source).toBe('foldercast');
   });
 });
 
-describe('HTML 视图（M6）', () => {
-  it('一次调用顺手把页面也生成出来，并报出落点与体积', async () => {
-    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
-
-    const htmlPath = String(value?.htmlPath);
-    expect(htmlPath.endsWith(join('.foldercast', 'out', 'index.html'))).toBe(true);
-    expect(existsSync(htmlPath)).toBe(true);
-    expect(value?.htmlBytes as number).toBeGreaterThan(2000);
-
-    const html = readFileSync(htmlPath, 'utf8');
-    expect(html).not.toContain('<script');
-    expect(html).not.toMatch(/https?:\/\//);
-
-    const stages = value?.stages as { html?: { ok: boolean } };
-    expect(stages.html?.ok).toBe(true);
-  });
-});
-
 describe('execute 真跑一遍（分析 + 跳过素材）', () => {
-  it('返回结构化结果：读到解读，下一步是写讲稿', async () => {
+  it('返回解读与产物清单，且默认不出片、不配音', async () => {
     const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
 
     expect(value?.ok).toBe(true);
-    expect(value?.next).toBe('needsScript');
     expect(value?.target).toBe(source);
     expect(value?.label).toBe(source.split('/').pop());
+    expect(value?.ran).toEqual(['analyze']);
 
-    const reading = value?.reading as { files: number; roots: string[]; secretsSkipped: { path: string }[] };
+    const stages = value?.stages as Record<string, unknown>;
+    expect(stages.render).toBeUndefined();
+    expect(stages.voice).toBeUndefined();
+
+    const reading = value?.reading as { files: number; secretsSkipped: { path: string }[]; droppedByMaxFiles: number };
     expect(reading.files).toBeGreaterThan(0);
-    expect(reading.roots).toContain('README.md');
+    expect(reading.droppedByMaxFiles).toBe(0);
     // 密钥类文件仍进清单与审计，但内容没被读
     expect(reading.secretsSkipped.map((hit) => hit.path)).toContain('.env');
 
@@ -155,11 +185,17 @@ describe('execute 真跑一遍（分析 + 跳过素材）', () => {
     expect(() => JSON.stringify(value)).not.toThrow();
   });
 
-  it('没有讲稿时不跑校验，也不会把「没有讲稿」当成错误', async () => {
+  it('产物清单说清「现在磁盘上有什么」', async () => {
     const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
-    const stages = value?.stages as Record<string, unknown>;
-    expect(stages.validate).toBeUndefined();
-    expect(stages.analyze).toBeDefined();
+    const artifacts = artifactsOf(value);
+
+    expect(artifacts.get('解读')?.state).toBe('fresh');
+    expect(artifacts.get('解读')?.path).toBe(join(source, '.foldercast', 'foldercast.json'));
+    // 还没写稿、没评审、没配音、没出片
+    expect(artifacts.get('讲稿')?.state).toBe('missing');
+    expect(artifacts.get('评审')?.state).toBe('missing');
+    expect(artifacts.get('成片')?.state).toBe('missing');
+    expect(artifacts.has('HTML')).toBe(false);
   });
 
   it('render 输出能读的几句话，且不空', async () => {
@@ -167,15 +203,14 @@ describe('execute 真跑一遍（分析 + 跳过素材）', () => {
     const blocks = tool?.output.render({ path: source }, value);
     expect(blocks).toHaveLength(1);
     const text = blocks?.[0]?.text ?? '';
-    expect(text).toContain('README.md');
     expect(text.length).toBeGreaterThan(40);
+    expect(text).toContain('解读');
   });
 
   it('目录不存在时给出可操作的结论，而不是抛异常', async () => {
     const value = await tool?.execute({ path: join(tmpdir(), 'foldercast-does-not-exist') }, { signal: new AbortController().signal });
     expect(value?.ok).toBe(false);
-    expect(value?.next).toBe('blocked');
-    expect(String(value?.nextHint)).toContain('目录不存在');
+    expect(String(value?.error)).toContain('目录不存在');
   });
 
   it('取消后立刻返回，不留下跑着的子进程', async () => {
@@ -188,30 +223,11 @@ describe('execute 真跑一遍（分析 + 跳过素材）', () => {
 
 describe('有讲稿时跑校验', () => {
   it('讲稿里有编造的路径时，报出 blocker 并给出位置', async () => {
-    const workRoot = join(source, '.foldercast');
-    const reading = JSON.parse(readFileSync(join(workRoot, 'foldercast.json'), 'utf8')) as {
-      source: { root: string };
-    };
-    writeFileSync(
-      join(workRoot, 'script.json'),
-      `${JSON.stringify(
-        {
-          foldercast: 1,
-          source: { root: reading.source.root },
-          scenes: [
-            { id: 'cover', type: 'cover', title: '封面', narration: '封面场景。' },
-            { id: 'entry', type: 'file', title: '入口', narration: '这是入口。', file: 'src/does-not-exist.ts' },
-            { id: 'outro', type: 'outro', title: '完', narration: '就这些。' },
-          ],
-        },
-        null,
-        2,
-      )}\n`,
-    );
+    writeScript('src/does-not-exist.ts');
 
     const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
     expect(value?.ok).toBe(false);
-    expect(value?.next).toBe('fixScript');
+    expect(String(value?.error)).toContain('必须修');
 
     const validation = value?.validation as { blocker: number; issues: { code: string; line?: number; sceneId?: string }[] };
     expect(validation.blocker).toBeGreaterThan(0);
@@ -221,109 +237,77 @@ describe('有讲稿时跑校验', () => {
     expect(hallucinated[0]?.line).toBeGreaterThan(0);
   });
 
-  it('讲稿通过时进入 needsReview，并指出该把评审写到哪里', async () => {
-    const workRoot = join(source, '.foldercast');
-    const reading = JSON.parse(readFileSync(join(workRoot, 'foldercast.json'), 'utf8')) as {
-      source: { root: string };
-    };
-    writeFileSync(
-      join(workRoot, 'script.json'),
-      `${JSON.stringify(
-        {
-          foldercast: 1,
-          source: { root: reading.source.root },
-          scenes: [
-            { id: 'cover', type: 'cover', title: '封面', narration: '封面场景。' },
-            { id: 'entry', type: 'file', title: '入口', narration: '这是入口。', file: 'src/index.ts' },
-            { id: 'outro', type: 'outro', title: '完', narration: '就这些。' },
-          ],
-        },
-        null,
-        2,
-      )}\n`,
-    );
+  it('讲稿通过时 ok，并且把讲稿报成 fresh', async () => {
+    writeScript('src/index.ts');
 
     const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
     expect(value?.ok).toBe(true);
-    // 校验只管机器能判的，「有没有讲错重点」要靠评审（M5）—— 所以通过了也还不能算完成
-    expect(value?.next).toBe('needsReview');
-    expect(value?.review).toBe('missing');
-    expect(value?.reviewPath).toBe(join(workRoot, 'review.md'));
-    expect(String(value?.nextHint)).toContain('review.md');
     expect((value?.validation as { blocker: number }).blocker).toBe(0);
+    expect(artifactsOf(value).get('讲稿')?.state).toBe('fresh');
+    // 校验只管机器能判的；「有没有讲错重点」要靠评审，而评审在不在是产物清单说了算
+    expect(artifactsOf(value).get('评审')?.state).toBe('missing');
   });
 
-  // 评审通过之后**默认就出片**（`foldercast_cast` 的 `render` 默认 true），所以这两条要
-  // 真的起浏览器渲一遍。渲染夹具（3 个场景、约 30 秒片子）本机 5 秒左右，CI 上更慢，
-  // 所以给足 4 分钟：这不是「慢测试」，这是**出片这条路径确实要跑一遍**。
-  it('评审比讲稿新：validated（按 skipRender 只报状态，不出片）', async () => {
+  it('评审比讲稿新时，评审报 fresh；讲稿再改就变 stale', async () => {
     const workRoot = join(source, '.foldercast');
     writeFileSync(join(workRoot, 'review.md'), '# 评审：通过\n');
-    // 显式设 mtime：靠「谁后写」制造时间差，在文件系统时间戳精度粗的机器上会翻车（CI 上踩过：
-    // 两次写入落在同一毫秒，`>=` 判成 fresh，这条用例就红了）
     setMtimeAgo(join(workRoot, 'script.json'), 60);
     setMtimeAgo(join(workRoot, 'review.md'), 1);
 
-    const value = await tool?.execute(
-      { path: source, skipAssets: true, skipRender: true },
-      { signal: new AbortController().signal },
-    );
+    const fresh = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+    expect(artifactsOf(fresh).get('评审')?.state).toBe('fresh');
 
-    expect(value?.next).toBe('validated');
-    expect(value?.review).toBe('fresh');
-    expect((value?.stages as Record<string, unknown>).render).toBeUndefined();
+    // 讲稿更新 → 旧结论作废
+    writeScript('src/index.ts');
+    const stale = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+    expect(artifactsOf(stale).get('评审')?.state).toBe('stale');
   });
 
+  it('不传 render 时一次也不渲染（哪怕成片不存在）', async () => {
+    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
+    expect((value?.stages as Record<string, unknown>).render).toBeUndefined();
+    expect(existsSync(join(source, '.foldercast', 'out', 'video.mp4'))).toBe(false);
+    expect(artifactsOf(value).get('成片')?.state).toBe('missing');
+  });
+
+  it('传 render 但没有讲稿时，给出可操作的结论而不是渲染', async () => {
+    rmSync(join(source, '.foldercast', 'script.json'), { force: true });
+    const value = await tool?.execute({ path: source, skipAssets: true, render: true }, { signal: new AbortController().signal });
+    expect(value?.ok).toBe(false);
+    expect(String(value?.error)).toContain('还没有讲稿');
+    expect((value?.stages as Record<string, unknown>).render).toBeUndefined();
+    // 写完再体检那几条用例要用讲稿
+    writeScript('src/index.ts');
+  });
+});
+
+describe('显式要求出片时才走渲染', () => {
   it(
-    '评审比讲稿新：默认出片（rendered，成片落在 out/video.mp4）',
+    'render: true 时渲染并报成片状态；随后不传 render 不再重渲',
     { timeout: 240_000 },
     async () => {
-      const workRoot = join(source, '.foldercast');
-      writeFileSync(join(workRoot, 'review.md'), '# 评审：通过\n');
-      setMtimeAgo(join(workRoot, 'script.json'), 60);
-      setMtimeAgo(join(workRoot, 'review.md'), 1);
+      const value = await tool?.execute({ path: source, skipAssets: true, render: true }, { signal: new AbortController().signal });
 
-      const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
-
-      const videoPath = join(workRoot, 'out', 'video.mp4');
+      const videoPath = join(source, '.foldercast', 'out', 'video.mp4');
       const render = (value?.stages as Record<string, { ok?: boolean }>).render;
 
-      if (value?.next === 'rendered') {
+      if (render?.ok === true) {
         expect(existsSync(videoPath)).toBe(true);
         expect(statSync(videoPath).size).toBeGreaterThan(20_000);
-        expect(value?.videoPath).toBe(videoPath);
-        expect(value?.video).toBe('fresh');
-        expect(render?.ok).toBe(true);
+        expect(artifactsOf(value).get('成片')?.state).toBe('fresh');
+        expect(artifactsOf(value).get('成片')?.bytes).toBe(statSync(videoPath).size);
 
-        // 再调一次**不许重渲**：成片比讲稿新，直接报现状（渲染是最贵的一步）
+        // 再调一次**不传 render**：一次渲染都不该发生
         const again = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
-        expect(again?.next).toBe('rendered');
         expect((again?.stages as Record<string, unknown>).render).toBeUndefined();
-        expect(Number(again?.videoBytes)).toBe(statSync(videoPath).size);
+        expect(artifactsOf(again).get('成片')?.state).toBe('fresh');
         return;
       }
 
-      // 没有浏览器（或没有 ffmpeg，所以配音那一步被跳过）的机器：**必须**给出结构化说明，
-      // 而不是一句失败。这两条分支在 CI 上是有意义的覆盖，不是「跳过」。
-      expect(value?.next).toBe('blocked');
-      expect(String(value?.nextHint)).toContain('渲染需要浏览器');
-      expect(String(value?.nextHint)).toContain('remotion browser ensure');
+      // 没有浏览器的机器：**必须**给出结构化说明，而不是一句失败。这条分支在 CI 上有意义。
+      expect(value?.ok).toBe(false);
+      expect(String(value?.error)).toContain('browser');
+      expect(String(value?.error)).toContain('remotion browser ensure');
     },
   );
-
-  it('评审比讲稿旧：当作没审（讲稿改了，旧结论作废）', async () => {
-    const workRoot = join(source, '.foldercast');
-    // 先写评审、再改讲稿 —— 讲稿更新，评审作废
-    writeFileSync(join(workRoot, 'review.md'), '# 评审：通过（针对上一版）\n');
-    const script = JSON.parse(readFileSync(join(workRoot, 'script.json'), 'utf8')) as Record<string, unknown>;
-    writeFileSync(join(workRoot, 'script.json'), `${JSON.stringify(script, null, 2)}\n`);
-    setMtimeAgo(join(workRoot, 'review.md'), 60);
-    setMtimeAgo(join(workRoot, 'script.json'), 1);
-
-    const value = await tool?.execute({ path: source, skipAssets: true }, { signal: new AbortController().signal });
-
-    expect(value?.next).toBe('needsReview');
-    expect(value?.review).toBe('stale');
-    expect(String(value?.nextHint)).toContain('作废');
-  });
 });

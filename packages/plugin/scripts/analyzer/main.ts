@@ -26,6 +26,7 @@ const USAGE = `用法：node packages/plugin/scripts/analyzer/main.ts <目录> [
   --out <文件>     输出路径，默认 <目录>/.foldercast/foldercast.json
   --label <名称>   展示用名称，默认取目录名
   --stdout         只打印到标准输出，不写文件
+  --json           机器可读报告（解读 + 规模审计），给工具与 CI 用
   --help           显示本说明`;
 
 type Options = {
@@ -33,6 +34,7 @@ type Options = {
   out?: string;
   label?: string;
   toStdout: boolean;
+  json: boolean;
 };
 
 function parseArgs(argv: readonly string[]): Options | { error: string } {
@@ -40,6 +42,7 @@ function parseArgs(argv: readonly string[]): Options | { error: string } {
   let out: string | undefined;
   let label: string | undefined;
   let toStdout = false;
+  let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -47,6 +50,10 @@ function parseArgs(argv: readonly string[]): Options | { error: string } {
     if (argument === '--help' || argument === '-h') return { error: 'help' };
     if (argument === '--stdout') {
       toStdout = true;
+      continue;
+    }
+    if (argument === '--json') {
+      json = true;
       continue;
     }
     if (argument === '--out' || argument === '--label') {
@@ -63,7 +70,7 @@ function parseArgs(argv: readonly string[]): Options | { error: string } {
   }
 
   if (root === undefined) return { error: '缺少目录参数' };
-  return { root, ...(out === undefined ? {} : { out }), ...(label === undefined ? {} : { label }), toStdout };
+  return { root, ...(out === undefined ? {} : { out }), ...(label === undefined ? {} : { label }), toStdout, json };
 }
 
 /** 数字对齐，方便在终端里读。 */
@@ -75,8 +82,8 @@ function formatBytes(bytes: number): string {
 }
 
 function printSummary(result: AnalyzeResult, outPath: string | undefined): void {
-  const { document, report, graphDetail } = result;
-  const { stats, graph } = document;
+  const { document, report } = result;
+  const { stats } = document;
   const line = (text: string): void => console.log(text);
 
   line(`目录：${document.source.root}（${document.source.label ?? ''}）`);
@@ -87,34 +94,6 @@ function printSummary(result: AnalyzeResult, outPath: string | undefined): void 
 
   const kinds = KIND_VALUES.map((kind) => `${kind} ${stats.kindCounts[kind] ?? 0}`).join(' · ');
   line(`类型：${kinds}`);
-
-  const languages = Object.entries(stats.languages);
-  if (languages.length > 0) {
-    line(`语言：${languages.map(([name, count]) => `${name} ${count} 行`).join(' · ')}`);
-  }
-
-  const roles = Object.entries(stats.roles);
-  if (roles.length > 0) {
-    line(`角色：${roles.map(([role, paths]) => `${role} ${paths.length}`).join(' · ')}`);
-  }
-
-  if (stats.topDirs.length > 0) {
-    line(`子目录：${stats.topDirs.map((dir) => `${dir.path} ${dir.files}`).join(' · ')}`);
-  }
-
-  line(
-    `依赖：节点 ${graph.nodes}，边 ${graph.edges}；入口 ${graph.roots.length}，枢纽 ${graph.hubs.length}，` +
-      `末端 ${graph.leaves.length}，坏引用 ${graph.dangling.length}`,
-  );
-  if (graph.roots.length > 0) line(`  入口：${graph.roots.slice(0, 8).join('、')}${graph.roots.length > 8 ? ' …' : ''}`);
-  if (graph.hubs.length > 0) {
-    line(`  枢纽：${graph.hubs.slice(0, 5).map((hub) => `${hub.path}（入 ${hub.in}）`).join('、')}`);
-  }
-  if (graph.dangling.length > 0) {
-    const shown = graph.dangling.slice(0, 10).join('、');
-    line(`  坏引用：${shown}${graph.dangling.length > 10 ? ` …共 ${graph.dangling.length} 处` : ''}`);
-  }
-  void graphDetail;
 
   // ── 密钥审计：必须打印（SPEC-data-format.md / ADR 0007）──
   line('密钥排除审计（只按文件名匹配，不可能完备；误拦时用 sources.rescan 放回）：');
@@ -128,7 +107,7 @@ function printSummary(result: AnalyzeResult, outPath: string | undefined): void 
 
   // ── 规模保护的实际动作 ────────────────────────────────
   if (report.droppedByMaxFiles > 0) {
-    line(`规模：maxFiles=${result.sources.maxFiles}，按重要性丢弃 ${report.droppedByMaxFiles} 个文件（未进清单）`);
+    line(`规模：maxFiles=${result.sources.maxFiles}，按类型与深度丢弃 ${report.droppedByMaxFiles} 个文件（未进清单）`);
   }
   if (report.skippedForSize > 0) {
     line(`规模：${report.skippedForSize} 个文件超过 maxFileSizeMb=${result.sources.maxFileSizeMb}，未读内容（仍在清单里）`);
@@ -169,17 +148,37 @@ function main(): number {
   const outPath = options.toStdout ? undefined : resolve(options.out ?? `${root}/.foldercast/foldercast.json`);
   const text = `${JSON.stringify(result.document, null, 2)}\n`;
 
-  if (options.toStdout) {
-    process.stdout.write(text);
+  // 先落盘：`--json` 改的是**输出格式**，不是「别写文件」。工具既需要那份文件，
+  // 也需要规模审计 —— 之前把它写成提前 return，工具就拿到了空解读（实测踩过）。
+  if (!options.toStdout) {
+    try {
+      mkdirSync(dirname(outPath ?? ''), { recursive: true });
+      writeFileSync(outPath ?? '', text);
+    } catch (error) {
+      console.error(`写入失败：${(error as Error).message}\n目标：${outPath ?? ''}`);
+      return 1;
+    }
+  }
+
+  if (options.json) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          reading: result.document,
+          report: result.report,
+          sources: result.sources,
+          path: outPath,
+        },
+        null,
+        2,
+      )}\n`,
+    );
     return 0;
   }
 
-  try {
-    mkdirSync(dirname(outPath ?? ''), { recursive: true });
-    writeFileSync(outPath ?? '', text);
-  } catch (error) {
-    console.error(`写入失败：${(error as Error).message}\n目标：${outPath ?? ''}`);
-    return 1;
+  if (options.toStdout) {
+    process.stdout.write(text);
+    return 0;
   }
 
   printSummary(result, outPath);

@@ -275,7 +275,6 @@ const File = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'file' }>>)
   const appear = useAppear();
   const tokens = plan.tokens;
   const url = assetUrl(scene.media);
-  const isCode = scene.code !== undefined;
   return h(
     'div',
     { style: { ...appear, display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0, height: '100%' } },
@@ -321,21 +320,14 @@ const File = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'file' }>>)
               flex: 1,
               minHeight: 0,
               display: 'flex',
-              alignItems: isCode ? 'flex-start' : 'center',
+              alignItems: 'center',
               justifyContent: 'center',
               overflow: 'hidden',
-              backgroundColor: isCode ? 'var(--code-bg)' : 'var(--panel)',
+              backgroundColor: 'var(--panel)',
             },
             h(Img, { src: url, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' } }),
           ),
     ),
-    isCode && scene.code?.focusLines !== undefined
-      ? h(
-          'div',
-          { style: { fontSize: Math.round(tokens.bodySize * 0.62), color: 'var(--muted)' } },
-          `讲稿重点在第 ${scene.code.focusLines[0]}–${scene.code.focusLines[1]} 行（素材图只画文件开头）`,
-        )
-      : null,
   );
 };
 

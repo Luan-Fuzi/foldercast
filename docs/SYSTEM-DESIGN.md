@@ -34,7 +34,7 @@
                                       │ script.json（讲稿）
                        ┌──────────────┴──────────────┐
                        │  M5 评审          [subagent] │
-                       │  编造 / 重点 / 遗漏枢纽       │
+                       │  编造 / 重点 / 遗漏          │
                        └──────────────┬──────────────┘
                                       │ 通过
                                       ▼
@@ -171,7 +171,6 @@ packages/
         ├── analyzer/          TypeScript：目录 → 解读（M1）
         ├── assets/            TypeScript：解读 → 素材（M2）
         ├── validate/          TypeScript：解读与讲稿的契约校验（M3）
-        ├── html/              TypeScript：解读 + 素材 → 单文件静态页（M6）
         ├── voice/             TypeScript：讲稿 → 逐场景音频 + 实测时长（M8）
         │   ├── providers/     say / mimo 两个 provider + 注册表
         │   ├── env.ts         密钥从哪来、命令探测
@@ -190,9 +189,6 @@ examples/                      示例
 scripts/                       仓库工具（与上面的 scripts/ 无关）
 ```
 
-**HTML 视图与校验器一样，不属于三步管线的某一步**：它只读解读与素材，产出的是视图不是事实，
-所以它既不阻塞写稿，也不被写稿阻塞（M6）。
-
 **校验器不属于三步管线的任何一步**：它不产出产物，只对别的阶段的产物下判断，所以 `analyzer`、`assets`、`validate` 三者互不依赖，共同依赖 `contracts/`。schema 只有一份，在 `docs/specs/` 下，校验器直接读它（不复制第二份）；代价是它要求仓库布局，打包分发时 schema 要随包走（M4）。
 
 **编排层是 DSH 主 agent，不是代码。** 三步管线的驱动者：
@@ -203,9 +199,8 @@ scripts/                       仓库工具（与上面的 scripts/ 无关）
 | ①-2 写稿 | **主 agent 自己**（读解经 + 通读内容） |
 | ①-2 校验 | 主 agent 调 `scripts/validate/`；**不过就不往下走** |
 | ②-0 素材 | 主 agent 调 `scripts/assets/` |
-| ①-3 页面 | 主 agent 调 `scripts/html/`（M6；**不依赖讲稿**，写完稿之前就能看） |
-| ② 视频 | 主 agent 调 `scripts/renderer/` |
-| ③ 配音 | 主 agent 调脚本 |
+| ② 视频 | 主 agent 调 `scripts/renderer/`（**显式要求才跑**：要浏览器、几分钟到几十分钟） |
+| ③ 配音 | 主 agent 调脚本（**显式要求才跑**：会消耗 TTS 配额） |
 
 **三个阶段互不依赖对方**，耦合点是 `contracts/` 里的类型与工作根下的文件：`foldercast.json`（解读）、`assets/manifest.json`（素材清单）、`script.json`（讲稿）。
 这样每个阶段都能单独跑：分析器对任意目录跑，素材阶段拿现成解读跑，渲染器拿手写讲稿跑。

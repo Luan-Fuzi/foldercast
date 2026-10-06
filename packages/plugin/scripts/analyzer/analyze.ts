@@ -4,8 +4,11 @@
  * **纯确定性，不调用模型**（SYSTEM-DESIGN 4.4）。同一目录跑两次，除了 `generatedAt`
  * 应当完全一致；文件顺序全部显式排序，不依赖文件系统返回顺序。
  *
- * 流程：遍历 → 分类/角色/密钥（只看路径，不读内容）→ 按重要性截断 → 读内容与预览
- * → 依赖图 → 统计。**先截断再读内容**，大目录下省掉的是真正的 I/O。
+ * 流程：遍历 → 分类与密钥判据（只看路径）→ 按规模截断 → 读内容与预览 → 统计。
+ * **先截断再读内容**，大目录下省掉的是真正的 I/O。
+ *
+ * **只产出机械事实**：路径、类别、字节、行数、截断预览、密钥审计。不猜角色、不排枢纽、
+ * 不判语言 —— 那些要读内容才知道，是模型的事（MVP 判据：程序只给模型自己得不到的东西）。
  */
 import { statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
@@ -14,16 +17,12 @@ import {
   type FoldercastDocument,
   type Kind,
   type ManifestEntry,
-  type Role,
   type SecretHit,
   type SourcesSpec,
 } from '../contracts/foldercast.ts';
-import { classify, type Classification } from './classify.ts';
+import { classify } from './classify.ts';
 import { inspectFile } from './content.ts';
 import { createPathFilter, resolveSources, type EffectiveSources } from './filter.ts';
-import { buildGraph, type GraphResult } from './graph.ts';
-import { analyzeImports, type ImportsInput } from './imports.ts';
-import { detectRole } from './roles.ts';
 import { matchSecretFilename } from './secrets.ts';
 import { buildStats } from './stats.ts';
 import { walk, type WalkedFile } from './walk.ts';
@@ -33,7 +32,7 @@ export type AnalyzeOptions = {
   root: string;
   /** 展示用名称，默认取目录名。 */
   label?: string;
-  /** 筛选与规模参数。第一版不暴露给用户，保留参数供 M3/M4 复用。 */
+  /** 筛选与规模参数。第一版不暴露给用户，保留参数供校验器与工具复用。 */
   sources?: Partial<SourcesSpec>;
   /** 覆盖生成时间，测试用。 */
   now?: Date;
@@ -61,23 +60,15 @@ export type AnalyzeReport = {
 export type AnalyzeResult = {
   document: FoldercastDocument;
   report: AnalyzeReport;
-  /** 供 CLI 打印的图结论。 */
-  graphDetail: GraphResult;
   sources: EffectiveSources;
 };
 
-/** 截断时的取舍顺序：角色 → 类型 → 深度 → 路径。 */
-const ROLE_RANK: Record<Role, number> = {
-  readme: 0,
-  license: 1,
-  entry: 2,
-  config: 3,
-  doc: 4,
-  test: 6,
-  build: 7,
-  asset: 8,
-};
-
+/**
+ * 截断时的取舍顺序：**类型 → 深度 → 路径**。
+ *
+ * 只看机械属性，不做「重要性」判断：代码与文本优先于二进制，浅的优先于深的，
+ * 同层按路径字典序（保证结果可复现）。谁真的重要要读内容才知道，留给模型。
+ */
 const KIND_RANK: Record<Kind, number> = {
   code: 0,
   text: 0,
@@ -88,40 +79,25 @@ const KIND_RANK: Record<Kind, number> = {
   image: 4,
   video: 5,
   audio: 5,
+  other: 5,
   archive: 6,
   binary: 7,
-  other: 5,
 };
-
-const NO_ROLE_RANK = 5;
 
 type Candidate = {
   file: WalkedFile;
-  classification: Classification;
-  role?: Role;
+  kind: Kind;
   /** 命中密钥判据且没有被 rescan 放回：不读内容。 */
   secret?: string;
   /** 被 rescan 放回：读内容，但要记进审计。 */
   rescanned: boolean;
 };
 
-function importanceOf(candidate: Candidate): [number, number, number, string] {
-  const role = candidate.role === undefined ? NO_ROLE_RANK : ROLE_RANK[candidate.role];
-  const kind = KIND_RANK[candidate.classification.kind];
-  return [role, kind, candidate.file.depth, candidate.file.path];
-}
-
 function compareImportance(left: Candidate, right: Candidate): number {
-  const a = importanceOf(left);
-  const b = importanceOf(right);
-  for (let index = 0; index < a.length; index += 1) {
-    const x = a[index];
-    const y = b[index];
-    if (x === undefined || y === undefined) continue;
-    if (x < y) return -1;
-    if (x > y) return 1;
-  }
-  return 0;
+  const kind = KIND_RANK[left.kind] - KIND_RANK[right.kind];
+  if (kind !== 0) return kind;
+  if (left.file.depth !== right.file.depth) return left.file.depth - right.file.depth;
+  return left.file.path < right.file.path ? -1 : left.file.path > right.file.path ? 1 : 0;
 }
 
 /** 本地时区的 ISO 8601，带偏移量 —— 与 SPEC 的示例一致，人读更直接。 */
@@ -150,26 +126,20 @@ export function analyzeDirectory(options: AnalyzeOptions): AnalyzeResult {
   const candidates: Candidate[] = [];
   for (const file of walked.files) {
     const name = basename(file.path);
-    const classification = classify(name);
-    if (!filter.isKindEnabled(classification.kind)) continue;
+    const kind = classify(name);
+    if (!filter.isKindEnabled(kind)) continue;
 
     const verdict = matchSecretFilename(name);
     const rescanned = verdict.secret && sources.rescan.includes(file.path);
-    const candidate: Candidate = {
-      file,
-      classification,
-      role: detectRole(file.path, classification.kind),
-      rescanned,
-    };
+    const candidate: Candidate = { file, kind, rescanned };
     if (verdict.secret && !rescanned) candidate.secret = verdict.match;
     candidates.push(candidate);
   }
 
-  // ── 2. 规模保护：按重要性截断，再读内容 ─────────────────
+  // ── 2. 规模保护：按机械属性截断，再读内容 ───────────────
   const ranked = [...candidates].sort(compareImportance);
   // **密钥文件不占 maxFiles 的配额，也不会被截掉**：它们本来就不读内容（零成本），
-  // 而审计必须完整 —— 被截掉的密钥等于没报出来，用户在 stats.secrets.excluded 里看不到它，
-  // 与 secrets.ts 写的「命中的文件仍进结构树与计数」矛盾。
+  // 而审计必须完整 —— 被截掉的密钥等于没报出来，用户在 stats.secrets.excluded 里看不到它。
   // 实测踩过：200 文件的目录里 `lecture-videos/.mimo_api_key` 既不在清单、也不在审计里。
   const isSecret = new Set(ranked.filter((candidate) => candidate.secret !== undefined));
   const quota = sources.maxFiles > 0 ? sources.maxFiles : ranked.length;
@@ -180,15 +150,13 @@ export function analyzeDirectory(options: AnalyzeOptions): AnalyzeResult {
   // ── 3. 读内容（密钥文件跳过） ──────────────────────────
   const maxBytes = sources.maxFileSizeMb * 1024 * 1024;
   const manifest: ManifestEntry[] = [];
-  const importInputs: ImportsInput[] = [];
   const secretHits: SecretHit[] = [];
   const rescannedPaths: string[] = [];
   let skippedForSize = 0;
 
   for (const candidate of kept) {
-    const { file, classification, role } = candidate;
-    const entry: ManifestEntry = { path: file.path, kind: classification.kind, bytes: file.bytes };
-    if (role !== undefined) entry.role = role;
+    const { file, kind } = candidate;
+    const entry: ManifestEntry = { path: file.path, kind, bytes: file.bytes };
 
     if (candidate.secret !== undefined) {
       secretHits.push({ path: file.path, match: candidate.secret });
@@ -197,48 +165,15 @@ export function analyzeDirectory(options: AnalyzeOptions): AnalyzeResult {
     }
     if (candidate.rescanned) rescannedPaths.push(file.path);
 
-    const insight = inspectFile(file.absolute, classification, maxBytes);
+    const insight = inspectFile(file.absolute, kind, maxBytes);
     if (insight.skippedForSize) skippedForSize += 1;
     if (insight.lines !== undefined) entry.lines = insight.lines;
-    if (classification.language !== undefined) entry.language = classification.language;
-    if (insight.title !== undefined && insight.title !== '') entry.title = insight.title;
     if (insight.preview !== undefined && insight.preview !== '') entry.preview = insight.preview;
-
-    if (insight.text !== undefined) {
-      importInputs.push({
-        path: file.path,
-        kind: classification.kind,
-        language: classification.language,
-        text: insight.text,
-      });
-    }
 
     manifest.push(entry);
   }
 
-  // ── 4. 依赖图 ────────────────────────────────────────
-  const analyzedPaths = new Set(manifest.map((entry) => entry.path));
-  const importAnalysis = analyzeImports(importInputs, root, analyzedPaths);
-  const graphDetail = buildGraph(
-    manifest.map((entry) => ({ path: entry.path, kind: entry.kind, role: entry.role })),
-    importAnalysis.edges,
-    importAnalysis.dangling,
-  );
-
-  for (const entry of manifest) {
-    const imports = graphDetail.imports.get(entry.path);
-    if (imports !== undefined) {
-      entry.imports = imports;
-      entry.importsCount = graphDetail.outDegree.get(entry.path) ?? imports.length;
-    }
-    const importedBy = graphDetail.importedBy.get(entry.path);
-    if (importedBy !== undefined) {
-      entry.importedBy = importedBy;
-      entry.importedByCount = graphDetail.inDegree.get(entry.path) ?? importedBy.length;
-    }
-  }
-
-  // ── 5. 统计与文档 ────────────────────────────────────
+  // ── 4. 统计与文档 ────────────────────────────────────
   const maxDepth = manifest.reduce((deepest, entry) => {
     const depth = entry.path.split('/').length;
     return depth > deepest ? depth : deepest;
@@ -267,12 +202,10 @@ export function analyzeDirectory(options: AnalyzeOptions): AnalyzeResult {
     },
     stats,
     manifest,
-    graph: graphDetail.graph,
   };
 
   return {
     document,
-    graphDetail,
     sources,
     report: {
       scanned: walked.scanned,

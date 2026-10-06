@@ -65,39 +65,28 @@ const OUTPUT_SCHEMA = {
     ok: { type: 'boolean' },
     target: { type: 'string', description: '被讲解目录的绝对路径' },
     label: { type: 'string' },
-    next: {
-      type: 'string',
-      enum: ['needsScript', 'needsReview', 'validated', 'rendered', 'fixScript', 'blocked'],
+    workRoot: { type: 'string', description: '工作根：所有产物都在它下面（<目录>/.foldercast/）' },
+    error: { type: 'string', description: '要求的阶段失败或环境不满足时的一句话说明' },
+    ran: {
+      type: 'array',
+      description: '这次调用实际跑了哪些阶段，按执行顺序',
+      items: { type: 'string' },
+    },
+    artifacts: {
+      type: 'array',
       description:
-        'needsScript = 该写讲稿了；needsReview = 讲稿通过校验、该评审了；validated = 讲稿与评审都齐了但还没出片；rendered = 成片已生成；fixScript = 讲稿有问题；blocked = 环境或目标有问题（缺浏览器时也走这里）',
-    },
-    nextHint: { type: 'string' },
-    readingPath: { type: 'string' },
-    scriptPath: { type: 'string' },
-    htmlPath: { type: 'string', description: 'HTML 视图的落点（M6）：自包含的单文件页面' },
-    htmlBytes: { type: 'integer', description: '页面字节数' },
-    videoPath: { type: 'string', description: '成片的落点（M7）：静音 mp4' },
-    videoBytes: { type: 'integer', description: '成片字节数' },
-    video: {
-      type: 'string',
-      enum: ['missing', 'stale', 'fresh'],
-      description: 'missing = 还没出片；stale = 出过但讲稿又改了；fresh = 对应当前这版讲稿（此时不会重渲）',
-    },
-    durationsPath: { type: 'string', description: '配音时长表的落点（M8）：实测时长与字幕时序' },
-    narrationPath: { type: 'string', description: '整条旁白音轨的落点（配音阶段拼好）' },
-    voice: {
-      type: 'string',
-      enum: ['missing', 'stale', 'fresh'],
-      description: 'missing = 还没配音；stale = 配过但讲稿又改了；fresh = 对应当前这版讲稿（此时不会重新合成）',
-    },
-    voiceProvider: { type: 'string', description: '实际使用的 TTS provider' },
-    voiceName: { type: 'string', description: '实际使用的音色' },
-    voiceNote: { type: 'string', description: '配音这一步的说明：为什么没配（缺 ffmpeg / say 等）' },
-    reviewPath: { type: 'string', description: '评审结论的落点（M5，skill 第六步写到这里）' },
-    review: {
-      type: 'string',
-      enum: ['missing', 'stale', 'fresh'],
-      description: 'missing = 还没评审；stale = 现有结论早于当前讲稿；fresh = 审的是当前这版',
+        '磁盘上现在有什么：解读、素材清单、讲稿、评审、时长表、旁白音轨、成片。state: missing = 还没有；stale = 有但比讲稿旧（评审与成片要重做）；fresh = 有且不旧。下一步该做什么由调用方判断。',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string' },
+          path: { type: 'string' },
+          state: { type: 'string', enum: ['missing', 'stale', 'fresh'] },
+          bytes: { type: 'integer' },
+          note: { type: 'string' },
+        },
+      },
     },
     dependencies: {
       type: 'array',
@@ -118,11 +107,6 @@ const OUTPUT_SCHEMA = {
           properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
         },
         assets: {
-          type: 'object',
-          additionalProperties: false,
-          properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
-        },
-        html: {
           type: 'object',
           additionalProperties: false,
           properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
@@ -148,14 +132,12 @@ const OUTPUT_SCHEMA = {
       type: 'object',
       additionalProperties: false,
       properties: {
-        files: { type: 'integer' },
+        files: { type: 'integer', description: '进清单的文件数' },
         bytes: { type: 'integer' },
-        kinds: { type: 'object' },
-        languages: { type: 'object' },
-        topDirs: { type: 'array', items: { type: 'object' } },
-        roots: { type: 'array', items: { type: 'string' } },
-        hubs: { type: 'array', items: { type: 'object' } },
+        kinds: { type: 'object', description: 'kind → 文件数（12 类都在，计数为 0 的也在）' },
         secretsSkipped: { type: 'array', items: { type: 'object' } },
+        droppedByMaxFiles: { type: 'integer', description: '因为超量没有进清单的文件数；0 表示解读覆盖了全部通过筛选的文件' },
+        skippedForSize: { type: 'integer', description: '因为超过单文件体积上限没有读内容的文件数（仍在清单里）' },
         assets: { type: 'integer' },
       },
     },
@@ -183,6 +165,9 @@ const OUTPUT_SCHEMA = {
         },
       },
     },
+    voiceProvider: { type: 'string', description: '实际使用的 TTS provider（从时长表读，不是配置里写的）' },
+    voiceName: { type: 'string' },
+    voiceNote: { type: 'string', description: '配音这一步的说明：为什么没配（缺 ffmpeg / say / 密钥等）' },
   },
 };
 
@@ -190,74 +175,66 @@ type CastLike = {
   ok: boolean;
   target: string;
   label: string;
-  next: string;
-  nextHint: string;
-  readingPath: string;
-  scriptPath: string;
-  htmlPath: string;
-  videoPath: string;
-  video: string;
-  durationsPath: string;
-  narrationPath: string;
-  voice: string;
-  voiceProvider?: string;
-  voiceName?: string;
-  voiceNote?: string;
+  workRoot: string;
+  error?: string;
+  ran: string[];
+  artifacts: { name: string; path: string; state: string; bytes?: number; note?: string }[];
   dependencies: { name: string; ok: boolean; hint: string }[];
   stages: Record<string, { ok: boolean; ms: number; exitCode?: number; error?: string; detail?: string } | undefined>;
   reading?: {
     files: number;
     bytes: number;
     kinds: Record<string, number>;
-    topDirs: { path: string; files: number }[];
-    roots: string[];
-    hubs: { path: string; in: number }[];
     secretsSkipped: { path: string }[];
+    droppedByMaxFiles: number;
+    skippedForSize: number;
     assets: number;
   };
   validation?: { blocker: number; warning: number; issues: { code: string; severity: string; message: string; line?: number; sceneId?: string }[] };
+  voiceProvider?: string;
+  voiceName?: string;
+  voiceNote?: string;
 };
 
 /**
  * 把结果压成给模型看的几句话。
  *
- * 与结构化输出**不重复**：输出里已经有的字段不在这里复述，这里只说「发生了什么」与
- * 「下一步做什么」——模型读这段决定动作，读结构化字段决定细节。
+ * 与结构化输出**不重复**：这里只说「发生了什么」——跑了哪些阶段、读到了什么、哪些产物在、
+ * 哪一步失败。**不说「下一步做什么」**：该走哪一步由 skill 与模型判断。
  */
 function renderResult(value: CastLike): string {
   const lines: string[] = [];
 
-  if (!value.ok && value.next === 'blocked') {
-    lines.push(`没能处理 ${value.target}：${value.nextHint}`);
+  if (!value.ok && value.reading === undefined) {
+    lines.push(`没能处理 ${value.target}：${value.error ?? '见下'}`);
   } else if (value.reading !== undefined) {
     const kinds = Object.entries(value.reading.kinds)
       .filter(([, count]) => count > 0)
       .sort((left, right) => right[1] - left[1])
-      .slice(0, 5)
+      .slice(0, 6)
       .map(([kind, count]) => `${kind} ${String(count)}`)
       .join(' · ');
-    lines.push(`${value.label}：${String(value.reading.files)} 个文件（${kinds}）→ ${value.readingPath}`);
-
-    if (value.reading.topDirs.length > 0) {
-      lines.push(`主要目录：${value.reading.topDirs.slice(0, 5).map((dir) => `${dir.path}(${String(dir.files)})`).join(' · ')}`);
-    }
-    if (value.reading.roots.length > 0) {
-      lines.push(`入口：${value.reading.roots.slice(0, 6).join('、')}`);
-    }
-    if (value.reading.hubs.length > 0) {
-      lines.push(`枢纽（最该先讲）：${value.reading.hubs.slice(0, 6).map((hub) => `${hub.path}(入 ${String(hub.in)})`).join('、')}`);
-    }
+    lines.push(`${value.label}：${String(value.reading.files)} 个文件（${kinds}）`);
     if (value.reading.secretsSkipped.length > 0) {
       lines.push(`跳过的密钥类文件（只按文件名命中，内容未读）：${value.reading.secretsSkipped.map((hit) => hit.path).join('、')}`);
     }
+    if (value.reading.droppedByMaxFiles > 0) {
+      lines.push(`注意：还有 ${String(value.reading.droppedByMaxFiles)} 个文件因为超出清单上限没有进来，解读不覆盖它们。`);
+    }
+    if (value.reading.skippedForSize > 0) {
+      lines.push(`注意：${String(value.reading.skippedForSize)} 个文件超过单文件体积上限，没有读内容（仍在清单里）。`);
+    }
     if (value.reading.assets > 0) {
-      lines.push(`素材：${String(value.reading.assets)} 个文件已有素材（逐页图/关键帧/高亮图/提取文本）`);
+      lines.push(`素材：${String(value.reading.assets)} 个文件已有素材（页图 / 缩略图 / 关键帧 / 提取文本）`);
     }
   }
 
-  const failed = Object.entries(value.stages).filter(([, stage]) => stage !== undefined && !stage.ok);
-  for (const [stageName, stage] of failed) {
-    if (stage?.error !== undefined) lines.push(`${stageName} 阶段失败：${stage.error}`);
+  if (value.error !== undefined && value.reading !== undefined) lines.push(value.error);
+
+  for (const [stageName, stage] of Object.entries(value.stages)) {
+    if (stage !== undefined && !stage.ok && stage.error !== undefined) {
+      lines.push(`${stageName} 阶段失败：${stage.error}`);
+    }
   }
 
   if (value.validation !== undefined) {
@@ -275,21 +252,17 @@ function renderResult(value: CastLike): string {
   const missing = value.dependencies.filter((dependency) => !dependency.ok);
   for (const dependency of missing) lines.push(`缺依赖 ${dependency.name}：${dependency.hint}`);
 
-  const voice = value.stages['voice'];
-  if (voice !== undefined && voice.ok === true) {
-    lines.push(`配音：${value.voiceProvider ?? '已生成'}${value.voiceName === undefined ? '' : ` · ${value.voiceName}`} → ${value.durationsPath}`);
-  } else if (voice !== undefined) {
-    lines.push(`配音没成功：见下面的引导。`);
+  for (const artifact of value.artifacts) {
+    const size = artifact.bytes === undefined ? '' : `（${String(Math.round(artifact.bytes / 1024))} KB）`;
+    const note = artifact.note === undefined ? '' : ` ${artifact.note}`;
+    lines.push(`  ${artifact.name}：${artifact.state}${size}${note} → ${artifact.path}`);
   }
 
-  const render = value.stages['render'];
-  if (render?.ok === true) {
-    lines.push(`成片：${value.videoPath}${value.voice === 'fresh' ? '（带旁白；字幕由渲染层画）' : '（静音）'}`);
-  } else if (render !== undefined) {
-    lines.push(`出片没成功：见上面的引导（成片路径是 ${value.videoPath}）。`);
+  if (value.voiceProvider !== undefined) {
+    lines.push(`配音用的是 ${value.voiceProvider}${value.voiceName === undefined ? '' : ` · ${value.voiceName}`}`);
   }
+  if (value.voiceNote !== undefined) lines.push(value.voiceNote);
 
-  lines.push(value.nextHint);
   return lines.join('\n');
 }
 
@@ -303,7 +276,7 @@ function registerTool(ctx: Context): void {
   tools.register({
     name: 'foldercast_cast',
     description:
-      'Cast a folder into an explainer video: analyze it, build assets, render a self-contained HTML view, validate the script, and (once the script has been reviewed) render a silent mp4.',
+      'Cast a folder: build the deterministic reading (file list, kinds, sizes, line counts, truncated previews, secret audit) and, unless skipped, its assets (page images, thumbnails, keyframes, extracted text). Also reports what already exists on disk (script, review, durations, film) and validates the script when there is one. Rendering and voice-over are NOT automatic: ask for them explicitly with render / voice.',
     timeoutMs: CAST_TIMEOUT_MS,
     parameters: {
       type: 'object',
@@ -317,15 +290,15 @@ function registerTool(ctx: Context): void {
           type: 'boolean',
           description: 'Skip the asset stage (faster; the script then cannot reference page images or keyframes).',
         },
-        skipRender: {
+        render: {
           type: 'boolean',
           description:
-            'Skip the render stage. Use it when you only need the reading and the HTML view: rendering needs a browser and takes minutes.',
+            'Render the film. Off by default: it needs a browser and takes minutes to tens of minutes. Requires an existing script.json.',
         },
-        skipVoice: {
+        voice: {
           type: 'boolean',
           description:
-            'Skip the voice-over stage. Voice-over runs by default with the built-in macOS "say" provider (no key needed) and can be skipped when only a silent film is wanted.',
+            'Synthesise the narration before rendering. Off by default: it calls TTS (the default provider is the key-free macOS "say"). Requires an existing script.json.',
         },
         ttsProvider: {
           type: 'string',
@@ -343,15 +316,15 @@ function registerTool(ctx: Context): void {
       render: (_args: unknown, value: unknown) => [{ type: 'text', text: renderResult(value as CastLike) }],
     },
     async execute(
-      args: { path: string; skipAssets?: boolean; skipRender?: boolean; skipVoice?: boolean; ttsProvider?: string; ttsVoice?: string },
+      args: { path: string; skipAssets?: boolean; render?: boolean; voice?: boolean; ttsProvider?: string; ttsVoice?: string },
       exec: { signal: AbortSignal },
     ) {
       const result = await cast({
         target: args.path,
         signal: exec.signal,
         skipAssets: args.skipAssets === true,
-        skipRender: args.skipRender === true,
-        skipVoice: args.skipVoice === true,
+        render: args.render === true,
+        voice: args.voice === true,
         ...(args.ttsProvider === undefined ? {} : { ttsProvider: args.ttsProvider }),
         ...(args.ttsVoice === undefined ? {} : { ttsVoice: args.ttsVoice }),
         // 凭据只在宿主提供了 seam 时查（缺了不影响免密钥的 say）
@@ -367,23 +340,13 @@ function registerTool(ctx: Context): void {
         ok: result.ok,
         target: result.target,
         label: result.label,
-        next: result.next,
-        nextHint: result.nextHint,
-        readingPath: result.readingPath,
-        scriptPath: result.scriptPath,
-        htmlPath: result.htmlPath,
-        videoPath: result.videoPath,
-        durationsPath: result.durationsPath,
-        narrationPath: result.narrationPath,
-        reviewPath: result.reviewPath,
-        review: result.review,
-        video: result.video,
-        voice: result.voice,
+        workRoot: result.workRoot,
+        ran: result.ran,
+        artifacts: result.artifacts,
         dependencies: unavailable,
         stages: result.stages,
       };
-      if (result.htmlBytes !== undefined) value.htmlBytes = result.htmlBytes;
-      if (result.videoBytes !== undefined) value.videoBytes = result.videoBytes;
+      if (result.error !== undefined) value.error = result.error;
       if (result.voiceProvider !== undefined) value.voiceProvider = result.voiceProvider;
       if (result.voiceName !== undefined) value.voiceName = result.voiceName;
       if (result.voiceNote !== undefined) value.voiceNote = result.voiceNote;

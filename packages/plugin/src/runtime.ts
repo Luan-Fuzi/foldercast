@@ -44,15 +44,13 @@ export function findPackageRoot(start: string): string | undefined {
 /** 包根：脚本、随包 schema、依赖的 bin 都相对它定位。 */
 export const PACKAGE_ROOT = findPackageRoot(MODULE_DIR) ?? resolve(MODULE_DIR, '..');
 
-export type StageName = 'analyze' | 'assets' | 'validate' | 'html' | 'render' | 'voice';
+export type StageName = 'analyze' | 'assets' | 'validate' | 'render' | 'voice';
 
 /** 阶段脚本所在子目录，两套布局下同名。 */
 const STAGE_DIR: Readonly<Record<StageName, string>> = {
   analyze: 'analyzer',
   assets: 'assets',
   validate: 'validate',
-  // HTML 视图（M6）：只读解读与素材，产出单文件页面。确定性程序，所以归工具做
-  html: 'html',
   // 渲染（M7）：讲稿 + 素材 → mp4（有音轨就用音轨）。需要浏览器，缺浏览器只影响这一步
   render: 'renderer',
   // 配音（M8）：讲稿 → 逐场景音频 + durations.json + 整条音轨。需要 ffmpeg 与一个 TTS
@@ -120,18 +118,14 @@ export function scriptPathFor(target: string): string {
 }
 
 /**
- * 评审结论（M5）。它由 agent 产出、没有 schema，所以这里只定位、不校验：
+ * 评审结论。它由 agent 产出、没有 schema，所以这里只定位、不校验：
  * 校验器管机器能判的，评审管语义。
  */
-/**
- * HTML 视图的落点（M6）。它就是 `<工作根>/out/` 下的成片之一，
- * 与 M7 的视频同一个出口目录。
- */
-export function htmlPathFor(target: string): string {
-  return resolve(workRootFor(target), 'out', 'index.html');
+export function reviewPathFor(target: string): string {
+  return resolve(workRootFor(target), 'review.md');
 }
 
-/** 成片的落点（M7）。与 HTML 视图同一个出口目录，渲染阶段不传 `--out` 时就是它。 */
+/** 成片的落点。渲染阶段不传 `--out` 时就是它。 */
 export function videoPathFor(target: string): string {
   return resolve(workRootFor(target), 'out', 'video.mp4');
 }
@@ -144,10 +138,6 @@ export function durationsPathFor(target: string): string {
 /** 整条旁白音轨（配音阶段拼好的，长度等于场景时长之和）。 */
 export function narrationPathFor(target: string): string {
   return resolve(workRootFor(target), 'audio', 'narration.wav');
-}
-
-export function reviewPathFor(target: string): string {
-  return resolve(workRootFor(target), 'review.md');
 }
 
 export type DependencyName = 'node' | 'dsoffice' | 'ffmpeg' | 'ffprobe' | 'sips' | 'browser' | 'say';
@@ -315,6 +305,11 @@ export type RunResult = {
 };
 
 export type RunOptions = {
+  /**
+   * 这一步的输出是机器可读的 JSON（要交回去解析）。**是就不要按人的阅读长度截断** ——
+   * 截掉尾巴的 JSON 解析不了，会被误读成「没有输出」。
+   */
+  json?: boolean;
   args: readonly string[];
   timeoutMs: number;
   signal?: AbortSignal;
@@ -330,7 +325,14 @@ export type RunOptions = {
 /** 输出留多少字符给模型看：够定位问题，又不会把上下文塞满。 */
 const OUTPUT_TAIL = 4000;
 
-function tail(text: string, limit = OUTPUT_TAIL): string {
+/**
+ * `--json` 阶段的输出上限。**不能按人的阅读长度截**：工具要解析它，截掉尾巴就是一个坏 JSON，
+ * 表现得像「校验器没输出」。实测踩过：解读一重新分析，校验报告就超过 4000 字符，
+ * 于是校验结果整段丢失，只有一句「讲稿有 0 个必须修的问题」。所以给 JSON 一个宽松的上限。
+ */
+const OUTPUT_JSON_LIMIT = 2_000_000;
+
+function tail(text: string, limit: number): string {
   const trimmed = text.trimEnd();
   return trimmed.length <= limit ? trimmed : `…（前文省略）\n${trimmed.slice(-limit)}`;
 }
@@ -345,6 +347,7 @@ function tail(text: string, limit = OUTPUT_TAIL): string {
 export function runStage(stage: StageName, options: RunOptions): Promise<RunResult> {
   const entry = stageEntryPath(stage);
   const started = Date.now();
+  const outputLimit = options.json === true ? OUTPUT_JSON_LIMIT : OUTPUT_TAIL;
 
   // 信号可能**在调用之前就已取消**（模型点了停止、上一阶段刚被取消）。不先查这一下，
   // 监听器永远等不到事件，子进程白跑一趟。
@@ -430,8 +433,8 @@ export function runStage(stage: StageName, options: RunOptions): Promise<RunResu
         ok: code === 0 && !cancelled && !timedOut,
         exitCode: code,
         signal,
-        stdout: tail(stdout),
-        stderr: tail(stderr),
+        stdout: tail(stdout, outputLimit),
+        stderr: tail(stderr, OUTPUT_TAIL),
         ms,
       };
 

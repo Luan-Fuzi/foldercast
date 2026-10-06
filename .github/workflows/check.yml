@@ -43,11 +43,6 @@ jobs:
           pnpm run analyze .
           pnpm run validate .
 
-      # HTML 视图也拿仓库自身跑一遍：这一步只读解读与素材，失败说明模板或图片内联坏了。
-      # runner 上没有 sips（macOS 专有），正好验跨平台回退那条路（缩不了就用原图）。
-      - name: 生成 HTML 视图
-        run: pnpm run html .
-
       # 出片要浏览器，**这一层 CI 里不装**：缺浏览器时渲染阶段必须给出结构化引导并退出 3，
       # 这里正好验那条路径（也验证「缺浏览器不影响别的阶段」）。真出片由本机验收，
       # 判据与证据记在 docs/ROADMAP.md 的 M7 记录里。

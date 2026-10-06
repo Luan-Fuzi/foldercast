@@ -26,13 +26,9 @@ function readingWith(entries: Array<Partial<FoldercastDocument['manifest'][numbe
       totalBytes: 0,
       maxDepth: 1,
       kindCounts: {},
-      languages: {},
-      topDirs: [],
-      roles: {},
       secrets: { excluded: [], rescanned: [] },
     },
     manifest: entries.map((entry) => ({ path: 'a.bin', kind: 'office', ...entry })),
-    graph: { nodes: 0, edges: 0, roots: [], hubs: [], leaves: [], dangling: [] },
   };
 }
 
@@ -76,11 +72,8 @@ describe('回填解读', () => {
     generatedAt: '2026-10-04T00:00:00+08:00',
     source: { root: '/tmp/x' },
     entries: [
-      assetEntry({
-        path: 'src/index.ts',
-        kind: 'code',
-        products: [{ role: 'code', path: 'assets/code/src_index.ts.svg' }],
-      }),
+      // 代码文件在 MVP 里不再产出素材（高亮图已删）：没有产物，回填时就不该给它编一个
+      assetEntry({ path: 'src/index.ts', kind: 'code', products: [] }),
       assetEntry({
         path: 'report.docx',
         kind: 'office',
@@ -95,19 +88,20 @@ describe('回填解读', () => {
     ],
   };
 
-  it('主素材优先取代码图，其次缩略图/封面，最后才取页图', () => {
+  it('主素材按角色优先级取：缩略图 / 封面 / 页图；没有素材的类别不编一个', () => {
     const reading = readingWith([
       { path: 'src/index.ts', kind: 'code' },
       { path: 'report.docx', kind: 'office' },
     ]);
     const report = applyAssetsToReading(reading, manifest, () => '');
 
-    expect(reading.manifest[0]?.asset).toBe('assets/code/src_index.ts.svg');
+    // 代码高亮图已从 MVP 删掉，所以 code 类文件没有素材；office 取逐页图
+    expect(reading.manifest[0]?.asset).toBeUndefined();
     expect(reading.manifest[1]?.asset).toBe('assets/pages/report.docx_p1.png');
-    expect(report.assetsSet).toBe(2);
+    expect(report.assetsSet).toBe(1);
   });
 
-  it('office/pdf 的预览被补上，代码的预览保持 M1 的结果', () => {
+  it('office/pdf 的预览被补上，代码的预览保持分析器的结果', () => {
     const reading = readingWith([
       { path: 'src/index.ts', kind: 'code', preview: '// 示例入口' },
       { path: 'report.docx', kind: 'office' },

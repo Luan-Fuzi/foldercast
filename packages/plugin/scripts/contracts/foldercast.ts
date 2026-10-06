@@ -26,29 +26,10 @@ export const KIND_VALUES = [
 
 export type Kind = (typeof KIND_VALUES)[number];
 
-/** 文件角色。一个文件最多一个。与 schema 的 `$defs.role` 一致。 */
-export const ROLE_VALUES = [
-  'readme',
-  'entry',
-  'config',
-  'test',
-  'doc',
-  'asset',
-  'license',
-  'build',
-] as const;
-
-export type Role = (typeof ROLE_VALUES)[number];
-
 const KIND_SET: ReadonlySet<string> = new Set(KIND_VALUES);
-const ROLE_SET: ReadonlySet<string> = new Set(ROLE_VALUES);
 
 export function isKind(value: unknown): value is Kind {
   return typeof value === 'string' && KIND_SET.has(value);
-}
-
-export function isRole(value: unknown): value is Role {
-  return typeof value === 'string' && ROLE_SET.has(value);
 }
 
 /** 被讲解目录。 */
@@ -76,8 +57,6 @@ export type SourcesSpec = {
   rescan?: string[];
 };
 
-export type TopDir = { path: string; files: number };
-
 export type SecretHit = {
   path: string;
   /** 命中的文件名模式。 */
@@ -90,12 +69,6 @@ export type Stats = {
   maxDepth: number;
   /** 与 kinds 枚举对应。 */
   kindCounts: Partial<Record<Kind, number>>;
-  /** 语言 → 行数。只有识别出语言的文件参与。 */
-  languages: Record<string, number>;
-  /** 文件数最多的子目录，Top 8。 */
-  topDirs: TopDir[];
-  /** 角色 → 文件路径列表。某角色没有文件时该键不出现。 */
-  roles: Partial<Record<Role, string[]>>;
   /** 密钥文件的排除审计（ADR 0007）。 */
   secrets: {
     excluded: SecretHit[];
@@ -103,50 +76,16 @@ export type Stats = {
   };
 };
 
-export type GraphHub = {
-  path: string;
-  /** 入度。 */
-  in: number;
-  /** 出度。 */
-  out?: number;
-};
-
-/** 引用依赖图骨架。边挂在 manifest 里。 */
-export type Graph = {
-  nodes: number;
-  edges: number;
-  /** 无入边 = 入口。 */
-  roots: string[];
-  /** 入度最高 = 最该先讲的枢纽。 */
-  hubs: GraphHub[];
-  /** 无出边。 */
-  leaves: string[];
-  /** 指向不存在的路径，可能是坏引用。 */
-  dangling: string[];
-};
-
-/** 文件清单的一条。路径相对 `source.root`。 */
+/** 文件清单的一条。路径相对 `source.root`。**只放机械事实**：看得见的、数得出来的。 */
 export type ManifestEntry = {
   path: string;
   kind: Kind;
-  role?: Role;
   bytes?: number;
   lines?: number;
-  language?: string;
-  /** 从首个注释或标题提取。 */
-  title?: string;
-  /** 截断预览，≤200 字。 */
+  /** 截断预览，≤200 字。从标题、首个注释或首段提取，机械截断，不做语义判断。 */
   preview?: string;
-  /** 已生成的素材路径（M2 填）。 */
+  /** 已生成的素材路径（素材阶段填）。 */
   asset?: string;
-  /** 它引用了谁。相对 source.root 的路径，≤40 条。 */
-  imports?: string[];
-  /** 真实出度。 */
-  importsCount?: number;
-  /** 谁引用它：按引用方出度排序取前 5。 */
-  importedBy?: string[];
-  /** 真实入度。 */
-  importedByCount?: number;
 };
 
 export type VideoSpec = {
@@ -181,12 +120,11 @@ export type FoldercastDocument = {
   sources: SourcesSpec;
   stats: Stats;
   manifest: ManifestEntry[];
-  graph: Graph;
-  /** 输出规格：由渲染阶段决定，M1 不产出。 */
+  /** 输出规格：由渲染阶段决定，分析器不产出。 */
   video?: VideoSpec;
-  /** 配音配置：由叙事/配音阶段决定，M1 不产出。 */
+  /** 配音配置：由叙事/配音阶段决定，分析器不产出。 */
   voice?: VoiceSpec;
-  /** 风格：由写稿阶段决定，M1 不产出。 */
+  /** 风格：由写稿阶段决定，分析器不产出。 */
   style?: StyleSpec;
 };
 

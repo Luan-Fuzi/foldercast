@@ -1,121 +1,93 @@
 {
   "foldercast": 1,
   "generatedAt": "2026-10-04T17:30:00+08:00",
-
   "source": {
     "root": "/Users/scliang/work/qiuzhao202608/lecture-videos",
     "label": "lecture-videos",
     "focus": []
   },
-
   "sources": {
     "include": [],
-    "exclude": ["node_modules/**", "out/**", "public/audio/**", "package-lock.json"],
-    "kinds": { "archive": false, "binary": false },
+    "exclude": [
+      "node_modules/**",
+      "out/**",
+      "public/audio/**",
+      "package-lock.json"
+    ],
+    "kinds": {
+      "archive": false,
+      "binary": false
+    },
     "maxFiles": 200,
     "maxFileSizeMb": 5,
     "maxDepth": 5,
     "rescan": []
   },
-
   "stats": {
     "totalFiles": 24,
     "totalBytes": 486233,
     "maxDepth": 3,
     "kindCounts": {
-      "code": 6, "text": 2, "markup": 0, "data": 10,
-      "office": 0, "pdf": 0, "image": 4, "video": 0,
-      "audio": 0, "archive": 0, "binary": 0, "other": 2
-    },
-    "languages": { "TypeScript": 1018, "JSON": 420, "Python": 210 },
-    "topDirs": [
-      { "path": "content", "files": 7 },
-      { "path": "src", "files": 6 },
-      { "path": "public/img", "files": 4 }
-    ],
-    "roles": {
-      "readme": ["README.md"],
-      "entry": ["src/index.ts", "package.json"],
-      "config": ["remotion.config.ts", "tsconfig.json"],
-      "doc": ["README.md"]
+      "code": 6,
+      "text": 2,
+      "markup": 0,
+      "data": 10,
+      "office": 0,
+      "pdf": 0,
+      "image": 4,
+      "video": 0,
+      "audio": 0,
+      "archive": 0,
+      "binary": 0,
+      "other": 2
     },
     "secrets": {
       "excluded": [
-        { "path": ".mimo_api_key", "match": "*_key" },
-        { "path": ".env.local", "match": ".env.*" }
+        {
+          "path": ".mimo_api_key",
+          "match": "*_key"
+        },
+        {
+          "path": ".env.local",
+          "match": ".env.*"
+        }
       ],
       "rescanned": []
     }
   },
-
   "manifest": [
     {
       "path": "README.md",
       "kind": "text",
-      "role": "readme",
       "bytes": 2350,
       "lines": 62,
-      "title": "lecture-videos · 数学基础讲解视频管线",
       "preview": "把 autumn-recruitment/00-数学基础 的 7 讲 notebook 做成 Remotion 讲解视频样片，管线三步：配音、预览、渲染。",
-      "asset": "assets/thumbs/README_md.png",
-      "imports": ["src/Root.tsx", "scripts/tts.py"],
-      "importsCount": 2,
-      "importedByCount": 0
+      "asset": "assets/thumbs/README_md.png"
     },
     {
       "path": "src/Root.tsx",
       "kind": "code",
-      "role": "entry",
       "bytes": 4820,
       "lines": 123,
-      "language": "TypeScript",
-      "title": "组合注册与时序",
       "preview": "导出 RemotionRoot，注册 7 个 Composition，用 calculateMetadata 从 durations.json 累加总帧数。",
-      "asset": "assets/code/src_Root_tsx.png",
-      "imports": ["src/scenes/Scene.tsx", "content/00-calculus.json"],
-      "importsCount": 6,
-      "importedBy": ["src/index.ts"],
-      "importedByCount": 4
+      "asset": "assets/code/src_Root_tsx.png"
     },
     {
       "path": "scripts/tts.py",
       "kind": "code",
-      "role": "build",
       "bytes": 6100,
       "lines": 210,
-      "language": "Python",
-      "title": "TTS 适配器",
       "preview": "读取 content/*.json，为每个场景合成音频，实测时长并生成 durations.json。支持 edge 与 mimo 两个 provider。",
-      "asset": "assets/code/scripts_tts_py.png",
-      "importsCount": 0,
-      "importedByCount": 0
+      "asset": "assets/code/scripts_tts_py.png"
     },
     {
       "path": "public/img/math01_eig.png",
       "kind": "image",
-      "role": "asset",
       "bytes": 48200,
-      "title": "单位圆经矩阵变换为椭圆",
       "preview": "1320×880 PNG，特征向量方向不变仅被拉伸",
-      "asset": "assets/thumbs/math01_eig.png",
-      "importsCount": 0,
-      "importedBy": ["content/00-calculus.json"],
-      "importedByCount": 1
+      "asset": "assets/thumbs/math01_eig.png"
     }
   ],
-
-  "graph": {
-    "nodes": 24,
-    "edges": 31,
-    "roots": ["src/index.ts", "README.md"],
-    "hubs": [
-      { "path": "src/Root.tsx", "in": 4, "out": 6 },
-      { "path": "content/00-calculus.json", "in": 1, "out": 0 }
-    ],
-    "leaves": ["public/img/math01_eig.png"],
-    "dangling": []
-  },
-
   "video": {
     "width": 1920,
     "height": 1080,
@@ -123,14 +95,12 @@
     "targetDurationSec": 150,
     "language": "zh-CN"
   },
-
   "voice": {
     "provider": "mimo",
     "voice": "白桦",
     "style": "自然、清晰、适合知识讲解视频的旁白语气",
     "format": "wav"
   },
-
   "style": {
     "preset": "swiss",
     "overrides": {

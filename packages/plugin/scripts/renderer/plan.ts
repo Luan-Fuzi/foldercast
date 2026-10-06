@@ -14,7 +14,7 @@
  * 对应到画面上是哪个组件、引用了哪张图」。
  */
 import { primaryProduct, type AssetEntry, type AssetManifest, type AssetProduct, type AssetRole } from '../contracts/assets.ts';
-import type { FoldercastDocument, Kind, ManifestEntry, Role } from '../contracts/foldercast.ts';
+import type { FoldercastDocument, Kind, ManifestEntry } from '../contracts/foldercast.ts';
 import type { DurationsDocument, SceneDuration } from '../contracts/durations.ts';
 import type { Scene, SceneType, ScriptDocument } from '../contracts/script.ts';
 import { allocateByWidth } from '../contracts/spans.ts';
@@ -89,15 +89,8 @@ export type InventoryScene = SceneCommon & {
 /** 展示用的尺寸/行数摘要。数字都来自解读或素材清单，页面不自己估。 */
 export type FileMeta = {
   kind: Kind;
-  role?: Role;
   bytes?: number;
   lines?: number;
-  language?: string;
-};
-
-export type FileCode = {
-  /** 高亮行区间（`focusLines`）。代码素材图只画文件开头若干行，所以它在图上未必可见。 */
-  focusLines?: [number, number];
 };
 
 export type FileScene = SceneCommon & {
@@ -106,7 +99,6 @@ export type FileScene = SceneCommon & {
   meta: FileMeta;
   preview?: string;
   media?: Media;
-  code?: FileCode;
   /** 素材缺失的原因（讲稿引用了没生成的素材时写在这里，画面照样出）。 */
   note?: string;
 };
@@ -212,12 +204,11 @@ export function metaLine(parts: (string | undefined)[]): string {
 }
 
 /** 文件的一行摘要：`代码 · 4.1 KB · 137 行 · TypeScript`。每一项都来自解读。 */
-export function fileMetaText(meta: { kind: Kind; bytes?: number; lines?: number; language?: string }): string {
+export function fileMetaText(meta: { kind: Kind; bytes?: number; lines?: number }): string {
   return metaLine([
     kindLabel(meta.kind),
     meta.bytes === undefined ? undefined : humanBytes(meta.bytes),
     meta.lines === undefined ? undefined : `${meta.lines} 行`,
-    meta.language,
   ]);
 }
 
@@ -555,23 +546,17 @@ function fileScene(scene: Scene, common: SceneCommon, build: SceneBuild): FileSc
   const entry = build.index.get(path);
   const resolved = resolveProduct(path, scene.asset, 'file', build);
 
-  const code: FileCode | undefined =
-    resolved?.role === 'code' ? { focusLines: scene.focusLines } : undefined;
-
   return {
     ...common,
     type: 'file',
     path,
     meta: {
       kind: entry?.kind ?? 'other',
-      role: entry?.role,
       bytes: entry?.bytes,
       lines: entry?.lines,
-      language: entry?.language,
     },
     preview: previewOf(entry),
     media: resolved?.media,
-    code,
     note: resolved === undefined || resolved.media === undefined ? resolved?.note : undefined,
   };
 }
@@ -708,8 +693,7 @@ function isAssetPath(path: string): boolean {
 }
 
 function previewOf(entry: ManifestEntry | undefined): string | undefined {
-  if (entry === undefined) return undefined;
-  return entry.preview ?? entry.title;
+  return entry?.preview;
 }
 
 function isRemote(path: string): boolean {

@@ -8,7 +8,21 @@
 **核心产物是「目录解读」，不是视频。** 解读是一份结构化的事实：这里有什么、怎么组织的、谁引用谁、哪些是关键。视频、讲解 poster 都是它的视图。
 详见 [PRODUCT.md](docs/PRODUCT.md#3-解读是事实来源讲稿是它的视图)。
 
-**当前状态：M1–M8 完成。** 分析器能把任意目录变成 `foldercast.json`（21.3 万文件 0.34 秒），素材阶段能把解读里的图片/视频/Office/PDF/代码变成可用素材并**增量重算**（第二次运行毫秒级命中），契约校验能拦住编出来的路径、场景字段错误与超长字幕。插件 `dsh-foldercast` 已能装进 DSH：对话里说「把这个目录讲一遍」就会触发工具。skill 带完整的工作流与判据（通读策略、场景选择、写稿判据、评审判据），**写稿由主 agent 做、评审由另一个独立 subagent 做**，结论写到 `<目录>/.foldercast/review.md`；评审通过后再调一次工具就**配音并出片** —— 默认用 macOS 自带的 `say`（免密钥、装了就能跑），逐场景合成、`ffprobe` 实测时长、字幕与声音对齐，成片带旁白；三十行代码换一个云端音色（小米 MiMo）也行。画面八种场景、字幕画在渲染层，同一份讲稿渲染两次**逐帧一致**，换音色重跑**画面不变**。
+**当前状态：已压缩成 MVP。** 分析器把任意目录变成 `foldercast.json`（21.3 万文件 0.34 秒），
+里面**只有机械事实**：每条文件的路径、类别（12 类）、字节、行数、截断预览，外加密钥排除审计与
+规模审计（丢了多少文件、跳过了多少）。素材阶段把解读里的图片 / 视频 / Office / PDF 变成可用素材
+并**增量重算**（第二次运行毫秒级命中），Office/PDF 同时抽出全文 Markdown 供通读。契约校验能拦住
+编出来的路径、场景字段错误与超长字幕。插件 `dsh-foldercast` 装进 DSH 后，对话里说「把这个目录
+讲一遍」就会触发工具；skill 带完整的工作流与判据，**写稿由主 agent 做、评审由另一个独立 subagent
+做**，结论写到 `<目录>/.foldercast/review.md`。成片要显式要求（`render: true`，需配音再加
+`voice: true`）：默认用 macOS 自带的 `say`（免密钥），逐场景合成、`ffprobe` 实测时长、字幕与
+声音对齐；画面八种场景、字幕画在渲染层，同一份讲稿渲染两次**逐帧一致**，换音色重跑**画面不变**。
+
+**这一版刻意去掉的东西**：HTML 视图模块、角色推断（`roles`）、引用依赖图与枢纽排名（`graph` /
+`imports`）、代码高亮素材、以及工具里那套 `next` 状态枚举与自动串联。判据是**程序只给模型自己
+得不到的东西**——规模上的穷尽性与机械上的确定性；「哪个重要、怎么组织」是模型读内容后的判断。
+工具现在只报事实：磁盘上有什么、各自什么状态（`missing` / `stale` / `fresh`），下一步做什么由
+skill 与模型决定。
 
 **形态：第一版是 DSH 插件**（工具 + skill + 脚本），编排层是 DSH 主 agent。**只能在 DeepSeek Harness 内使用**——独立 CLI 与脱离 DSH 的用法推迟，是否做以后再评估（[ADR 0008](docs/decisions/0008-plugin-first.md)）。
 
@@ -124,18 +138,17 @@
 | [examples/script.example.json](examples/script.example.json) | 与上面配套的讲稿示例，已通过 schema 校验 |
 | [styles/](styles/) | 四套风格预设，token 键集合完全一致（31 个），可互换 |
 
-## 现在能跑的六步
+## 现在能跑的五步
 
 ```bash
 pnpm analyze  <目录>   # 目录 → 解读，写到 <目录>/.foldercast/foldercast.json
 pnpm assets   <目录>   # 解读 → 素材，写到 <目录>/.foldercast/assets/
-pnpm html     <目录>   # 解读 + 素材 → 单文件页面，写到 <目录>/.foldercast/out/index.html
 pnpm validate <目录>   # 校验解读、讲稿与配音产物（退出码 0/1/2）
 pnpm voice    <目录>   # 讲稿 → 逐场景音频 + 实测时长，写到 <目录>/.foldercast/durations.json
 pnpm render   <目录>   # 讲稿 + 素材 + 音轨 → mp4，写到 <目录>/.foldercast/out/video.mp4
 ```
 
-六个脚本都能**脱离 DSH 直跑**（`node packages/plugin/scripts/<阶段>/main.ts <目录>`），仓库内
+五个脚本都能**脱离 DSH 直跑**（`node packages/plugin/scripts/<阶段>/main.ts <目录>`），仓库内
 Node 22.19+ 直接运行 TypeScript，不需要构建步骤。加 `--json` 可拿到机器可读的报告。
 
 **配音默认免密钥**：`say` 是 macOS 自带的，不指定音色时它自动挑一个中文音色（系统默认是
@@ -145,8 +158,12 @@ Node 22.19+ 直接运行 TypeScript，不需要构建步骤。加 `--json` 可�
 
 **渲染要浏览器**，且只在出片时需要：缺浏览器时脚本**不会替你下载**，而是打印三种办法
 （装 Chrome / `npx remotion browser ensure` / `FOLDERCAST_BROWSER=<路径>`）并以退出码 3 结束。
-分析、素材、页面、校验都不需要浏览器。调画面用 `pnpm render <目录> --still <秒>`（出一张静帧）
+分析与校验都不需要浏览器。调画面用 `pnpm render <目录> --still <秒>`（出一张静帧）
 或 `--frames <A-B>`（出一小段），不必整片重渲。
+
+**工具默认不出片、不配音**：`foldercast_cast` 只跑分析与素材（素材可用 `skipAssets` 跳过），
+并把磁盘上现有的产物报回来。要成片就显式传 `render: true`（要先配音就同时传 `voice: true`）——
+渲染几分钟到几十分钟、配音会消耗 TTS 配额，不该由「顺手调一次工具」触发。
 
 **中断渲染之后**可能留下一个后台 Chrome 进程（`puppeteer_dev_chrome_profile-*`）。它不影响正确性，
 但会抢 CPU、让「逐帧一致」在满载时不再逐位相同 —— 实测踩过一次，杀掉它就恢复正常：
@@ -212,10 +229,9 @@ foldercast/
 │       ├── locale/        中英文标题与描述
 │       └── scripts/
 │           ├── contracts/ 四份 JSON 契约的类型 + 字幕切分与时长分配，各阶段共用
-│           ├── analyzer/  TypeScript：目录 → 解读
-│           ├── assets/    TypeScript：解读 → 素材（缩略图/逐页图/关键帧/高亮图/提取文本）
+│           ├── analyzer/  TypeScript：目录 → 解读（遍历、分类、密钥审计、每文件机械事实）
+│           ├── assets/    TypeScript：解读 → 素材（缩略图 / 关键帧 / 逐页图 / 提取文本）
 │           ├── validate/  TypeScript：解读与讲稿的契约校验（含幻觉路径拦截）
-│           ├── html/      TypeScript：解读 + 素材 → 单文件静态页面
 │           ├── renderer/  TypeScript + Remotion：讲稿 + 素材（+ 音轨）→ mp4
 │           └── voice/     TypeScript：讲稿 → 逐场景音频 + 实测时长 + durations.json
 ├── styles/                风格预设（数据，非代码）

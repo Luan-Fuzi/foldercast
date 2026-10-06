@@ -13,7 +13,6 @@ import {
   type AssetProduct,
 } from '../contracts/assets.ts';
 import type { FoldercastDocument, Kind, ManifestEntry } from '../contracts/foldercast.ts';
-import { renderCodeImage } from './code.ts';
 import { applyAssetsToReading, type EnrichReport } from './enrich.ts';
 import {
   assetManifestPathFor,
@@ -30,10 +29,9 @@ import { collectPages, extractOfficeText, recalculateWorkbook, renderDocumentPag
 import { uniqueSlug } from './slug.ts';
 
 /** 本阶段会产出素材的类型。文本/数据/音频等不需要素材（SPEC-data-format.md 三）。 */
-export const HANDLED_KINDS: ReadonlySet<Kind> = new Set<Kind>(['image', 'video', 'office', 'pdf', 'code']);
+export const HANDLED_KINDS: ReadonlySet<Kind> = new Set<Kind>(['image', 'video', 'office', 'pdf']);
 
 /** 代码高亮图最多读这么多字节，避免把超大文件读进内存。 */
-const CODE_READ_LIMIT = 200 * 1024;
 
 export type StageOptions = {
   /** 被讲解目录（绝对路径）。 */
@@ -78,12 +76,6 @@ type ProcessContext = {
 type ProcessOutcome =
   | { ok: true; products: AssetProduct[]; text?: AssetEntry['text']; meta?: AssetEntry['meta'] }
   | { ok: false; error: string };
-
-/** 代码高亮图的输入：只读前面一段，够画图即可。 */
-function readCodeSample(absolute: string): string {
-  const text = readFileSync(absolute, 'utf8');
-  return text.length <= CODE_READ_LIMIT ? text : text.slice(0, CODE_READ_LIMIT);
-}
 
 /** 产物都写在 `<工作根>/assets/` 下；清单里记的是**相对工作根**的路径，所以带 assets/ 前缀。 */
 function assetFile(workRoot: string, relative: string): { absolute: string; relative: string } {
@@ -168,18 +160,6 @@ async function processEntry(context: ProcessContext): Promise<ProcessOutcome> {
 
       rmSync(tempDir, { recursive: true, force: true });
       return { ok: true, products, text, meta: { pageCount: rendered.pageCount } };
-    }
-
-    case 'code': {
-      const image = await renderCodeImage({
-        code: readCodeSample(absolute),
-        ...(entry.language === undefined ? {} : { language: entry.language }),
-      });
-      const target = assetFile(workRoot, `code/${slug}.svg`);
-      mkdirSync(dirname(target.absolute), { recursive: true });
-      writeFileSync(target.absolute, image.svg);
-      products.push({ role: 'code', path: target.relative });
-      return { ok: true, products };
     }
 
     default:

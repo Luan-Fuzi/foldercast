@@ -4,103 +4,135 @@
   "title": "foldercast 目录解读",
   "description": "对一个目录的结构化解读：结构、统计、文件清单、引用依赖图。由分析器产出，可重算。字段语义见 docs/specs/SPEC-data-format.md。",
   "type": "object",
-  "required": ["foldercast", "source"],
+  "required": [
+    "foldercast",
+    "source"
+  ],
   "additionalProperties": false,
-
   "$defs": {
-    "role": {
-      "description": "文件角色。一个文件最多一个角色，无法判定时缺省。定义见 docs/specs/SPEC-data-format.md。",
-      "enum": ["readme", "entry", "config", "test", "doc", "asset", "license", "build"]
-    },
-
     "kind": {
       "description": "文件内容类别。对应需求 (a)-(e) 及其余。",
-      "enum": ["code", "text", "markup", "data", "office", "pdf", "image", "video", "audio", "archive", "binary", "other"]
+      "enum": [
+        "code",
+        "text",
+        "markup",
+        "data",
+        "office",
+        "pdf",
+        "image",
+        "video",
+        "audio",
+        "archive",
+        "binary",
+        "other"
+      ]
     }
   },
-
   "properties": {
     "foldercast": {
-      "type": "integer", "const": 1,
+      "type": "integer",
+      "const": 1,
       "description": "格式版本。破坏性变更时递增；读取方遇到未知版本应报错而非猜测。"
     },
-    "generatedAt": { "type": "string", "format": "date-time" },
-
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
     "source": {
       "type": "object",
-      "required": ["root"],
+      "required": [
+        "root"
+      ],
       "properties": {
-        "root": { "type": "string", "description": "被讲解目录的绝对路径" },
-        "label": { "type": "string", "description": "展示用名称，默认取目录名" },
+        "root": {
+          "type": "string",
+          "description": "被讲解目录的绝对路径"
+        },
+        "label": {
+          "type": "string",
+          "description": "展示用名称，默认取目录名"
+        },
         "focus": {
-          "type": "array", "items": { "type": "string" },
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
           "description": "只讲这些子路径"
         }
       },
       "additionalProperties": false
     },
-
     "sources": {
       "type": "object",
       "description": "内容筛选（需求维度 2）。三级筛选按顺序生效。",
       "properties": {
         "include": {
-          "type": "array", "items": { "type": "string" },
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
           "description": "白名单 glob，空数组表示全目录"
         },
         "exclude": {
-          "type": "array", "items": { "type": "string" },
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
           "description": "gitignore 风格。前缀 ! 表示重新包含；后出现的规则覆盖前面的。"
         },
         "kinds": {
           "type": "object",
           "description": "类型级开关，false 表示整类内容不参与",
-          "additionalProperties": { "type": "boolean" }
+          "additionalProperties": {
+            "type": "boolean"
+          }
         },
-        "maxFiles": { "type": "integer", "minimum": 1, "default": 200 },
-        "maxFileSizeMb": { "type": "number", "minimum": 0, "default": 5 },
-        "maxDepth": { "type": "integer", "minimum": 1, "default": 6 },
+        "maxFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 200
+        },
+        "maxFileSizeMb": {
+          "type": "number",
+          "minimum": 0,
+          "default": 5
+        },
+        "maxDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 6
+        },
         "rescan": {
-          "type": "array", "items": { "type": "string" },
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
           "description": "按文件名命中密钥判据、但用户判定该读的文件。列在这里的路径即使命中密钥判据也会被读取，并出现在 stats.secrets.rescanned 里。"
         }
       },
       "additionalProperties": false
     },
-
     "stats": {
       "type": "object",
       "description": "由程序产出的分析统计，供写稿阶段引用",
       "properties": {
-        "totalFiles": { "type": "integer", "minimum": 0 },
-        "totalBytes": { "type": "integer", "minimum": 0 },
-        "maxDepth": { "type": "integer", "minimum": 0 },
+        "totalFiles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxDepth": {
+          "type": "integer",
+          "minimum": 0
+        },
         "kindCounts": {
           "type": "object",
-          "additionalProperties": { "type": "integer", "minimum": 0 }
-        },
-        "languages": {
-          "type": "object",
-          "description": "语言 → 代码行数",
-          "additionalProperties": { "type": "integer", "minimum": 0 }
-        },
-        "topDirs": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["path", "files"],
-            "properties": {
-              "path": { "type": "string" },
-              "files": { "type": "integer", "minimum": 0 }
-            },
-            "additionalProperties": false
-          }
-        },
-        "roles": {
-          "type": "object",
-          "description": "角色 → 文件路径列表",
           "additionalProperties": {
-            "type": "array", "items": { "type": "string" }
+            "type": "integer",
+            "minimum": 0
           }
         },
         "secrets": {
@@ -111,16 +143,27 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["path", "match"],
+                "required": [
+                  "path",
+                  "match"
+                ],
                 "properties": {
-                  "path": { "type": "string" },
-                  "match": { "type": "string", "description": "命中的文件名模式" }
+                  "path": {
+                    "type": "string"
+                  },
+                  "match": {
+                    "type": "string",
+                    "description": "命中的文件名模式"
+                  }
                 },
                 "additionalProperties": false
               }
             },
             "rescanned": {
-              "type": "array", "items": { "type": "string" },
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
               "description": "用户用 sources.rescan 显式放回的文件"
             }
           },
@@ -129,92 +172,76 @@
       },
       "additionalProperties": false
     },
-
-    "graph": {
-      "type": "object",
-      "description": "引用依赖图骨架。边挂在 manifest 里，此处只放结论，便于大图不必整体读入。",
-      "properties": {
-        "nodes": { "type": "integer", "minimum": 0 },
-        "edges": { "type": "integer", "minimum": 0 },
-        "roots": {
-          "type": "array", "items": { "type": "string" },
-          "description": "无入边 = 入口文件"
-        },
-        "hubs": {
-          "type": "array",
-          "description": "入度最高 = 最该先讲的枢纽",
-          "items": {
-            "type": "object",
-            "required": ["path", "in"],
-            "properties": {
-              "path": { "type": "string" },
-              "in": { "type": "integer", "minimum": 0 },
-              "out": { "type": "integer", "minimum": 0 }
-            },
-            "additionalProperties": false
-          }
-        },
-        "leaves": {
-          "type": "array", "items": { "type": "string" },
-          "description": "无出边"
-        },
-        "dangling": {
-          "type": "array", "items": { "type": "string" },
-          "description": "指向不存在的路径，可能是坏引用"
-        }
-      },
-      "additionalProperties": false
-    },
-
     "manifest": {
       "type": "array",
       "description": "文件清单。这是写稿阶段模型看到的主要内容。",
       "items": {
         "type": "object",
-        "required": ["path", "kind"],
+        "required": [
+          "path",
+          "kind"
+        ],
         "properties": {
-          "path": { "type": "string", "description": "相对 source.root" },
-          "kind": { "$ref": "#/$defs/kind" },
-          "role": { "$ref": "#/$defs/role" },
-          "bytes": { "type": "integer", "minimum": 0 },
-          "lines": { "type": "integer", "minimum": 0 },
-          "language": { "type": "string" },
-          "title": { "type": "string", "description": "从首个注释或标题提取" },
+          "path": {
+            "type": "string",
+            "description": "相对 source.root"
+          },
+          "kind": {
+            "$ref": "#/$defs/kind"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lines": {
+            "type": "integer",
+            "minimum": 0
+          },
           "preview": {
-            "type": "string", "maxLength": 200,
+            "type": "string",
+            "maxLength": 200,
             "description": "截断预览，提取策略按 kind 分（见 docs/specs/SPEC-data-format.md）"
           },
-          "asset": { "type": "string", "description": "已生成的素材路径" },
-          "imports": {
-            "type": "array", "items": { "type": "string" },
-            "description": "它引用了谁。相对 source.root 的路径，≤40 条"
-          },
-          "importsCount": { "type": "integer", "minimum": 0, "description": "真实出度，imports 被截断时用" },
-          "importedBy": {
-            "type": "array", "items": { "type": "string" },
-            "description": "谁引用它：按引用方出度排序取前 5"
-          },
-          "importedByCount": { "type": "integer", "minimum": 0, "description": "真实入度，反映枢纽地位" }
+          "asset": {
+            "type": "string",
+            "description": "已生成的素材路径"
+          }
         },
         "additionalProperties": false
       }
     },
-
     "video": {
       "type": "object",
       "properties": {
-        "width": { "type": "integer", "minimum": 1, "default": 1920 },
-        "height": { "type": "integer", "minimum": 1, "default": 1080 },
-        "fps": { "type": "integer", "minimum": 1, "default": 30 },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1920
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1080
+        },
+        "fps": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        },
         "targetDurationSec": {
-          "type": ["integer", "null"],
+          "type": [
+            "integer",
+            "null"
+          ],
           "description": "期望时长，软约束。null 表示由内容决定。写稿阶段用它反推字数上限。"
         },
-        "language": { "type": "string", "default": "zh-CN" }
+        "language": {
+          "type": "string",
+          "default": "zh-CN"
+        }
       },
       "additionalProperties": false
     },
-
     "voice": {
       "type": "object",
       "description": "配音配置（需求 R6）。provider 与 voice 是 provider 内的字符串，不做跨 provider 统一枚举。实际使用的 provider 与音色以阶段③产出的 durations.json 为准。",
@@ -233,16 +260,20 @@
         },
         "format": {
           "type": "string",
-          "enum": ["wav", "mp3"],
+          "enum": [
+            "wav",
+            "mp3"
+          ],
           "description": "音频格式。默认 wav；MiMo 需显式传 mp3 才输出 mp3"
         }
       },
       "additionalProperties": false
     },
-
     "style": {
       "type": "object",
-      "required": ["preset"],
+      "required": [
+        "preset"
+      ],
       "properties": {
         "preset": {
           "type": "string",
@@ -251,17 +282,29 @@
         "overrides": {
           "type": "object",
           "description": "覆盖预设里的任意 token。键为点分路径，如 palette.bg。只允许覆盖已存在的 token。",
-          "additionalProperties": { "type": ["string", "number", "boolean"] }
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
         },
         "natural": {
           "type": "string",
           "description": "用户的自然语言风格描述。由写稿阶段解析成 overrides，解析后回写。"
         },
         "unresolved": {
-          "type": "array", "items": { "type": "string" },
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
           "description": "无法映射到 token 的描述片段。不静默丢弃。"
         },
-        "resolvedAt": { "type": "string", "format": "date-time" }
+        "resolvedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
       "additionalProperties": false
     }

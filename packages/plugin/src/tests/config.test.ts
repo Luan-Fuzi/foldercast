@@ -2,8 +2,9 @@
  * 设置页（Config schema）与设置解析。
  *
  * schema 是宿主生成设置页的唯一依据，这里钉住它的结构（配音/渲染/页面三组、provider
- * 枚举含 edge 与 mimo 预留位）；`resolveSettings` 要认三种形态 —— volatile 引用
- * （设置页保存后的活值）、普通值（profile patch 与测试）、缺省 —— 并把类型不对的值当没配。
+ * 枚举 edge 与 mimo、没有 say 也没有语速字段）；`resolveSettings` 要认三种形态 ——
+ * volatile 引用（设置页保存后的活值）、普通值（profile patch 与测试）、缺省 ——
+ * 并把类型不对的值当没配。
  */
 import { describe, expect, it } from 'vitest';
 import { Config, resolveSettings, type RawConfig } from '../config.ts';
@@ -24,12 +25,14 @@ describe('Config schema（设置页的形状）', () => {
     expect(text).toContain('page');
   });
 
-  it('provider 是 say/edge/mimo 枚举（edge 与 mimo 是预留位）', () => {
-    expect(String(Config)).toContain('"say" | "edge" | "mimo"');
+  it('provider 是 edge/mimo 枚举（默认 edge），没有 say 也没有语速字段', () => {
+    expect(String(Config)).toContain('"edge" | "mimo"');
+    expect(String(Config)).not.toContain('say');
+    expect(String(Config)).not.toContain('rate');
   });
 
   it('解析后的 volatile 字段是引用（get 的值跟着走）', () => {
-    const resolved = Config({ voice: { voice: 'Tingting' } }) as unknown as RawConfig & {
+    const resolved = Config({ voice: { voice: 'zh-CN-XiaoxiaoNeural' } }) as unknown as RawConfig & {
       voice?: { voice?: { get(): unknown } };
     };
     const field = resolved.voice?.voice;
@@ -48,15 +51,14 @@ describe('resolveSettings（三种形态都认）', () => {
   it('普通值（profile patch / 测试的形状）', () => {
     expect(
       resolveSettings({
-        voice: { provider: 'edge', voice: 'Tingting', style: '自然讲解语气', rate: 200 },
+        voice: { provider: 'mimo', voice: '茉莉', style: '自然讲解语气' },
         render: { browserPath: '/usr/bin/chromium', concurrency: 2 },
         page: { style: 'plain' },
       }),
     ).toEqual({
-      provider: 'edge',
-      voiceName: 'Tingting',
+      provider: 'mimo',
+      voiceName: '茉莉',
       voiceStyle: '自然讲解语气',
-      voiceRate: 200,
       browserPath: '/usr/bin/chromium',
       concurrency: 2,
       pageStyle: 'plain',
@@ -64,20 +66,20 @@ describe('resolveSettings（三种形态都认）', () => {
   });
 
   it('volatile 引用：读 get()，且读到的是当前值', () => {
-    const voice = ref('Tingting');
+    const voice = ref('zh-CN-XiaoxiaoNeural');
     const config: RawConfig = { voice: { voice } };
-    expect(resolveSettings(config).voiceName).toBe('Tingting');
+    expect(resolveSettings(config).voiceName).toBe('zh-CN-XiaoxiaoNeural');
     // 模拟设置页保存了新值：同一个引用，下一次工具调用读到新的
     (config.voice as { voice: unknown }).voice = {
-      get: () => 'Meijia',
+      get: () => 'zh-CN-YunjianNeural',
     };
-    expect(resolveSettings(config).voiceName).toBe('Meijia');
+    expect(resolveSettings(config).voiceName).toBe('zh-CN-YunjianNeural');
   });
 
-  it('类型不对、空串、越界的值一律当没配', () => {
+  it('类型不对、空串、越界的值一律当没配（say 已删，选了它也当没配）', () => {
     expect(
       resolveSettings({
-        voice: { provider: 'elevenlabs', voice: '   ', rate: 9999 },
+        voice: { provider: 'say', voice: '   ' },
         render: { browserPath: '', concurrency: 1.5 },
       }),
     ).toEqual({});

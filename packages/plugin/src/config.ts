@@ -6,9 +6,8 @@
  * 解析出来的 volatile 字段是「带 `get()` 的对象」，不是普通值，`resolveSettings` 负责解包
  * （普通值与缺省也认，那是 profile patch 与测试的形状）。
  *
- * `edge` / `mimo` 在这里是**已定接口、未接实现**的枚举位（P0 seam，见 docs/decisions/0002）：
- * voice-engine 分支把实现装进 `voice/providers/` 后，`cast.ts` 无需再改 —— provider 名
- * 经 `--provider` 透传给配音阶段。
+ * 两个 provider 都是云端（配音需要网络，见 docs/decisions/0002）：`edge` 免密钥（默认），
+ * `mimo` 要 `MIMO_API_KEY`。provider 名经 `--provider` 透传给配音阶段。
  */
 import z from '@deepseek-ai/schemastery';
 
@@ -16,18 +15,17 @@ export const Config = z.object({
   voice: z
     .object({
       provider: z
-        .union(['say', 'edge', 'mimo'])
-        .default('say')
+        .union(['edge', 'mimo'])
+        .default('edge')
         .volatile()
         .description(
-          '配音引擎。当前只实现了 say（macOS 自带、免密钥）；edge / mimo 由 voice-engine 分支接入，选了会提示未实现',
+          '配音引擎（都要网络）。edge 免密钥（默认）；mimo 中文更自然，需要 MIMO_API_KEY（缺密钥时配音以退出码 4 结束）',
         ),
-      voice: z.string().volatile().description('音色名（provider 各自的叫法）。留空用默认（say 自动挑中文音色）'),
+      voice: z.string().volatile().description('音色名（provider 各自的叫法，如 edge 的 zh-CN-XiaoxiaoNeural）。留空用默认中文音色'),
       style: z
         .string()
         .volatile()
-        .description('「怎么读」的自然语描述（如「自然、清晰的讲解语气」）。mimo 落在风格指令，say 只认语速数字'),
-      rate: z.number().min(60).max(400).volatile().description('语速（字/分）。留空用讲稿里的或系统默认'),
+        .description('「怎么读」的自然语描述（如「自然、清晰的讲解语气」）。mimo 落在风格指令；edge 表达不了，忽略'),
     })
     .description('配音'),
   render: z
@@ -56,11 +54,10 @@ export const Config = z.object({
 
 /** 解析后的设置（全部可选：没配就是现在的默认行为）。 */
 export type FoldercastSettings = {
-  /** 配置里选的引擎。'say' 是当前唯一实现；'edge' / 'mimo' 是已定接口的预留位。 */
-  provider?: 'say' | 'edge' | 'mimo';
+  /** 配置里选的引擎。默认 `edge`（免密钥）；`mimo` 要 `MIMO_API_KEY`。 */
+  provider?: 'edge' | 'mimo';
   voiceName?: string;
   voiceStyle?: string;
-  voiceRate?: number;
   browserPath?: string;
   concurrency?: number;
   pageStyle?: string;
@@ -68,7 +65,7 @@ export type FoldercastSettings = {
 
 /** 宿主递进来的原始配置：字段可能是 volatile 引用、普通值或缺省。 */
 export type RawConfig = {
-  voice?: { provider?: unknown; voice?: unknown; style?: unknown; rate?: unknown };
+  voice?: { provider?: unknown; voice?: unknown; style?: unknown };
   render?: { browserPath?: unknown; concurrency?: unknown };
   page?: { style?: unknown };
 };
@@ -87,16 +84,14 @@ export function resolveSettings(config?: RawConfig): FoldercastSettings {
   const provider = read(config?.voice?.provider);
   const voiceName = read(config?.voice?.voice);
   const voiceStyle = read(config?.voice?.style);
-  const rate = read(config?.voice?.rate);
   const browserPath = read(config?.render?.browserPath);
   const concurrency = read(config?.render?.concurrency);
   const pageStyle = read(config?.page?.style);
 
   return {
-    ...(provider === 'say' || provider === 'edge' || provider === 'mimo' ? { provider } : {}),
+    ...(provider === 'edge' || provider === 'mimo' ? { provider } : {}),
     ...(typeof voiceName === 'string' && voiceName.trim() !== '' ? { voiceName } : {}),
     ...(typeof voiceStyle === 'string' && voiceStyle.trim() !== '' ? { voiceStyle } : {}),
-    ...(typeof rate === 'number' && Number.isFinite(rate) && rate >= 60 && rate <= 400 ? { voiceRate: rate } : {}),
     ...(typeof browserPath === 'string' && browserPath.trim() !== '' ? { browserPath } : {}),
     ...(typeof concurrency === 'number' && Number.isInteger(concurrency) && concurrency >= 1 && concurrency <= 8
       ? { concurrency }

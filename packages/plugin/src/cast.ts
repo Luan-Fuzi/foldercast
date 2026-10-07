@@ -84,9 +84,9 @@ export type CastOptions = {
   signal?: AbortSignal;
   /** 出片。**默认不出**：渲染要浏览器、本机几分钟到几十分钟，必须是显式要求。 */
   render?: boolean;
-  /** 配音。**默认不配**：要跑 say / ffmpeg。 */
+  /** 配音。**默认不配**：要跑云端 TTS 与 ffmpeg。 */
   voice?: boolean;
-  /** say 的系统音色名。缺省自动挑中文音色。 */
+  /** 音色名（provider 各自的叫法）。缺省用默认中文音色。 */
   voiceName?: string;
   /** 已存在的音频重新合成。 */
   forceVoice?: boolean;
@@ -276,10 +276,10 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     if (!existsSync(scriptPath)) {
       return { ...finish(validation === undefined ? {} : { validation }), ok: false, error: `还没有讲稿：${scriptPath}。先写稿再配音。` };
     }
-    // provider 由设置页定（`--provider` 透传给配音阶段，未实现的引擎在那里报「未实现」）。
-    // `say` 是本地命令才预检它；云端 provider 缺的密钥由其 preflight 报（带引导，退出码 4）。
-    const provider = options.settings?.provider ?? 'say';
-    const missing = [...(provider === 'say' ? (['say'] as const) : []), 'ffmpeg' as const, 'ffprobe' as const].filter(
+    // provider 由设置页定（`--provider` 透传，默认 edge，注册表外的引擎在那里报错）。
+    // 这里只预检 ffmpeg / ffprobe；provider 自身的依赖（如 mimo 的密钥）由它的
+    // preflight 报（带引导，缺密钥用专用退出码 4）。
+    const missing = ['ffmpeg' as const, 'ffprobe' as const].filter(
       (name) => dependencies.find((dependency) => dependency.name === name)?.ok !== true,
     );
     if (missing.length > 0) {
@@ -288,10 +288,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     }
     const scriptVoice = readScriptVoice(scriptPath);
     const wanted = options.voiceName ?? scriptVoice.voice ?? options.settings?.voiceName;
-    const style =
-      scriptVoice.style ??
-      options.settings?.voiceStyle ??
-      (options.settings?.voiceRate === undefined ? undefined : `${String(options.settings.voiceRate)} 字/分`);
+    const style = scriptVoice.style ?? options.settings?.voiceStyle;
     const voiceRun = await runStage('voice', {
       args: [
         target,

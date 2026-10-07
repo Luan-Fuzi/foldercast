@@ -135,7 +135,10 @@ describe.skipIf(!hasFfmpeg)('合成调度', () => {
 
     const document = JSON.parse(readFileSync(report.durationsPath, 'utf8')) as DurationsDocument;
     expect(document.durations).toBe(1);
-    expect(document.generatedAt).toBe('2026-10-05T12:00:00+08:00');
+    // generatedAt 是「本地时区 + 偏移量」的 ISO 串，不能断言具体时区（runner 各不相同）：
+    // 断「时刻等价」（12:00+08:00 = 04:00Z）与格式形状，任何时区的机器上都成立
+    expect(new Date(document.generatedAt).getTime()).toBe(new Date('2026-10-05T04:00:00Z').getTime());
+    expect(document.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
     expect(document.pause).toBeGreaterThan(0);
     expect(document.track).toBe('audio/narration.wav');
     for (const scene of document.scenes) {

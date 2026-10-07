@@ -81,10 +81,6 @@ jobs:
       # 轻量层：不依赖重外部进程的用例（契约、src、voice 的 mock 测试）。两个 e2e 文件
       # （真起 Chrome 渲染、真拼音轨）留给下一步，失败时好归因。
       #
-      # TZ 固定成 +08:00：synth.test 对 durations.json 的 generatedAt 断言**隐含时区**
-      # （写死 +08:00 的字符串），CI runner 都是 UTC。这不算放宽判据——测试假设的环境
-      # 由 workflow 补齐，测试在三平台照常全量跑（时区无关化的工单归 voice-engine）。
-      #
       # Windows 腿额外跳过四个测试文件：它们的失败全部源于**测试自身**的平台假设
       # （glob 返回反斜杠路径后 `/tests/` 过滤与 `includes('plan.ts')` 失配、
       # `split('/').pop()` 拿到整条 Windows 路径、`startsWith('/')` 的 posix 绝对路径
@@ -94,7 +90,6 @@ jobs:
       - name: 轻量测试（契约与 mock）
         env:
           runner_os: ${{ runner.os }}
-          TZ: Asia/Shanghai
         run: |
           excludes=(
             --exclude 'packages/plugin/scripts/renderer/tests/e2e.test.ts'

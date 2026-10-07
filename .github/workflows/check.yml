@@ -2,13 +2,30 @@ name: check
 
 on:
   push:
-    branches: [main]
+    # platform-ci：跨平台验证分支（三平台矩阵在这条分支上迭代到绿）
+    branches: [main, platform-ci]
   pull_request:
 
+# 三平台矩阵。分层原则（沿 4af655d 的教训：CI 只测 runner 能证明的）：
+#   · 三平台都跑：安装、类型检查、构建、契约与 mock 测试、链接/JSON/示例检查；
+#   · 重活（渲染 e2e 起无头 Chrome、配音 e2e 拼 ffmpeg 音轨）：三台 runner 都**预装了
+#     Chrome**，渲染不需要额外下载，所以三条腿都真跑；macOS 腿不装 ffmpeg，
+#     配音 e2e 靠用例自己的 skipIf 降级（见下面「安装 ffmpeg」一步的注释）。
 jobs:
   check:
-    name: 检查与测试
-    runs-on: ubuntu-latest
+    name: 检查与测试 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      # 一条腿挂了也要看到另外两条的结果
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    # windows-latest 的默认 shell 是 pwsh；workflow 里多处用 bash 语法（set +e、$?、grep），
+    # 统一走 runner 自带的 Git Bash
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -21,8 +38,25 @@ jobs:
           node-version: '22.19.0'
           cache: pnpm
 
+      # GitHub 的三类 runner 镜像都**不带 ffmpeg**（2026-10 查过 runner-images 的清单）。
+      # Linux / Windows 装上它：prep 的图片缩放在非 mac 平台回退 ffmpeg（media.ts），
+      # 配音 e2e（假 provider，不需要密钥）也要它拼音轨、量时长。
+      # macOS **故意不装**：图片缩放走系统自带的 sips；而「缺 ffmpeg 时配音给出可操作
+      # 引导」正是下一步要钉住的行为（真装上之后 say 就能真配音，违反 4af655d 的教训：
+      # 真实 TTS 合成不进 CI）。配音 e2e 的判据（画面逐帧一致）由 ubuntu / windows 两条腿盖住。
+      - name: 安装 ffmpeg（Linux）
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: 安装 ffmpeg（Windows）
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
+        # @deepseek-ai/libreoffice-kit 是 optionalDependency，来自公共 npm（lockfile 里有
+        # integrity）：三平台各有变体——win32-x64/arm64、darwin-x64/arm64 是原生包，Linux
+        # 落到 wasm 变体——所以 frozen-lockfile 在三个 runner 上都装得上，不需要 gate。
 
       - name: 类型检查
         run: pnpm run typecheck
@@ -33,12 +67,26 @@ jobs:
       - name: 构建插件包
         run: pnpm --filter dsh-foldercast prepack
 
-      - name: 单元与集成测试
-        run: pnpm run test
+      # 轻量层：不依赖重外部进程的用例（契约、src、voice 的 mock 测试）。两个 e2e 文件
+      # （真起 Chrome 渲染、真拼音轨）留给下一步，失败时好归因。
+      - name: 轻量测试（契约与 mock）
+        run: >-
+          pnpm exec vitest run
+          --exclude 'packages/plugin/scripts/renderer/tests/e2e.test.ts'
+          --exclude 'packages/plugin/scripts/voice/tests/e2e.test.ts'
+
+      # 重活层：渲染 e2e（同一份讲稿渲染两次比字节）与配音 e2e（假 provider → 实测时长
+      # → 渲染 → 抽帧比对）。三类 runner 都预装 Chrome（browser.ts 认它们的安装路径），
+      # 不需要下载浏览器；macOS 上没有 ffmpeg 时配音 e2e 整组 skipIf，渲染 e2e 照跑。
+      - name: 重活测试（渲染与配音 e2e）
+        run: >-
+          pnpm exec vitest run
+          packages/plugin/scripts/renderer/tests/e2e.test.ts
+          packages/plugin/scripts/voice/tests/e2e.test.ts
 
       # 讲稿现写一份最小的（script.json 是创作产物、不进版本库），验三条不依赖外部
       # 工具的路径：契约校验、计划计算、以及「缺浏览器时的结构化引导」。
-      - name: 讲稿校验与无浏览器渲染引导
+      - name: 讲稿校验与渲染引导
         run: |
           mkdir -p .foldercast
           node -e '
@@ -68,8 +116,8 @@ jobs:
           pnpm run render . --check
 
           # 真渲染分两种情况，两条都算通过：
-          #   · 有浏览器 → 出片（装了 Chrome 的机器走这条）
-          #   · 没有浏览器 → 结构化引导 + 退出码 3（这一层 CI 走这条，也是要钉住的行为）
+          #   · 有浏览器（三类 runner 都预装 Chrome）→ 出片
+          #   · 没有浏览器 → 结构化引导 + 退出码 3（也是要钉住的行为）
           set +e
           pnpm run render . --json > render.json 2> render.log
           code=$?
@@ -85,8 +133,10 @@ jobs:
           fi
           rm -f render.json render.log
 
-      # 配音：runner 上没有 say、也没有 ffmpeg，能验的是**前置检查与引导**（退出码非 0
-      # 且有可操作的话）。真配音由本机验收。
+      # 配音：CI 只验**前置检查与引导**（退出码非 0 且有可操作的话）。真配音由本机验收
+      # （4af655d 的教训）。三台 runner 上的缺口各不相同，但都轮得到这步：
+      #   · Linux / Windows：装了 ffmpeg，缺 say；
+      #   · macOS：有 say，没装 ffmpeg。
       - name: 配音的前置检查
         run: |
           set +e

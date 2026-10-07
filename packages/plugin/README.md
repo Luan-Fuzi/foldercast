@@ -1,7 +1,8 @@
 # dsh-foldercast
 
-把任意**人类可读的目录**变成讲解视频的 DSH 插件。核心产物不是视频，而是「目录解读」这份
-结构化事实；视频与页面都是它的视图。
+把任意**人类可读的目录**变成讲解视频的 DSH 插件。探目录与写讲稿是 agent 的事
+（skill 里写了工作流与判据）；这个包做 agent 干不了的确定性部分：讲稿校验、
+按需素材转换、配音与逐帧渲染。
 
 ## 安装
 
@@ -13,47 +14,44 @@ dsh plugin --profile <profile> add dsh-foldercast
 
 ## 它做什么
 
-插件注册**一个工具**与**一个 skill**。工具做确定性的部分：
+插件注册**一个工具**与**一个 skill**：
 
-| 阶段 | 做什么 | 产物 |
+| 步骤 | 做什么 | 产物 |
 |---|---|---|
-| 分析 | 遍历、分类、角色识别、引用依赖图、密钥排除审计 | `<目录>/.foldercast/foldercast.json` |
-| 素材 | Office/PDF 逐页图、视频关键帧、代码高亮图、提取文本 | `<目录>/.foldercast/assets/` |
-| 校验 | schema、幻觉路径拦截、场景字段、字幕字数 | 结构化问题清单（带行号） |
+| 校验（有讲稿才跑） | schema、场景字段、引用路径存在性、字幕切分 | 结构化问题清单 |
+| 配音（显式 `voice: true`） | 逐场景 `say` 合成 + `ffprobe` 实测时长 | `<目录>/.foldercast/audio/`、`durations.json` |
+| 渲染（显式 `render: true`） | 按需转换引用的素材 → Remotion 出片 | `<目录>/.foldercast/out/video.mp4` |
 
-**写稿不是工具做的**：讲什么、按什么顺序讲要靠判断，那是模型的事（skill 里写了工作流与判据）。
-工具在需要写稿时返回 `next: needsScript`，把 `script.json` 的路径交回给 agent。
+**渲染与配音默认不跑**：渲染要浏览器、动辄几分钟；配音要跑 TTS。两者都要显式要求。
 
-渲染与配音尚未实现（ROADMAP M7 / M8），所以工具不声称产出视频。
+另有 `scripts/assets/text.ts`：把 Office / PDF 的内容提取成 Markdown 打到 stdout，
+给 agent 通读用（`node scripts/assets/text.ts <文件>`）。
+
+## 设置页
+
+插件的 `Config` schema（`src/config.ts`）就是 DSH 里的设置页，目前两组：
+
+| 组 | 字段 | 现在生效吗 |
+|---|---|---|
+| 配音 | `provider`（say / mimo） | mimo 是**预留位**，选了仍用 say，工具结果里会说明 |
+| 配音 | `voice`（say 音色名）、`rate`（字/分） | 生效（工具调用与讲稿里的值优先于设置页） |
+| 渲染 | `browserPath`（浏览器路径） | 生效（等价于 `FOLDERCAST_BROWSER`） |
+| 渲染 | `concurrency` | 生效（>1 会破坏逐帧一致，页面描述里写了） |
+
+字段都是 `volatile()` 的：设置页保存后立即生效，不需要重启。要接第二个 TTS
+（比如 mimo）时在 schema 里补字段、在 `cast.ts` 接线即可。
 
 ## 依赖
 
-分析、素材、校验的代码随包分发（`scripts/`），**不需要额外安装**。外部命令按需降级：
+代码随包分发（`scripts/`），外部命令按需降级：
 
 | 依赖 | 用途 | 缺了会怎样 |
 |---|---|---|
 | Node 22.19+ | 直接运行 TypeScript（类型剥离） | 硬条件，缺了不能用 |
-| `@deepseek-ai/libreoffice-kit`（optionalDependency） | Office / PDF 转图 | 这两类没有逐页图；其余照常 |
-| `ffmpeg` / `ffprobe` | 视频抽帧与时长 | 视频没有关键帧；其余照常 |
+| 浏览器（Chrome / Chromium / Edge） | Remotion 渲染 | 只影响出片；校验照常 |
+| `say`（macOS 自带） | 配音 | 不配音，出静音片 |
+| `ffmpeg` / `ffprobe` | 音频转换与实测时长、视频封面 | 配音不可用；渲染仍能出静音片 |
+| `@deepseek-ai/libreoffice-kit`（optionalDependency） | Office / PDF 逐页图 | 这两类没有页图；文本提取照常 |
 | `sips`（macOS 自带） | 图片缩放 | 回退到 ffmpeg |
 
 缺失时工具会返回**可操作的说明**（缺什么、怎么装），而不是一个裸错误。
-
-## 隐私边界
-
-默认按**文件名**排除 `.env`、`credentials.json`、`*.pem` 等密钥类文件：它们仍进结构树与计数
-（「这里有个 `.env`」本身有信息量），但内容不读、不进预览、不生成素材。这条规则**不可能完备**——
-硬编码在源码里的密钥、自定义命名的密钥文件都会被读到。每次运行都会打印命中的清单，
-可用 `sources.rescan` 显式放回误拦的文件。见 [ADR 0007](https://github.com/Luan-Fuzi/foldercast/blob/main/docs/decisions/0007-secret-file-exclusion.md)。
-
-## 契约
-
-- 解读：`foldercast.json`（程序产出，可重算）
-- 讲稿：`script.json`（创作，重跑会变）
-- 素材：`assets/manifest.json`（可重算的缓存）
-
-schema 在包内的 `schemas/` 下，由 `prepack` 从仓库的 `docs/specs/` 复制生成——**契约只有一份**。
-
-## 许可
-
-MIT。

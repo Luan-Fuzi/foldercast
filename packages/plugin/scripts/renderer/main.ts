@@ -1,49 +1,34 @@
 /**
- * 渲染阶段（M7）：`script.json` + `assets/` → **静音 mp4**。
+ * 渲染入口：`script.json` →（按需转换引用的素材）→ mp4。
  *
  * 用法：
- *   pnpm render <目录> [--out <文件>] [--style deck] [--still 3.5] [--frames 1-30]
+ *   pnpm render <目录> [--out <文件>] [--still 3.5] [--frames 1-30]
  *                       [--browser <路径>] [--check] [--json]
  *
- * 这个脚本和别的阶段一样**独立可跑**（ADR 0008）：它不认识 DSH，只认工作根下的文件。
- * 主 agent 在编排时调它，CI 也能直接调它。
+ * 这个脚本**独立可跑**：它不认识 DSH，只认工作根下的文件。主 agent 在编排时调它，
+ * CI 也能直接调它。
  *
- * 四件在别处看不见的事：
+ * 校验（原 validate 阶段）并在这里：加载讲稿后先跑 `checkScript`，有 blocker 就退出 2，
+ * 不进入渲染。`--check` 到校验与计划为止，不打包、不渲染、不需要浏览器。
  *
- * 1. **讲稿在运行时加载**（`load.ts`），bundle 里没有讲稿 —— 加目录不改代码。
- * 2. **浏览器只在出片时要**（`browser.ts`）：缺了返回结构化引导，退出码 3，不静默下载。
- * 3. **`--check` 不碰浏览器**：算计划、报时长与警告，CI 与 fast feedback 走这条路。
- * 4. **素材走 `file://`**：由 `plan.ts` 拼出来，浏览器不需要文件系统访问。
+ * 素材是**按需**的：讲稿引用什么就转换什么（缩略图 / 封面 / 逐页图），按 mtime 缓存。
  */
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bundleProject } from './bundle.ts';
+import { checkScript, type CheckReport } from './check.ts';
 import { embedImage } from './embed-node.ts';
 import { resolveBrowser } from './browser.ts';
 import { summarizeDurations } from './estimate.ts';
-import {
-  findStylesDir,
-  loadAssets,
-  loadDurations,
-  loadPreset,
-  loadReading,
-  loadScript,
-  LoadError,
-  sourceDirOf,
-  workRootOf,
-} from './load.ts';
+import { loadDurations, loadScript, LoadError, sourceDirOf, workRootOf } from './load.ts';
 import { buildPlan, type Plan } from './plan.ts';
 import { renderStillFrame, renderVideo } from './render.ts';
+import { collectReferences, prepare, type PrepReport } from '../assets/prep.ts';
 
 const RENDERER_DIR = dirname(fileURLToPath(import.meta.url));
-/**
- * 样式预设目录：仓库根的 `styles/`。**上溯找标记文件**，不按层级硬算 —— 这套代码有两套布局
- * （仓库内 `scripts/renderer/`、发布版 `lib/scripts/renderer/`），数层级在发布版里会算错。
- */
-const STYLES_DIR = findStylesDir(RENDERER_DIR);
 
-const USAGE = `把目录的讲稿渲染成静音 mp4。
+const USAGE = `把目录的讲稿渲染成 mp4（默认静音；配音产物存在时自动带上旁白）。
 
 用法：
   pnpm render <目录> [选项]
@@ -51,35 +36,30 @@ const USAGE = `把目录的讲稿渲染成静音 mp4。
 选项：
   --out <文件>      输出文件。默认 <目录>/.foldercast/out/video.mp4
   --script <文件>   讲稿路径。默认 <目录>/.foldercast/script.json
-  --reading <文件>  解读路径。默认 <目录>/.foldercast/foldercast.json
-  --style <名字>    样式预设名（styles/<名字>.json）。默认取讲稿的 style.preset，否则 deck
   --browser <路径>  浏览器可执行文件。也可用 FOLDERCAST_BROWSER 环境变量
   --frames <A-B>    只渲染这一段（1 起，含两端）。调画面用
   --still <秒>      只出一张静帧 PNG，不编码视频
   --concurrency <n> 渲染并发数。**默认 1**：多并发会让同一份讲稿渲出不同的帧
                     （实测三次的帧哈希互不相同），只在不在乎可复现时调大
   --no-embed        不把图片内联成 data URI（调试用；浏览器读不了 file:// 图片）
-  --audio <文件>    旁白音轨（配音产物）。不给就出静音片
+  --audio <文件>    旁白音轨（配音产物）。不给就用 durations.json 记的那条
   --durations <文件> 配音时长表。默认 <工作根>/durations.json（有就用实测时长）
-  --check           只算计划并报时长，不打包、不渲染（不需要浏览器）
+  --check           校验讲稿并算计划报时长，不打包、不渲染（不需要浏览器）
   --json            以 JSON 输出结果（给 agent 与 CI 用）
   -h, --help        显示这段说明
 
-退出码：0 成功；2 参数或讲稿有问题；3 需要浏览器但没找到。`;
+退出码：0 成功；2 讲稿有 blocker 或参数有问题；3 需要浏览器但没找到。`;
 
 type Options = {
   target: string;
   out?: string;
   script?: string;
-  reading?: string;
-  style?: string;
   browser?: string;
   frames?: [number, number];
   still?: number;
   concurrency?: number;
   check: boolean;
   json: boolean;
-  /** 关掉图片内联（调试用）。 */
   noEmbed: boolean;
   audio?: string;
   durations?: string;
@@ -107,8 +87,6 @@ function parseArgs(argv: string[]): Options | { error: string } {
         break;
       case '--out':
       case '--script':
-      case '--reading':
-      case '--style':
       case '--browser':
       case '--frames':
       case '--still':
@@ -118,8 +96,6 @@ function parseArgs(argv: string[]): Options | { error: string } {
         i += 1;
         if (arg === '--out') options.out = value;
         else if (arg === '--script') options.script = value;
-        else if (arg === '--reading') options.reading = value;
-        else if (arg === '--style') options.style = value;
         else if (arg === '--browser') options.browser = value;
         else if (arg === '--frames') {
           const range = parseRange(value);
@@ -165,23 +141,25 @@ export type RenderReport = {
   ok: boolean;
   target: string;
   scriptPath: string;
-  readingPath: string;
   outputPath?: string;
   stillPath?: string;
-  style: string;
   width: number;
   height: number;
   fps: number;
   scenes: number;
   durationInFrames: number;
   durationSec: number;
-  /** 预估时长与目标时长的差（讲稿写了 targetDurationSec 时才有意义）。 */
+  /** 按字数预估的时长（有 targetDurationSec 时才有比较意义）。 */
   estimatedSec: number;
   browser: { kind: string; path?: string; name?: string };
   bundleMs?: number;
   renderMs?: number;
   warnings: string[];
-  /** 内联进画面的图片字节数（原始文件大小的合计，压缩后通常更小）。 */
+  /** 讲稿校验的摘要；有 blocker 时 `ok` 为 false 且不渲染。 */
+  check?: CheckReport;
+  /** 按需素材转换：新转了几个、缓存命中几个。 */
+  prep?: { converted: number; cached: number; ms: number };
+  /** 内联进画面的图片字节数。 */
   inlineBytes: number;
   /** 内联的图片张数。 */
   inlineImages: number;
@@ -209,10 +187,8 @@ async function main(): Promise<number> {
   const sourceDir = sourceDirOf(workRoot);
 
   let script;
-  let reading;
   try {
     script = loadScript(workRoot, parsed.script);
-    reading = loadReading(workRoot, parsed.reading);
   } catch (error) {
     if (error instanceof LoadError) {
       console.error(error.message);
@@ -221,27 +197,39 @@ async function main(): Promise<number> {
     throw error;
   }
 
-  if (resolve(reading.value.source.root) !== resolve(script.value.source.root)) {
-    console.error(
-      `讲稿与解读指向的目录不一致：\n  讲稿：${script.value.source.root}\n  解读：${reading.value.source.root}\n先跑校验：pnpm validate ${target}`,
-    );
+  // ── 校验：有 blocker 就到此为止 ────────────────────────
+  const check = await checkScript(script.value, target);
+  if (check.blocker > 0) {
+    if (parsed.json) {
+      console.log(JSON.stringify({ ok: false, target, scriptPath: script.path, check }, null, 2));
+    } else {
+      console.error(`讲稿有 ${String(check.blocker)} 个必须修的问题：`);
+      for (const issue of check.issues) {
+        if (issue.severity !== 'blocker') continue;
+        const where = issue.path === undefined ? '' : ` ${issue.path}`;
+        console.error(`  × [${issue.sceneId ?? '-'}] ${issue.message}${where}`);
+        if (issue.fix !== undefined) console.error(`    → ${issue.fix}`);
+      }
+    }
     return 2;
   }
 
-  // 配音产物：有就用实测时长（C3），没有就按字数预估。**不报错**：没跑过配音的机器上
-  // `durations.json` 本来就不存在。
+  // ── 素材按需转换（--check 不碰转换，保持快） ────────────
+  let prep: PrepReport | undefined;
+  if (!parsed.check) {
+    const refs = collectReferences(script.value);
+    if (refs.length > 0) {
+      prep = await prepare(target, workRoot, refs);
+    }
+  }
+
   const durations = loadDurations(workRoot, parsed.durations);
-  const presetName = parsed.style ?? script.value.style?.preset ?? reading.value.style?.preset ?? 'deck';
-  const preset = loadPreset(STYLES_DIR ?? resolve(RENDERER_DIR, 'styles'), presetName);
 
   let plan: Plan;
   try {
     plan = buildPlan({
       script: script.value,
-      reading: reading.value,
-      assets: loadAssets(workRoot),
-      preset: preset.value,
-      presetName,
+      ...(prep === undefined ? {} : { prep: prep.prepared }),
       // 图片在这里内联成 data URI：浏览器里读不了 `file://`，见 `embed.ts`。
       workRoot,
       embed: parsed.noEmbed ? undefined : embedImage,
@@ -252,7 +240,7 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const warnings = [...(preset.warning === undefined ? [] : [preset.warning]), ...plan.warnings];
+  const warnings = plan.warnings;
   const estimate = summarizeDurations(
     plan.scenes.map((scene) => ({ id: scene.id, type: scene.type, narration: scene.narration })),
     plan.composition.fps,
@@ -263,16 +251,12 @@ async function main(): Promise<number> {
   const browser = resolveBrowser(parsed.browser);
   const inlined = collectInline(plan);
 
-  // `scaled` 只表示「按 targetDurationSec 缩放过」。配音跑过之后不缩放（实测为准），
-  // 这时它必须是 false —— 否则报告会说一件没发生的事。
   const scaled = durations === undefined && estimatedFrames !== plan.composition.durationInFrames;
 
   const report: RenderReport = {
     ok: true,
     target,
     scriptPath: script.path,
-    readingPath: reading.path,
-    style: preset.name,
     width: plan.composition.width,
     height: plan.composition.height,
     fps: plan.composition.fps,
@@ -285,10 +269,11 @@ async function main(): Promise<number> {
         ? { kind: browser.origin, path: browser.path, name: browser.name }
         : { kind: 'missing' },
     warnings,
+    check: { blocker: check.blocker, warning: check.warning, issues: check.issues },
+    ...(prep === undefined ? {} : { prep: { converted: prep.converted, cached: prep.cached, ms: prep.elapsedMs } }),
     inlineBytes: inlined.bytes,
     inlineImages: inlined.images,
     timing: durations === undefined ? 'estimated' : 'measured',
-    ...(parsed.audio === undefined ? {} : { audioPath: resolve(parsed.audio) }),
   };
   if (parsed.check) {
     report.timings = estimate.scenes.map((scene) => ({
@@ -317,7 +302,6 @@ async function main(): Promise<number> {
   const outputPath = resolve(parsed.out ?? join(workRoot, 'out', parsed.still === undefined ? 'video.mp4' : 'still.png'));
 
   // 音轨内联成 data URI：Remotion 取资源只认 http(s) 与 data（`file://` 会被拒）。
-  // 显式给了 `--audio` 就用它；否则配音产物里记的那条（`narration.wav`）存在就用它。
   const audioFile =
     parsed.audio !== undefined
       ? resolve(parsed.audio)
@@ -340,8 +324,7 @@ async function main(): Promise<number> {
   });
   report.bundleMs = bundle.ms;
 
-  // 输出目录可能还不存在（`--out` 指到别处时尤其常见）。渲染器自己会建，但 CLI 先建一次
-  // 更稳：`--check` 之外的分支都要写文件。
+  // 输出目录可能还不存在（`--out` 指到别处时尤其常见）。
   mkdirSync(dirname(outputPath), { recursive: true });
 
   try {
@@ -396,8 +379,7 @@ async function main(): Promise<number> {
 
 /**
  * 把音轨读成 `data:` URI。**必须内联**：Remotion 取资源只认 http(s) 与 `data:`，
- * `file://` 会被拒（实测 `Can only download URLs starting with http:// or https://`）。
- * 代价是内存（wav 的 base64 约 1.33 倍），所以配音阶段产出的是 16 位单声道 44.1k。
+ * `file://` 会被拒。代价是内存，所以配音阶段产出的是 16 位单声道 44.1k。
  */
 function inlineAudio(path: string): string {
   const bytes = readFileSync(path);
@@ -428,10 +410,7 @@ function collectInline(plan: Plan): { images: number; bytes: number } {
     if (scene.type === 'file') visit(scene.media);
     else if (scene.type === 'gallery') for (const item of scene.items) visit(item);
     else if (scene.type === 'document') for (const page of scene.pages) visit(page);
-    else if (scene.type === 'clip') {
-      visit(scene.poster);
-      visit(scene.video);
-    }
+    else if (scene.type === 'clip') visit(scene.poster);
   }
   return { images: seen.size, bytes };
 }
@@ -446,8 +425,14 @@ function printReport(report: RenderReport, json: boolean, scaled: boolean): void
     `  讲稿    ${report.scriptPath}`,
     `  规格    ${report.width}×${report.height} @ ${report.fps}fps · ${report.scenes} 个场景`,
     `  时长    ${report.durationSec} 秒（${report.durationInFrames} 帧，${report.timing === 'measured' ? '取自实测音频' : `按字数预估 ${report.estimatedSec} 秒`}${scaled ? '，已按 targetDurationSec 缩放' : ''}）`,
-    `  样式    ${report.style} · 内联图片 ${report.inlineImages} 张（${Math.round(report.inlineBytes / 1024)} KB）`,
+    `  内联图片 ${report.inlineImages} 张（${Math.round(report.inlineBytes / 1024)} KB）`,
   ];
+  if (report.prep !== undefined) {
+    lines.push(`  素材    新转 ${String(report.prep.converted)} 个 · 缓存命中 ${String(report.prep.cached)} 个（${String(Math.round(report.prep.ms))}ms）`);
+  }
+  if (report.check !== undefined && report.check.warning > 0) {
+    lines.push(`  校验    ${String(report.check.warning)} 个待确认（见 warnings）`);
+  }
   if (report.audioPath !== undefined) lines.push(`  音轨    ${report.audioPath}`);
   if (report.stillPath !== undefined) lines.push(`  静帧    ${report.stillPath}`);
   if (report.outputPath !== undefined) {

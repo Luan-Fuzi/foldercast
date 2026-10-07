@@ -12,16 +12,14 @@
 import { createElement as h, type ReactNode } from 'react';
 import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from 'remotion';
 import {
-  fileMetaText,
   fitSize,
   humanBytes,
-  kindLabel,
   metaLine,
   type Plan,
   type PlanScene,
   type SceneCommon,
 } from '../plan.ts';
-import { kindColor } from '../styles.ts';
+import { labelColor } from '../styles.ts';
 import { progressStyle } from './captions.ts';
 import { assetUrl, contentBox, panel, sceneHeader, useAppear } from './common.ts';
 
@@ -44,14 +42,19 @@ const Shell = (props: {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   const progress = totalProgress(plan, scene, frame, durationInFrames);
-  const header = eyebrow === undefined ? null : sceneHeader(scene, plan, eyebrow);
+  // `cover` / `outro` 自带版式（不传 eyebrow）→ 不套内容框；其余场景一律套。
+  if (eyebrow === undefined) return h(AbsoluteFill, null, h('div', { style: progressStyle(plan.tokens, progress) }), body);
+
   return h(
     AbsoluteFill,
     null,
     h('div', { style: progressStyle(plan.tokens, progress) }),
-    header === null
-      ? body
-      : h('div', { style: contentBox(plan.tokens) }, header, h('div', { style: { flex: 1, minHeight: 0 } }, body)),
+    h(
+      'div',
+      { style: contentBox(plan.tokens) },
+      sceneHeader(scene, plan, eyebrow),
+      h('div', { style: { flex: 1, minHeight: 0 } }, body),
+    ),
   );
 };
 
@@ -69,7 +72,7 @@ function totalProgress(plan: Plan, scene: SceneCommon, frame: number, sceneFrame
 /* ---------------------------------------------------------------- cover */
 
 const Cover = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'cover' }>>) => {
-  const appear = useAppear(12);
+  const appear = useAppear(plan.tokens, 12);
   const tokens = plan.tokens;
   return h(
     'div',
@@ -120,7 +123,7 @@ const Cover = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'cover' }>
 /* ----------------------------------------------------------------- tree */
 
 const Tree = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'tree' }>>) => {
-  const appear = useAppear();
+  const appear = useAppear(plan.tokens);
   const tokens = plan.tokens;
   const max = scene.rows.reduce((value, row) => Math.max(value, row.files), 1);
   return h(
@@ -199,7 +202,7 @@ const Tree = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'tree' }>>)
 /* ------------------------------------------------------------ inventory */
 
 const Inventory = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'inventory' }>>) => {
-  const appear = useAppear();
+  const appear = useAppear(plan.tokens);
   const tokens = plan.tokens;
   const max = scene.groups.reduce((value, group) => Math.max(value, group.count), 1);
   return h(
@@ -208,17 +211,17 @@ const Inventory = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'inven
     ...scene.groups.map((group) =>
       h(
         'div',
-        { key: group.kind, style: { display: 'flex', alignItems: 'center', gap: 20 } },
+        { key: group.label, style: { display: 'flex', alignItems: 'center', gap: 20 } },
         h('div', {
           style: {
             width: 14,
             height: 14,
             borderRadius: 3,
-            backgroundColor: kindColor(group.kind, tokens),
+            backgroundColor: labelColor(group.label, tokens),
             flexShrink: 0,
           },
         }),
-        h('div', { style: { width: Math.round(tokens.width * 0.1), fontSize: tokens.bodySize } }, kindLabel(group.kind)),
+        h('div', { style: { width: Math.round(tokens.width * 0.14), fontSize: tokens.bodySize } }, group.label),
         h(
           'div',
           { style: { flex: 1, height: 22, borderRadius: 4, backgroundColor: 'var(--line)', overflow: 'hidden', display: 'flex' } },
@@ -226,7 +229,7 @@ const Inventory = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'inven
             style: {
               width: `${Math.round((group.count / max) * 100)}%`,
               height: '100%',
-              backgroundColor: kindColor(group.kind, tokens),
+              backgroundColor: labelColor(group.label, tokens),
               opacity: 0.85,
             },
           }),
@@ -264,7 +267,7 @@ const Inventory = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'inven
     h(
       'div',
       { style: { marginTop: 6, fontSize: Math.round(tokens.bodySize * 0.72), color: 'var(--muted)' } },
-      `分母是解读收录的 ${scene.totalFiles} 个文件（不含被排除的路径）`,
+      `共 ${String(scene.totalFiles)} 个文件（写稿时清点的数字）`,
     ),
   );
 };
@@ -272,7 +275,7 @@ const Inventory = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'inven
 /* ----------------------------------------------------------------- file */
 
 const File = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'file' }>>) => {
-  const appear = useAppear();
+  const appear = useAppear(plan.tokens);
   const tokens = plan.tokens;
   const url = assetUrl(scene.media);
   return h(
@@ -283,39 +286,14 @@ const File = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'file' }>>)
       { style: { fontFamily: 'var(--font-mono)', fontSize: Math.round(tokens.bodySize * 0.86), color: 'var(--accent)' } },
       scene.path,
     ),
-    h('div', { style: { fontSize: Math.round(tokens.bodySize * 0.72), color: 'var(--muted)' } }, fileMetaText(scene.meta)),
+    scene.note === undefined
+      ? null
+      : h('div', { style: { fontSize: Math.round(tokens.bodySize * 0.72), color: 'var(--muted)' } }, scene.note),
     h(
       'div',
       { style: { flex: 1, minHeight: 0, display: 'flex', marginTop: 4 } },
-      url === undefined
-        ? // 没有素材图（文本、数据、密钥这类）时用**解读提取的正文开头**顶上：
-          // 它至少说明这个文件写了什么，比一句「没有素材」有用。
-          panel(
-            {
-              flex: 1,
-              minHeight: 0,
-              display: 'flex',
-              alignItems: 'center',
-              overflow: 'hidden',
-            },
-            scene.preview === undefined
-              ? h('div', { style: { fontSize: tokens.bodySize, color: 'var(--muted)' } }, hasText(scene.meta.kind) ? '没有正文摘要' : '这个类型没有素材产物')
-              : h(
-                  'div',
-                  {
-                    style: {
-                      // 摘要短就大一号、长就小一号：短的（一行标题）不至于飘在大片空白里，
-                      // 长的（几百字）也不会溢出面板。
-                      fontSize: fitSize(scene.preview, Math.round(tokens.headingSize * 1.35), Math.round(tokens.bodySize * 0.8)),
-                      lineHeight: 1.5,
-                      color: 'var(--ink)',
-                      opacity: 0.92,
-                    },
-                  },
-                  scene.preview,
-                ),
-          )
-        : panel(
+      url !== undefined
+        ? panel(
             {
               flex: 1,
               minHeight: 0,
@@ -326,20 +304,39 @@ const File = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'file' }>>)
               backgroundColor: 'var(--panel)',
             },
             h(Img, { src: url, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' } }),
+          )
+        : // 没有素材图时画**写稿人摘的原文行**：它说明这个文件写了什么，比一句「没有素材」有用。
+          panel(
+            { flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', overflow: 'hidden' },
+            scene.excerpt.length === 0
+              ? h(
+                  'div',
+                  { style: { fontSize: tokens.bodySize, color: 'var(--muted)' } },
+                  scene.noteMissing ?? '没有素材，也没有摘录 —— 写稿时给这个文件加几行 excerpt',
+                )
+              : h(
+                  'div',
+                  {
+                    style: {
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: fitSize(scene.excerpt.join('\n'), Math.round(tokens.bodySize * 0.86), Math.round(tokens.bodySize * 0.6)),
+                      lineHeight: 1.6,
+                      color: 'var(--ink)',
+                      opacity: 0.92,
+                      whiteSpace: 'pre',
+                    },
+                  },
+                  scene.excerpt.join('\n'),
+                ),
           ),
     ),
   );
 };
 
-/** 这些类型有正文可提取，缺摘要就是素材阶段没跑或跑了没成功。 */
-function hasText(kind: string): boolean {
-  return kind === 'text' || kind === 'office' || kind === 'pdf' || kind === 'code' || kind === 'data';
-}
-
 /* -------------------------------------------------------------- gallery */
 
 const Gallery = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'gallery' }>>) => {
-  const appear = useAppear();
+  const appear = useAppear(plan.tokens);
   const tokens = plan.tokens;
   if (scene.items.length === 0) {
     return h('div', { style: { fontSize: tokens.bodySize, color: 'var(--muted)' } }, '这个场景没有可用图片');
@@ -391,16 +388,16 @@ const Gallery = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'gallery
  * 讲稿的 `clipRange` 仍然会显示出来。真播视频要等有一个能服务本地文件的层（第一版不做）。
  */
 const Clip = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'clip' }>>) => {
-  const appear = useAppear();
+  const appear = useAppear(plan.tokens);
   const tokens = plan.tokens;
-  const poster = assetUrl(scene.poster) ?? assetUrl(scene.video);
+  const poster = assetUrl(scene.poster);
   return h(
     'div',
     { style: { ...appear, display: 'flex', flexDirection: 'column', gap: 14, height: '100%', minHeight: 0 } },
     h(
       'div',
       { style: { fontFamily: 'var(--font-mono)', fontSize: Math.round(tokens.bodySize * 0.86), color: 'var(--accent)' } },
-      scene.video.file ?? scene.video.path,
+      scene.file,
     ),
     h(
       'div',
@@ -414,7 +411,7 @@ const Clip = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'clip' }>>)
       { style: { fontSize: Math.round(tokens.bodySize * 0.72), color: 'var(--muted)' } },
       metaLine([
         scene.range === undefined ? undefined : `讲稿指定片段 ${scene.range[0]}s – ${scene.range[1]}s`,
-        '画面是封面图（第一版不播活动画面）',
+        '画面是封面图（不播活动画面）',
       ]),
     ),
   );
@@ -423,7 +420,7 @@ const Clip = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'clip' }>>)
 /* ------------------------------------------------------------- document */
 
 const Document = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'document' }>>) => {
-  const appear = useAppear();
+  const appear = useAppear(plan.tokens);
   const tokens = plan.tokens;
   const shown = scene.pages.filter((page) => page.src !== undefined).slice(0, 4);
   const pageHeight = Math.round(tokens.height * (shown.length <= 2 ? 0.62 : 0.56));
@@ -472,7 +469,7 @@ const Document = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'docume
 /* ---------------------------------------------------------------- outro */
 
 const Outro = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'outro' }>>) => {
-  const appear = useAppear(12);
+  const appear = useAppear(plan.tokens, 12);
   const tokens = plan.tokens;
   return h(
     'div',

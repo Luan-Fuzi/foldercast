@@ -18,7 +18,7 @@ const SOURCE = join(REPO_ROOT, 'docs/specs');
 const TARGET = join(PACKAGE_ROOT, 'schemas');
 
 /** 随包分发的 schema。加一份就要同时加进 package.json 的 files 与校验器的查找。 */
-const SHIPPED = ['foldercast.schema.json', 'script.schema.json', 'assets.schema.json'] as const;
+const SHIPPED = ['script.schema.json'] as const;
 
 type ShippedName = (typeof SHIPPED)[number];
 

@@ -72,9 +72,18 @@ describe('随包代码的依赖都已声明', () => {
     expect(files.length).toBeGreaterThan(20);
   });
 
+  it('客户端半侧的依赖由宿主页面提供，不在扫描范围', () => {
+    // src/client/ 打成 `window.__ModuleLoader__` 模块（lib/client.js），react 与
+    // `@deepseek-ai/dsh-client-ui-*` 由宿主的 require 注册表在运行时解析 ——
+    // 故意**不是**本包的 dependencies（装进用户 profile 也解析不到，声明了反而误导）。
+    // 所以依赖判据不扫这个目录，但要保证它真的存在（豁免不能静默失效）。
+    expect(globSync('src/client/*.ts', { cwd: PACKAGE_ROOT }).length).toBeGreaterThan(0);
+  });
+
   it('没有未声明的裸包依赖', () => {
     const undeclared = new Map<string, string[]>();
     for (const file of files) {
+      if (file.startsWith('src/client/')) continue;
       const source = readFileSync(join(PACKAGE_ROOT, file), 'utf8');
       for (const specifier of specifiersIn(source, file)) {
         const name = packageNameOf(specifier);

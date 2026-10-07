@@ -24,6 +24,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { TtsProvider } from '../../contracts/durations.ts';
 import { hasCommand } from '../../assets/run.ts';
+import { checkScript } from '../../renderer/check.ts';
 import { makeVoiceEnv } from '../env.ts';
 import { synthesize } from '../synth.ts';
 import { resolveBrowser } from '../../renderer/browser.ts';
@@ -49,8 +50,6 @@ function fakeProvider(name: string): TtsProvider {
   const sampleRate = 44100;
   return {
     name,
-    requiresKey: false,
-    capabilities: [],
     describe: () => `测试用假 provider（${name}）`,
     preflight: () => ({ ok: true }),
     async synth(request) {
@@ -112,27 +111,18 @@ beforeAll(() => {
       2,
     )}\n`,
   );
-  // 渲染要解读（场景不会用到，但计划构建要求它存在且版本对）
-  writeFileSync(
-    join(workRoot, 'foldercast.json'),
-    `${JSON.stringify(
-      {
-        foldercast: 1,
-        generatedAt: '2026-10-05T00:00:00.000Z',
-        source: { root },
-        sources: { maxFiles: 100 },
-        stats: { totalFiles: 0, totalBytes: 0, maxDepth: 0, kindCounts: {}, languages: {}, topDirs: [], roles: {}, secrets: { excluded: [], rescanned: [] } },
-        manifest: [],
-        graph: { nodes: 0, edges: 0, roots: [], hubs: [], leaves: [], dangling: [] },
-      },
-      null,
-      2,
-    )}\n`,
-  );
 });
 
 afterAll(() => {
   if (root !== '') rmSync(root, { recursive: true, force: true });
+});
+
+describe('夹具', () => {
+  it('夹具讲稿必须过契约校验（否则验的不是真讲稿）', async () => {
+    const script = JSON.parse(readFileSync(join(workRoot, 'script.json'), 'utf8')) as Parameters<typeof checkScript>[0];
+    const report = await checkScript(script, root);
+    expect(report.issues, JSON.stringify(report.issues, null, 2)).toEqual([]);
+  });
 });
 
 describe.skipIf(!hasFfmpeg)('配音 → 出片', () => {
@@ -141,7 +131,7 @@ describe.skipIf(!hasFfmpeg)('配音 → 出片', () => {
       target: root,
       workRoot,
       provider: fakeProvider('voice-a'),
-      env: makeVoiceEnv({ env: {}, has: () => true }),
+      env: makeVoiceEnv({ has: () => true }),
     });
     expect(report.scenes).toHaveLength(2);
     expect(report.scenes.every((scene) => scene.audioSec > 0.5)).toBe(true);
@@ -157,7 +147,7 @@ describe.skipIf(!hasFfmpeg)('配音 → 出片', () => {
         target: root,
         workRoot,
         provider: fakeProvider('voice-a'),
-        env: makeVoiceEnv({ env: {}, has: () => true }),
+        env: makeVoiceEnv({ has: () => true }),
         force: true,
       });
       const beforeDoc = JSON.parse(readFileSync(join(workRoot, 'durations.json'), 'utf8')) as {
@@ -171,7 +161,7 @@ describe.skipIf(!hasFfmpeg)('配音 → 出片', () => {
         target: root,
         workRoot,
         provider: fakeProvider('voice-b'),
-        env: makeVoiceEnv({ env: {}, has: () => true }),
+        env: makeVoiceEnv({ has: () => true }),
         force: true,
       });
       const afterDoc = JSON.parse(readFileSync(join(workRoot, 'durations.json'), 'utf8')) as {

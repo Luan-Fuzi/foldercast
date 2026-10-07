@@ -71,8 +71,6 @@ export function rateFromStyle(style: string | undefined): number | undefined {
 
 export const sayProvider: TtsProvider = {
   name: 'say',
-  requiresKey: false,
-  capabilities: ['voices'],
   describe: () => 'macOS 自带 say：本地、免密钥、无配额。音质一般，适合先出片看效果。',
 
   preflight(env: VoiceEnv) {
@@ -80,7 +78,7 @@ export const sayProvider: TtsProvider = {
       return {
         ok: false,
         reason: 'command-missing',
-        hint: '这台机器上没有 `say`（macOS 自带）。换一个 provider（如 mimo），或在 macOS 上运行。',
+        hint: '这台机器上没有 `say`（macOS 自带）。配音只能在 macOS 上跑；不传 voice 就不出旁白（静音片）。',
       };
     }
     if (!env.has('ffmpeg')) {
@@ -92,11 +90,6 @@ export const sayProvider: TtsProvider = {
       };
     }
     return { ok: true };
-  },
-
-  listVoices(): string[] {
-    // 列表要跑命令（`say -v '?'`），拿不到静态列表 —— 用 `resolveVoice`
-    return [];
   },
 
   /**

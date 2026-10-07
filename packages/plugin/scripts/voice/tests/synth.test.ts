@@ -16,11 +16,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DurationsDocument } from '../../contracts/durations.ts';
-import type { TtsProvider, VoiceEnv } from '../../contracts/durations.ts';
-import { makeVoiceEnv, parseEnvFile } from '../env.ts';
-import { listProviders, findProvider, providerNames } from '../providers/index.ts';
-import { audioFileName, subtitlesFor, synthesize, SynthError } from '../synth.ts';
+import type { DurationsDocument, TtsProvider, VoiceEnv } from '../../contracts/durations.ts';
+import { makeVoiceEnv } from '../env.ts';
+import { audioFileName, subtitlesFor, synthesize } from '../synth.ts';
 
 const hasFfmpeg = (() => {
   try {
@@ -38,8 +36,6 @@ let workRoot = '';
 function fakeProvider(): TtsProvider {
   return {
     name: 'fake',
-    requiresKey: false,
-    capabilities: [],
     describe: () => '测试用假 provider',
     preflight: () => ({ ok: true }),
     async synth(request) {
@@ -60,7 +56,6 @@ function writeFixture(narrationParts: string[]): void {
     foldercast: 1,
     source: { root },
     title: '配音夹具',
-    voice: { provider: 'say' },
     scenes: narrationParts.map((narration, index) => ({
       id: `scene-${String(index)}`,
       type: 'outro',
@@ -73,7 +68,7 @@ function writeFixture(narrationParts: string[]): void {
 
 /** 完全离线的环境：命令都在、没有密钥。 */
 function offlineEnv(): VoiceEnv {
-  return makeVoiceEnv({ env: {}, has: () => true, exec: async () => ({ ok: true, stdout: '', stderr: '' }) });
+  return makeVoiceEnv({ has: () => true, exec: async () => ({ ok: true, stdout: '', stderr: '' }) });
 }
 
 const fake = fakeProvider();
@@ -118,30 +113,6 @@ describe('音频文件名', () => {
     // `..` 会被换成 `_`：场景 id 不能拼出 audio 目录之外的名字
     expect(audioFileName('..')).toBe('audio/_.wav');
     expect(audioFileName('a/../../etc/passwd')).toBe('audio/a_.._.._etc_passwd.wav');
-  });
-});
-
-describe('env 文件解析', () => {
-  it('认 KEY=value、注释、引号；不展开变量', () => {
-    const values = parseEnvFile(
-      ['# 注释', 'MIMO_API_KEY=sk-123', 'OTHER="quoted value"', "SINGLE='x'", 'EMPTY=', 'NOVALUE'].join('\n'),
-    );
-    expect(values).toEqual({ MIMO_API_KEY: 'sk-123', OTHER: 'quoted value', SINGLE: 'x' });
-  });
-});
-
-describe('provider 注册表', () => {
-  it('默认是免密钥的 say；名字对不上时不静默回落', () => {
-    expect(findProvider(undefined)?.name).toBe('say');
-    expect(findProvider('mimo')?.name).toBe('mimo');
-    expect(findProvider('nope')).toBeUndefined();
-    expect(providerNames()).toContain('say');
-  });
-
-  it('列表里带「要不要密钥」，配置界面与文档都靠它', () => {
-    const rows = listProviders();
-    expect(rows.find((row) => row.name === 'say')?.requiresKey).toBe(false);
-    expect(rows.find((row) => row.name === 'mimo')?.requiresKey).toBe(true);
   });
 });
 
@@ -236,21 +207,4 @@ describe.skipIf(!hasFfmpeg)('合成调度', () => {
     rmSync(empty, { recursive: true, force: true });
   });
 
-  it('不认识的 provider 明确报错，不静默回落', async () => {
-    await expect(synthesize({ target: root, workRoot, env: offlineEnv(), provider: 'nope' })).rejects.toThrow(
-      /不认识的 provider：nope/,
-    );
-  });
-
-  it('缺密钥的 provider：SynthError 带退出码 4（可操作的环境问题）', async () => {
-    // mimo 走真实实现：没密钥时 preflight 就拦下，不会发请求
-    try {
-      await synthesize({ target: root, workRoot, env: makeVoiceEnv({ env: {}, has: () => true }), provider: 'mimo' });
-      throw new Error('应当抛错');
-    } catch (error) {
-      expect(error).toBeInstanceOf(SynthError);
-      expect((error as SynthError).exitCode).toBe(4);
-      expect((error as SynthError).message).toContain('MIMO_API_KEY');
-    }
-  });
 });

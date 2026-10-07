@@ -11,11 +11,13 @@
 import { mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parseOffice } from 'officeparser';
-import type { OutlineEntry } from '../contracts/assets.ts';
 import { runJson, runCommand, type CommandOutcome } from './run.ts';
 
 /** 大纲最多记这么多条：再多对写稿没有帮助，只会撑大清单。 */
 const OUTLINE_LIMIT = 40;
+
+/** 提取出的标题层级（docx 的 Heading、pptx 的题目）。 */
+export type OutlineEntry = { level: number; text: string };
 
 export type OfficeExtraction = {
   /** 文档自带标题（元数据里的 Title，或首个标题）。 */

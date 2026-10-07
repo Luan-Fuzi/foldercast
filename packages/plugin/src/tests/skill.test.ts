@@ -23,16 +23,32 @@ const SCHEMA = JSON.parse(readFileSync(join(PACKAGE_ROOT, '..', '..', 'docs', 's
   $defs: { sceneType: { enum: string[] } };
 };
 
-/** 场景类型表里第一列是反引号包起来的类型名。 */
+/**
+ * 场景类型表里第一列是反引号包起来的类型名。
+ *
+ * **只在这个表里找**，不是全文扫「第一列是反引号小写词」的表格。skill 里还有预设表与
+ * 详略档位表，它们的首列同样是反引号小写词（`swiss` / `concise` / `detailed`…）——
+ * 加了那两张表之后这条用例就红了，报的是「skill 多出了 swiss 这个场景类型」。
+ * 判据是「场景类型表与 schema 一致」，那就只读场景类型表。
+ */
 function sceneTypesInSkill(): string[] {
-  const table = /^\|\s*`([a-z]+)`\s*\|/gm;
-  return [...SKILL_CONTENT.matchAll(table)].map((match) => match[1] ?? '');
+  const lines = SKILL_CONTENT.split('\n');
+  const header = lines.findIndex((line) => /^\|\s*type\s*\|/.test(line));
+  if (header < 0) return [];
+
+  const types: string[] = [];
+  // 跳过表头与分隔行，逐行取到表格结束（第一行不匹配的行）为止。
+  for (const line of lines.slice(header + 2)) {
+    const match = /^\|\s*`([a-z]+)`\s*\|/.exec(line);
+    if (match === null) break;
+    types.push(match[1] ?? '');
+  }
+  return types;
 }
 
 describe('skill 与契约一致', () => {
-  it('名称与 schema 引用对得上', () => {
+  it('名称对得上', () => {
     expect(SKILL_NAME).toBe('foldercast');
-    expect(SKILL_CONTENT).toContain('script.schema.json');
   });
 
   it('场景类型表覆盖 schema 里的全部类型，且没有多余', () => {

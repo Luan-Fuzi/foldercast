@@ -15,10 +15,6 @@
  * **一条实测经验，值得写下来**：机器被占满时（上一次渲染留下的 Chrome 进程、或者
  * 另一个正在渲整片的任务），这条用例会失败 —— 它比的是**字节**，而 SwiftShader 的软件
  * 光栅在 CPU 被抢的时候不再逐位可复现。同一个文件单独跑、或者机器空着的时候跑，几十次都过。
- *
- * 所以：**判据本身不变**（逐帧一致 = 字节一致），但它要在机器空着的时候验。CI 里它是唯一
- * 的重活，本身满足这个条件；本地如果刚渲染过、或者中断过渲染，先看一眼
- * `ps | grep puppeteer_dev_chrome_profile`。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -27,15 +23,17 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { hasCommand } from '../../assets/run.ts';
+import { checkScript } from '../check.ts';
 import { resolveBrowser } from '../browser.ts';
 import { DEFAULT_VIDEO } from '../plan.ts';
+import type { ScriptDocument } from '../../contracts/script.ts';
 
 const MAIN = resolve(import.meta.dirname, '../main.ts');
 const browser = resolveBrowser();
 /**
  * ffmpeg / ffprobe 是**系统工具**，不是 npm 依赖：本机有、CI runner 上没有。
- * 所以「能不能出片」（要浏览器）与「能不能核对容器」（要 ffprobe，或要 ffmpeg 造夹具）
- * 分成两层判据 —— 缺 ffprobe 时仍然跑两次渲染比 sha256，只是不核对 h264 与帧数。
+ * 所以「能不能出片」（要浏览器）与「能不能核对容器」（要 ffprobe）分成两层判据 ——
+ * 缺 ffprobe 时仍然跑两次渲染比 sha256，只是不核对 h264 与帧数。
  */
 const hasFfprobe = hasCommand('ffprobe');
 
@@ -58,48 +56,28 @@ function sha256(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
-/** 三个场景的讲稿：封面、结构、结尾。旁白短，总长约 22 秒。 */
-function writeFixture(): void {
-  const reading = {
+/** 三个场景的讲稿：封面、结构、结尾。旁白短，总长约 22 秒。自足式 —— 数字都是写死的。 */
+function fixtureScript(): ScriptDocument {
+  return {
     foldercast: 1,
-    generatedAt: '2026-10-05T00:00:00.000Z',
-    source: { root: source, label: '夹具目录' },
-    sources: { maxFiles: 500, maxDepth: 6, exclude: ['node_modules/**'] },
-    stats: {
-      totalFiles: 3,
-      totalBytes: 2048,
-      maxDepth: 2,
-      kindCounts: { code: 1, text: 1, data: 1 },
-      languages: { TypeScript: 40, Markdown: 12 },
-      topDirs: [{ path: 'src', files: 2 }],
-      roles: { readme: ['README.md'], entry: ['src/index.ts'] },
-      secrets: { excluded: [], rescanned: [] },
-    },
-    manifest: [
-      { path: 'README.md', kind: 'text', bytes: 512, lines: 12, language: 'Markdown', title: '说明' },
-      { path: 'src/index.ts', kind: 'code', role: 'entry', bytes: 1024, lines: 40, language: 'TypeScript', importsCount: 1, importedByCount: 2 },
-      { path: 'package.json', kind: 'data', bytes: 512, lines: 18, language: 'JSON' },
-    ],
-    graph: { nodes: 3, edges: 1, roots: ['src/index.ts'], hubs: [{ path: 'src/index.ts', in: 2, out: 1 }], leaves: ['README.md'], dangling: [] },
-  };
-
-  const script = {
-    foldercast: 1,
-    generatedAt: '2026-10-05T00:00:00.000Z',
     source: { root: source, label: '夹具目录' },
     title: '夹具目录',
     video: { width: DEFAULT_VIDEO.width, height: DEFAULT_VIDEO.height, fps: DEFAULT_VIDEO.fps, targetDurationSec: null },
-    style: { preset: 'deck' },
     scenes: [
       { id: 'cover', type: 'cover', title: '夹具目录', subtitle: '三个文件', narration: '这是一个很小的目录，只有三个文件。' },
-      { id: 'layout', type: 'tree', title: '结构', highlight: ['src'], narration: '结构很简单，源码放在 src 下。' },
-      { id: 'outro', type: 'outro', title: '小结', narration: '就这些，谢谢观看。' },
+      {
+        id: 'layout',
+        type: 'tree',
+        title: '结构',
+        entries: [
+          { path: 'src', files: 1, bytes: 1024, highlight: true },
+          { path: '(根目录)', files: 2, bytes: 1024 },
+        ],
+        narration: '结构很简单，源码放在 src 下。',
+      },
+      { id: 'outro', type: 'outro', title: '小结', lines: ['三个文件，一个小目录。'], narration: '就这些，谢谢观看。' },
     ],
   };
-
-  mkdirSync(join(workRoot, 'out'), { recursive: true });
-  writeFileSync(join(workRoot, 'foldercast.json'), `${JSON.stringify(reading, null, 2)}\n`);
-  writeFileSync(join(workRoot, 'script.json'), `${JSON.stringify(script, null, 2)}\n`);
 }
 
 beforeAll(() => {
@@ -109,11 +87,19 @@ beforeAll(() => {
   writeFileSync(join(source, 'README.md'), '# 夹具\n\n用来测渲染的目录。\n');
   writeFileSync(join(source, 'src/index.ts'), 'export const value = 1;\n');
   writeFileSync(join(source, 'package.json'), '{ "name": "fixture" }\n');
-  writeFixture();
+  mkdirSync(join(workRoot, 'out'), { recursive: true });
+  writeFileSync(join(workRoot, 'script.json'), `${JSON.stringify(fixtureScript(), null, 2)}\n`);
 });
 
 afterAll(() => {
   if (source !== '') rmSync(source, { recursive: true, force: true });
+});
+
+describe('夹具', () => {
+  it('夹具讲稿必须过契约校验（否则验的不是「讲稿真能过校验」）', async () => {
+    const report = await checkScript(fixtureScript(), source);
+    expect(report.issues, JSON.stringify(report.issues, null, 2)).toEqual([]);
+  });
 });
 
 describe('CLI 端到端', () => {
@@ -123,7 +109,6 @@ describe('CLI 端到端', () => {
     expect(result.stdout).toContain('1920×1080 @ 30fps');
     expect(result.stdout).toContain('3 个场景');
     expect(result.stdout).toContain('cover');
-    expect(result.stdout).toContain('内联图片');
   });
 
   it('--check --json 给出机器可读的计划摘要', () => {
@@ -142,29 +127,25 @@ describe('CLI 端到端', () => {
     expect(report.timings.map((timing) => timing.id)).toEqual(['cover', 'layout', 'outro']);
   });
 
-  it('讲稿里的路径不存在时明确报错（不渲染一个空片）', () => {
+  it('讲稿引用的文件不存在时是 blocker，退出 2 并指名道姓', () => {
+    const broken = join(source, 'broken.json');
+    const script = fixtureScript();
+    script.scenes[1] = { id: 'layout', type: 'file', file: 'src/nope.ts', narration: '讲一个不存在的文件。' };
+    writeFileSync(broken, `${JSON.stringify(script, null, 2)}\n`);
+    const result = run([source, '--script', broken, '--check', '--json']);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toContain('path-missing');
+    expect(result.stdout).toContain('src/nope.ts');
+    rmSync(broken, { force: true });
+  });
+
+  it('没有场景的讲稿被拦下', () => {
     const broken = join(source, 'broken.json');
     writeFileSync(broken, `${JSON.stringify({ foldercast: 1, source: { root: source }, scenes: [] }, null, 2)}\n`);
     const result = run([source, '--script', broken, '--check']);
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('没有场景');
     rmSync(broken, { force: true });
-  });
-
-  it('讲稿与解读指向不同目录时拦下来', () => {
-    const other = join(source, 'other.json');
-    writeFileSync(
-      other,
-      `${JSON.stringify(
-        { foldercast: 1, source: { root: '/tmp/elsewhere' }, scenes: [{ id: 'a', type: 'outro', title: '完', narration: '结束。' }] },
-        null,
-        2,
-      )}\n`,
-    );
-    const result = run([source, '--script', other, '--check']);
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain('不一致');
-    rmSync(other, { force: true });
   });
 
   it('不认识的选项与坏参数都返回 2 并说明用法', () => {
@@ -191,7 +172,7 @@ describe.skipIf(browser.kind === 'missing')('出片', () => {
       expect(readFileSync(first).length).toBeGreaterThan(20_000);
       expect(sha256(first)).toBe(sha256(second));
 
-      // 用 ffprobe 核对容器：规格来自 plan，编码是 h264，没有音轨（M8 才配音）
+      // 用 ffprobe 核对容器：规格来自 plan，编码是 h264，没有音轨（这条夹具没配音）
       if (!hasFfprobe) return;
       const probe = execFileSync(
         'ffprobe',

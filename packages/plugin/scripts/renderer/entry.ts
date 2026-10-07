@@ -11,7 +11,9 @@
 import { createElement as h } from 'react';
 import { AbsoluteFill, Audio, Composition, Sequence, registerRoot } from 'remotion';
 import type { Plan, PlanScene } from './plan.ts';
+import { TOKENS } from './styles.ts';
 import { captionStyle } from './scenes/captions.ts';
+import { useTransition } from './scenes/common.ts';
 import { SceneView } from './scenes/index.ts';
 
 export type FoldercastProps = {
@@ -32,11 +34,15 @@ const DEFAULT_HEIGHT = 1080;
 const DEFAULT_FPS = 30;
 
 const Frame = ({ scene, plan, base }: { scene: PlanScene; plan: Plan; base: string }) => {
+  // 转场（`motion.transition`）包住场景内容。**样式从原来的 AbsoluteFill 搬到这层**，
+  // 好让转场只作用于内容、不作用于字幕条 —— 布局与搬运前逐项相同，只是多了一层可动画的容器。
   const style: Record<string, unknown> = {
     position: 'absolute',
     inset: 0,
+    display: 'flex',
     fontFamily: 'var(--font-body)',
     color: 'var(--ink)',
+    ...useTransition(plan.tokens),
   };
   if (scene.type === 'cover' || scene.type === 'outro') {
     style['justifyContent'] = 'center';
@@ -49,8 +55,8 @@ const Frame = ({ scene, plan, base }: { scene: PlanScene; plan: Plan; base: stri
 
   return h(
     AbsoluteFill,
-    { style },
-    h(SceneView, { scene, plan }),
+    null,
+    h('div', { style }, h(SceneView, { scene, plan })),
     h(CaptionBar, { scene, plan }),
   );
 };
@@ -148,30 +154,7 @@ const EMPTY_PLAN = {
   title: '',
   label: '',
   root: '',
-  tokens: {
-    preset: 'deck',
-    width: 1920,
-    height: 1080,
-    safeMargin: 80,
-    bg: '#0F1420',
-    ink: '#F2F4F8',
-    muted: '#8A93A6',
-    line: '#2A3245',
-    accent: '#4D9EFF',
-    panel: '#182031',
-    codeBg: '#0B0F18',
-    fontTitle: 'sans-serif',
-    fontBody: 'sans-serif',
-    fontMono: 'monospace',
-    titleWeight: 600,
-    radius: 12,
-    shadow: 1,
-    grain: 0,
-    titleSize: 92,
-    headingSize: 44,
-    bodySize: 30,
-    captionSize: 44,
-  },
+  tokens: { ...TOKENS },
   css: {},
   scenes: [],
   warnings: [],

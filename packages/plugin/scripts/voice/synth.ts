@@ -23,19 +23,17 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { join, resolve } from 'node:path';
 import {
   DURATIONS_VERSION,
-  KEY_REFS,
   type DurationsDocument,
   type SceneDuration,
   type Sub,
   type TtsProvider,
   type VoiceEnv,
-  type VoiceSpec,
 } from '../contracts/durations.ts';
 import { allocateByWidth } from '../contracts/spans.ts';
 import { splitSubtitles } from '../contracts/subtitles.ts';
-import type { ScriptDocument } from '../contracts/script.ts';
+import type { ScriptDocument, VoiceSpec } from '../contracts/script.ts';
 import { buildTrack, probeDurationSec, readJsonIfExists } from './audio.ts';
-import { findProvider, providerNames, DEFAULT_PROVIDER } from './providers/index.ts';
+import { sayProvider } from './providers/say.ts';
 
 /** 每个场景末尾的留白（秒）。**算进场景时长**，所以画面与配音不会因此错开。 */
 export const DEFAULT_PAUSE_SEC = 0.45;
@@ -66,12 +64,10 @@ export type SynthOptions = {
   /** 讲稿路径覆盖。 */
   scriptPath?: string;
   /**
-   * provider：名字或**直接给一个实现**。
-   *
-   * 给实现是**为了测试**：调度与算术（跳过已存在的音频、实测时长、写 durations.json）
-   * 都可以用假 provider 完全离线地验，不必为了测这些去调一次真的 TTS。
+   * provider：默认 `say`。给一个实现是为了**测试** —— 调度与算术（跳过已存在的音频、
+   * 实测时长、写 durations.json）都可以用假 provider 完全离线地验，不必真的调 TTS。
    */
-  provider?: string | TtsProvider;
+  provider?: TtsProvider;
   /** 音色覆盖。 */
   voice?: string;
   /** 风格覆盖。 */
@@ -171,31 +167,16 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
   if (env === undefined) throw new SynthError('没有提供 VoiceEnv（调用方要传一个）', 2);
 
   if (!existsSync(scriptPath)) {
-    throw new SynthError(`找不到讲稿：${scriptPath}\n先用 M5 写稿，或手写一份 script.json。`, 2);
+    throw new SynthError(`找不到讲稿：${scriptPath}\n先按 skill 写一份 script.json。`, 2);
   }
   const script = JSON.parse(readFileSync(scriptPath, 'utf8')) as ScriptDocument;
   const spec: VoiceSpec = script.voice ?? {};
 
-  // 优先级：**命令行/参数显式给的 > 讲稿里的 > 默认**。
-  // 反过来会把「用户明确要求的那一个」悄悄换掉（实测踩过：`--provider mimo` 被讲稿里的
-  // `voice.provider: say` 顶掉，于是缺密钥那条路径永远测不到）。
-  const injected = typeof options.provider === 'object' ? options.provider : undefined;
-  const fromOption = typeof options.provider === 'string' ? options.provider : undefined;
-  const providerName = injected?.name ?? fromOption ?? spec.provider ?? DEFAULT_PROVIDER;
-  const provider: TtsProvider | undefined = injected ?? findProvider(providerName);
-  if (provider === undefined) {
-    throw new SynthError(
-      `不认识的 provider：${providerName}\n可用的有：${providerNames().join('、')}。`,
-      2,
-    );
-  }
+  const provider = options.provider ?? sayProvider;
 
   const preflight = provider.preflight(env);
   if (!preflight.ok) {
-    throw new SynthError(
-      `provider ${provider.name} 还不能用（${preflight.reason}）：\n${preflight.hint}`,
-      preflight.reason === 'credential-missing' ? 4 : 2,
-    );
+    throw new SynthError(`provider ${provider.name} 还不能用（${preflight.reason}）：\n${preflight.hint}`, 2);
   }
 
   const style = options.style ?? spec.style;
@@ -203,7 +184,6 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
   const previous = readJsonIfExists<DurationsDocument>(join(workRoot, 'durations.json'));
   const requestedVoice = options.voice ?? spec.voice ?? options.voiceOverride ?? previous?.voice;
   // **在合成之前**解析实际音色：报告要记「实际用的」，而全部命中缓存时合成根本不会跑
-  // provider 说得出来就用它说的；说不出来（返回 undefined）就退回请求里那个 / 上一次记的
   const resolvedVoice =
     provider.resolveVoice === undefined
       ? undefined
@@ -217,9 +197,6 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
   const voice = resolvedVoice ?? requestedVoice;
   const pauseSec = options.pauseSec ?? DEFAULT_PAUSE_SEC;
   const notes: string[] = [provider.describe()];
-  if (provider.requiresKey) {
-    notes.push(`用到的凭据引用名：${KEY_REFS[provider.name] ?? '(未声明)'}（值不在报告里）`);
-  }
 
   const scenes = options.limit === undefined ? script.scenes : script.scenes.slice(0, options.limit);
   mkdirSync(join(workRoot, 'audio'), { recursive: true });

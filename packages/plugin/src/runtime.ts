@@ -44,17 +44,13 @@ export function findPackageRoot(start: string): string | undefined {
 /** 包根：脚本、随包 schema、依赖的 bin 都相对它定位。 */
 export const PACKAGE_ROOT = findPackageRoot(MODULE_DIR) ?? resolve(MODULE_DIR, '..');
 
-export type StageName = 'analyze' | 'assets' | 'validate' | 'render' | 'voice';
+export type StageName = 'render' | 'voice';
 
 /** 阶段脚本所在子目录，两套布局下同名。 */
 const STAGE_DIR: Readonly<Record<StageName, string>> = {
-  analyze: 'analyzer',
-  assets: 'assets',
-  validate: 'validate',
-  // 渲染（M7）：讲稿 + 素材 → mp4（有音轨就用音轨）。需要浏览器，缺浏览器只影响这一步
+  // 渲染：讲稿 →（按需转换素材）→ mp4。需要浏览器，缺浏览器只影响这一步
   render: 'renderer',
-  // 配音（M8）：讲稿 → 逐场景音频 + durations.json + 整条音轨。需要 ffmpeg 与一个 TTS
-  // provider（默认是免密钥的 say）
+  // 配音：讲稿 → 逐场景音频 + durations.json + 整条音轨。需要 say 与 ffmpeg
   voice: 'voice',
 };
 
@@ -104,13 +100,9 @@ export function stageEntryPath(stage: StageName): string {
   return stageEntry(stage).absolute;
 }
 
-/** 工作根：所有产物都在 `<源目录>/.foldercast/` 下（SPEC-data-format.md 工作目录）。 */
+/** 工作根：所有产物都在 `<源目录>/.foldercast/` 下。 */
 export function workRootFor(target: string): string {
   return resolve(target, '.foldercast');
-}
-
-export function readingPathFor(target: string): string {
-  return resolve(workRootFor(target), 'foldercast.json');
 }
 
 export function scriptPathFor(target: string): string {
@@ -220,7 +212,7 @@ function findBrowser(): { name: string; path: string } | undefined {
  * 首次调用时探测环境。
  *
  * **只有 Node 与随包脚本是硬条件**：其余缺失都降级（office/pdf 素材、视频关键帧），
- * 不影响解读本身。所以这里返回的是「各自能不能用」，不是一句「环境不满足」。
+ * 不影响讲稿本身。所以这里返回的是「各自能不能用」，不是一句「环境不满足」。
  */
 export async function detectDependencies(): Promise<Dependency[]> {
   // 判据取运行时能力本身，而不是版本号：22.0–22.18 要显式加 `--experimental-strip-types`
@@ -251,7 +243,7 @@ export async function detectDependencies(): Promise<Dependency[]> {
       name: 'ffmpeg',
       ok: await hasExecutable('ffmpeg', '-version'),
       required: false,
-      hint: '视频抽帧、音频拼接与配音都要 ffmpeg（macOS：brew install ffmpeg）。缺它时视频仍进解读，只是没有关键帧、也不能配音。',
+      hint: '视频封面、音频拼接与配音都要 ffmpeg（macOS：brew install ffmpeg）。缺它时配音不可用，渲染仍能出静音片。',
     },
     {
       name: 'ffprobe',
@@ -266,7 +258,7 @@ export async function detectDependencies(): Promise<Dependency[]> {
       ok: await hasExecutable('say', '-v'),
       required: false,
       // 默认 provider 是它：免密钥、装了就能出片。缺了也能用云端 provider（要密钥）
-      hint: '默认的配音 provider 是 macOS 自带的 say（免密钥）。没有它就换云端 provider：pnpm voice <目录> --provider mimo，并配好 MIMO_API_KEY。',
+      hint: '配音用 macOS 自带的 say（免密钥）。没有它就不配音（不传 voice），画面照常。',
     },
     {
       name: 'sips',
@@ -278,7 +270,7 @@ export async function detectDependencies(): Promise<Dependency[]> {
       name: 'browser',
       ok: browser !== undefined,
       required: false,
-      // **不是硬条件**：缺浏览器时分析、素材、校验、页面都能跑，只有出片不能（C4）。
+      // **不是硬条件**：缺浏览器时只有出片不能，讲稿校验（--check）照常。
       // 所以这里只如实报告，不触发下载（下载由用户决定，150–300 MB）。
       hint:
         browser === undefined

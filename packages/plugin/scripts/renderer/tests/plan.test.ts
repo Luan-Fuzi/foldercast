@@ -1,297 +1,223 @@
 /**
- * 渲染计划：讲稿 + 解读 + 素材 → 浏览器要的那份纯数据。
+ * 渲染计划的纯函数断言：讲稿（+ prep 结果）→ 计划。
  *
- * 这是 M7 里唯一「可以完全离线断言」的一层，所以判据都钉在这里：
- *
- * 1. **讲稿里的路径必须变成画面上的东西**：`file` 场景拿到素材、`items` 拿到图片墙、
- *    `pages` 拿到逐页图；解不开的素材变成一条 `warning` 而不是崩溃。
- * 2. **不认识的场景类型跳过并警告**（schema 说它是开放枚举）。
- * 3. **时长来自 `video`**，`targetDurationSec` 是软约束：写了就按比例缩放。
- * 4. **计划里没有时钟**：两次构建逐字段相同（有 `generatedAt` 之类的字段就会破坏逐帧一致）。
+ * 不碰文件系统（素材用 `Media.path` 原样带过、不内联），所以这里断言的就是
+ * 「这份讲稿会渲染成什么」。
  */
 import { describe, expect, it } from 'vitest';
-import { buildPlan } from '../plan.ts';
-import type { AssetManifest } from '../../contracts/assets.ts';
-import type { FoldercastDocument } from '../../contracts/foldercast.ts';
+import type { Prepared } from '../../contracts/prep.ts';
+import type { DurationsDocument } from '../../contracts/durations.ts';
 import type { ScriptDocument } from '../../contracts/script.ts';
+import { buildPlan, DEFAULT_VIDEO, defaultTitle } from '../plan.ts';
 
-function reading(over: Partial<FoldercastDocument> = {}): FoldercastDocument {
+function scriptOf(scenes: ScriptDocument['scenes'], extra: Partial<ScriptDocument> = {}): ScriptDocument {
   return {
     foldercast: 1,
-    generatedAt: '2026-10-05T00:00:00.000Z',
-    source: { root: '/tmp/demo' },
-    sources: { maxFiles: 500, maxDepth: 6, exclude: ['node_modules/**'] },
-    stats: {
-      totalFiles: 4,
-      totalBytes: 4096,
-      maxDepth: 2,
-      kindCounts: { code: 2, text: 1, image: 1 },
-      secrets: { excluded: [{ path: '.env', match: '.env' }], rescanned: [] },
-    },
-    manifest: [
-      { path: 'README.md', kind: 'text', bytes: 900, lines: 20, preview: '这个项目做一件事。' },
-      { path: 'src/index.ts', kind: 'code', bytes: 300, lines: 12 },
-      { path: 'src/util.ts', kind: 'code', bytes: 200, lines: 8 },
-      { path: 'docs/graph.png', kind: 'image', bytes: 1024 },
-    ],
-    ...over,
+    source: { root: '/tmp/demo', label: '演示目录' },
+    scenes,
+    ...extra,
   };
 }
 
-function assets(): AssetManifest {
-  return {
-    assets: 1,
-    generatedAt: '2026-10-05T00:00:00.000Z',
-    source: { root: '/tmp/demo' },
-    entries: [
-      {
-        path: 'src/index.ts',
-        kind: 'code',
-        mtimeMs: 1,
-        size: 300,
-        hash: 'sha256:aa',
-        products: [{ role: 'page', path: 'assets/pages/src_index.ts_p1.png' }],
-      },
-      {
-        path: 'docs/graph.png',
-        kind: 'image',
-        mtimeMs: 2,
-        size: 1024,
-        hash: 'sha256:bb',
-        products: [{ role: 'thumb', path: 'assets/thumbs/docs_graph.png.png', width: 640, height: 360 }],
-      },
-    ],
-  };
+function preparedOf(source: string, products: Prepared['products'], kind: Prepared['kind'] = 'image'): [string, Prepared] {
+  return [source, { kind, source, products }];
 }
 
-function script(over: Partial<ScriptDocument> = {}): ScriptDocument {
-  return {
-    foldercast: 1,
-    source: { root: '/tmp/demo' },
-    title: '演示目录',
-    scenes: [
-      { id: 'cover', type: 'cover', title: '演示目录', subtitle: '一句话说明', narration: '这是封面，交代目录是什么。' },
-      { id: 'layout', type: 'tree', title: '结构', highlight: ['src', 'docs'], narration: '结构分三块。' },
-      { id: 'kinds', type: 'inventory', title: '构成', groups: [{ kind: 'code', count: 2, note: '两个源文件' }, { kind: 'text', count: 1 }], narration: '内容以代码为主。' },
-      { id: 'entry', type: 'file', title: '入口', file: 'src/index.ts', asset: 'assets/pages/src_index.ts_p1.png', narration: '这是入口，被引用十二次。' },
-      { id: 'figures', type: 'gallery', title: '图', items: ['assets/thumbs/docs_graph.png.png'], narration: '这里有一张图。' },
-      { id: 'outro', type: 'outro', title: '小结', narration: '就这些。' },
-    ],
-    ...over,
-  };
-}
-
-describe('计划构建', () => {
-  it('把六种场景都变成可渲染的形状', () => {
-    const plan = buildPlan({ script: script(), reading: reading(), assets: assets() });
-    expect(plan.scenes.map((scene) => scene.type)).toEqual(['cover', 'tree', 'inventory', 'file', 'gallery', 'outro']);
-    expect(plan.composition.durationInFrames).toBeGreaterThan(0);
-    expect(plan.scenes.reduce((sum, scene) => sum + scene.durationInFrames, 0)).toBe(plan.composition.durationInFrames);
-    expect(plan.css['--accent']).toBeTypeOf('string');
-  });
-
-  it('file 场景拿到素材，gallery 拿到图片尺寸', () => {
-    const plan = buildPlan({ script: script(), reading: reading(), assets: assets() });
-    const file = plan.scenes.find((scene) => scene.type === 'file');
-    const gallery = plan.scenes.find((scene) => scene.type === 'gallery');
-
-    expect(file?.type === 'file' && file.media?.path).toBe('assets/pages/src_index.ts_p1.png');
-    expect(file?.type === 'file' && file.media?.file).toBe('src/index.ts');
-    expect(gallery?.type === 'gallery' && gallery.items[0]?.width).toBe(640);
-  });
-
-  it('没有素材时不崩：给一条可操作的提醒，画面照出', () => {
+describe('场景映射（自足式讲稿）', () => {
+  it('tree 的行来自讲稿 entries，原样保留 path/files/bytes/highlight', () => {
     const plan = buildPlan({
-      script: script({
-        scenes: [{ id: 'entry', type: 'file', title: '入口', file: 'src/util.ts', narration: '这个文件没有素材。' }],
-      }),
-      reading: reading(),
+      script: scriptOf([
+        {
+          id: 'layout',
+          type: 'tree',
+          narration: '结构。',
+          entries: [
+            { path: 'src', files: 12, bytes: 450_000, highlight: true },
+            { path: 'docs', files: 3 },
+          ],
+        },
+      ]),
     });
-    const file = plan.scenes[0];
-    expect(file?.type === 'file' && file.media).toBeUndefined();
-    expect(plan.warnings.some((warning) => warning.includes('src/util.ts'))).toBe(true);
+    const tree = plan.scenes[0];
+    expect(tree?.type).toBe('tree');
+    if (tree?.type !== 'tree') return;
+    expect(tree.rows).toEqual([
+      { path: 'src', files: 12, bytes: 450_000, highlight: true },
+      { path: 'docs', files: 3, highlight: false },
+    ]);
   });
 
-  it('不认识的场景类型跳过并警告，其余照常渲染', () => {
+  it('inventory 的占比用 total（缺省用各组之和）', () => {
     const plan = buildPlan({
-      script: script({
-        scenes: [
-          { id: 'cover', type: 'cover', title: '封面', narration: '开头。' },
-          { id: 'weird', type: 'timeline' as never, narration: '未来才有的类型。' },
-          { id: 'outro', type: 'outro', title: '完', narration: '结尾。' },
-        ],
-      }),
-      reading: reading(),
+      script: scriptOf([
+        {
+          id: 'kinds',
+          type: 'inventory',
+          narration: '构成。',
+          groups: [
+            { label: 'Markdown 笔记', count: 40 },
+            { label: '简历素材', count: 10 },
+          ],
+          total: 100,
+        },
+      ]),
     });
-    expect(plan.scenes.map((scene) => scene.id)).toEqual(['cover', 'outro']);
-    expect(plan.warnings.some((warning) => warning.includes('timeline'))).toBe(true);
+    const inventory = plan.scenes[0];
+    if (inventory?.type !== 'inventory') throw new Error('不是 inventory');
+    expect(inventory.groups.map((group) => [group.label, group.share])).toEqual([
+      ['Markdown 笔记', 0.4],
+      ['简历素材', 0.1],
+    ]);
+    expect(inventory.totalFiles).toBe(100);
   });
 
-  it('全部场景都不认识时明确报错，而不是渲染一个空片', () => {
-    expect(() =>
-      buildPlan({
-        script: script({ scenes: [{ id: 'x', type: 'nope' as never, narration: '空。' }] }),
-        reading: reading(),
-      }),
-    ).toThrow(/没有可渲染的场景/);
-  });
-
-  it('video 规格进 plan，targetDurationSec 按比例缩放', () => {
+  it('file 场景：prep 里有图就带 media，没有就落 excerpt 并给 warning', () => {
+    const prep = new Map<string, Prepared>([
+      preparedOf('docs/logo.png', [{ role: 'thumb', path: 'assets/thumbs/docs__logo.png', width: 640, height: 320 }]),
+    ]);
     const plan = buildPlan({
-      script: script({ video: { width: 1280, height: 720, fps: 24, targetDurationSec: 60 } }),
-      reading: reading(),
-      assets: assets(),
+      script: scriptOf([
+        { id: 'a', type: 'file', file: 'docs/logo.png', note: 'PNG · 640×320', narration: '有图。' },
+        { id: 'b', type: 'file', file: 'README.md', excerpt: ['# 演示', '', '一段说明。'], narration: '没有图。' },
+      ]),
+      prep,
     });
-    expect(plan.composition.width).toBe(1280);
-    expect(plan.composition.height).toBe(720);
-    expect(plan.composition.fps).toBe(24);
-    expect(plan.composition.durationInFrames).toBe(60 * 24);
+
+    const withMedia = plan.scenes[0];
+    if (withMedia?.type !== 'file') throw new Error('不是 file');
+    expect(withMedia.media?.path).toBe('assets/thumbs/docs__logo.png');
+    expect(withMedia.note).toBe('PNG · 640×320');
+
+    const textOnly = plan.scenes[1];
+    if (textOnly?.type !== 'file') throw new Error('不是 file');
+    expect(textOnly.media).toBeUndefined();
+    expect(textOnly.excerpt).toEqual(['# 演示', '', '一段说明。']);
+    expect(plan.warnings.join('\n')).toContain('README.md');
   });
 
-  it('讲稿没写 video 时用 1920×1080 / 30fps', () => {
-    const plan = buildPlan({ script: script(), reading: reading(), assets: assets() });
-    expect(plan.composition).toMatchObject({ width: 1920, height: 1080, fps: 30 });
-  });
-
-  it('样式预设：预设进 token，覆盖生效，认不出的键报警告', () => {
+  it('gallery：prep 没有的条目跳过并警告，columns 按张数定', () => {
+    const prep = new Map<string, Prepared>([
+      preparedOf('a.png', [{ role: 'thumb', path: 'assets/thumbs/a.png' }]),
+      preparedOf('c.png', [{ role: 'thumb', path: 'assets/thumbs/c.png' }]),
+    ]);
     const plan = buildPlan({
-      script: script({ style: { preset: 'deck', overrides: { 'palette.accent': '#FF0000', 'nosuch.key': 1 } } }),
-      reading: reading(),
-      assets: assets(),
-      preset: { name: 'deck', palette: { accent: '#4D9EFF', bg: '#0F1420' } },
-      presetName: 'deck',
-    });
-    expect(plan.tokens.accent).toBe('#FF0000');
-    expect(plan.css['--accent']).toBe('#FF0000');
-    expect(plan.warnings.some((warning) => warning.includes('nosuch.key'))).toBe(true);
-  });
-
-  it('没有预设文件时用兜底 token，照常出片', () => {
-    const plan = buildPlan({ script: script(), reading: reading(), assets: assets(), presetName: 'deck' });
-    expect(plan.tokens.bg).toBeTruthy();
-    expect(plan.warnings.some((warning) => warning.includes('兜底'))).toBe(true);
-  });
-
-  it('确定性：两次构建逐字段相同', () => {
-    const first = buildPlan({ script: script(), reading: reading(), assets: assets() });
-    const second = buildPlan({ script: script(), reading: reading(), assets: assets() });
-    expect(second).toEqual(first);
-  });
-
-  it('内联函数被调用在每件图片素材上，且 src 落进计划', () => {
-    const calls: string[] = [];
-    const plan = buildPlan({
-      script: script(),
-      reading: reading(),
-      assets: assets(),
-      workRoot: '/tmp/demo/.foldercast',
-      embed: (target) => {
-        calls.push(target.path);
-        return { src: `data:image/png;base64,AAAA`, bytes: 3, scaled: true };
-      },
-    });
-    expect(calls.sort()).toEqual(['assets/pages/src_index.ts_p1.png', 'assets/thumbs/docs_graph.png.png']);
-    const gallery = plan.scenes.find((scene) => scene.type === 'gallery');
-    expect(gallery?.type === 'gallery' && gallery.items[0]?.src).toContain('data:image/png');
-    expect(gallery?.type === 'gallery' && gallery.items[0]?.inlineBytes).toBe(3);
-  });
-
-  it('没有内联函数时只留路径（浏览器那一侧会落到占位说明）', () => {
-    const plan = buildPlan({ script: script(), reading: reading(), assets: assets() });
-    const gallery = plan.scenes.find((scene) => scene.type === 'gallery');
-    expect(gallery?.type === 'gallery' && gallery.items[0]?.src).toBeUndefined();
-  });
-
-  it('讲稿写的素材路径（素材清单里没有）照样引用', () => {
-    const plan = buildPlan({
-      script: script({
-        scenes: [{ id: 'figures', type: 'gallery', title: '图', items: ['assets/thumbs/other.png'], narration: '一张图。' }],
-      }),
-      reading: reading(),
+      script: scriptOf([
+        { id: 'g', type: 'gallery', items: ['a.png', 'b.png', 'c.png'], narration: '图片。' },
+      ]),
+      prep,
     });
     const gallery = plan.scenes[0];
-    expect(gallery?.type === 'gallery' && gallery.items[0]?.path).toBe('assets/thumbs/other.png');
+    if (gallery?.type !== 'gallery') throw new Error('不是 gallery');
+    expect(gallery.items.map((item) => item.path)).toEqual(['assets/thumbs/a.png', 'assets/thumbs/c.png']);
+    expect(gallery.columns).toBe(2);
+    expect(plan.warnings.join('\n')).toContain('b.png');
   });
 
-  it('clip 场景拿到封面图与片段区间（画面不播活动画面）', () => {
-    const plan = buildPlan({
-      script: script({
-        scenes: [
-          {
-            id: 'clip',
-            type: 'clip',
-            title: '片段',
-            source: 'demo.mp4',
-            poster: 'assets/posters/demo.mp4.jpg',
-            clipRange: [0, 2],
-            narration: '这是一段测试片段。',
-          },
+  it('clip 用视频的封面，document 按讲稿的页码挑页', () => {
+    const prep = new Map<string, Prepared>([
+      preparedOf('demo.mp4', [{ role: 'poster', path: 'assets/posters/demo.mp4.jpg' }], 'video'),
+      preparedOf(
+        'report.pdf',
+        [
+          { role: 'page', path: 'assets/pages/report.pdf_p1.png' },
+          { role: 'page', path: 'assets/pages/report.pdf_p2.png' },
+          { role: 'page', path: 'assets/pages/report.pdf_p3.png' },
         ],
-      }),
-      reading: reading(),
-      assets: {
-        assets: 1,
-        generatedAt: '2026-10-05T00:00:00.000Z',
-        source: { root: '/tmp/demo' },
-        entries: [
-          {
-            path: 'demo.mp4',
-            kind: 'video',
-            mtimeMs: 3,
-            size: 40_000,
-            hash: 'sha256:cc',
-            products: [
-              { role: 'poster', path: 'assets/posters/demo.mp4.jpg', width: 640, height: 360 },
-              { role: 'frame', path: 'assets/frames/demo_f2.jpg' },
-            ],
-          },
-        ],
-      },
-    });
-    const scene = plan.scenes[0];
-    // 主产物是封面图（poster 在 file 场景的偏好顺序里排在 frame 前面），视频路径本身进不了画面
-    expect(scene?.type === 'clip' && scene.video.path).toBe('assets/posters/demo.mp4.jpg');
-    expect(scene?.type === 'clip' && scene.video.file).toBe('demo.mp4');
-    expect(scene?.type === 'clip' && scene.range).toEqual([0, 2]);
-    // 唯一的提醒应当只是「没给预设」，而不是「没有素材」
-    expect(plan.warnings.filter((warning) => warning.includes('素材'))).toEqual([]);
-  });
-
-  it('document 场景逐页取图，页数写进页脚', () => {
+        'pdf',
+      ),
+    ]);
     const plan = buildPlan({
-      script: script({
-        scenes: [
-          {
-            id: 'doc',
-            type: 'document',
-            title: '文档',
-            source: 'docs/graph.png',
-            pages: ['assets/pages/doc_p1.png', 'assets/pages/doc_p2.png'],
-            narration: '这份文档两页。',
-          },
-        ],
-      }),
-      reading: reading(),
+      script: scriptOf([
+        { id: 'demo', type: 'clip', source: 'demo.mp4', clipRange: [3, 18], narration: '一段视频。' },
+        { id: 'report', type: 'document', source: 'report.pdf', pages: [1, 3], narration: '翻两页。' },
+      ]),
+      prep,
     });
-    const scene = plan.scenes[0];
-    expect(scene?.type === 'document' && scene.pages).toHaveLength(2);
-    expect(scene?.type === 'document' && scene.footer).toBe('2 页');
+
+    const clip = plan.scenes[0];
+    if (clip?.type !== 'clip') throw new Error('不是 clip');
+    expect(clip.poster?.path).toBe('assets/posters/demo.mp4.jpg');
+    expect(clip.range).toEqual([3, 18]);
+
+    const document = plan.scenes[1];
+    if (document?.type !== 'document') throw new Error('不是 document');
+    expect(document.pages.map((page) => page.path)).toEqual([
+      'assets/pages/report.pdf_p1.png',
+      'assets/pages/report.pdf_p3.png',
+    ]);
+    expect(document.footer).toBe('3 页');
   });
 
-  it('场景没写 title 时按类型给一个，不留空标题栏', () => {
+  it('outro 的 lines 来自讲稿；facts 只有场景数与片长（都是渲染器自己知道的数）', () => {
     const plan = buildPlan({
-      script: script({
-        scenes: [{ id: 'entry', type: 'file', file: 'src/util.ts', narration: '这个文件没写标题。' }],
-      }),
-      reading: reading(),
+      script: scriptOf([{ id: 'outro', type: 'outro', title: '小结', lines: ['内容构成：代码 · 文档'], narration: '完。' }]),
     });
-    expect(plan.scenes[0]?.title).toBe('util.ts');
+    const outro = plan.scenes[0];
+    if (outro?.type !== 'outro') throw new Error('不是 outro');
+    expect(outro.lines).toEqual(['内容构成：代码 · 文档']);
+    expect(outro.facts.map((fact) => fact.label)).toEqual(['场景', '片长']);
   });
 
-  it('outro 的片长与文件数来自计划本身', () => {
-    const plan = buildPlan({ script: script(), reading: reading(), assets: assets() });
-    const outro = plan.scenes.find((scene) => scene.type === 'outro');
-    expect(outro?.type === 'outro' && outro.facts.map((fact) => fact.label)).toEqual(['场景', '片长', '文件']);
-    expect(outro?.type === 'outro' && outro.facts[2]?.value).toBe('4 个');
+  it('不认识的场景类型跳过而不是崩溃，并留 warning', () => {
+    const plan = buildPlan({
+      script: scriptOf([
+        { id: 'a', type: 'outro', title: '完', narration: '好。' },
+        { id: 'weird', type: 'hologram' as never, narration: '未知类型。' },
+      ]),
+    });
+    expect(plan.scenes).toHaveLength(1);
+    expect(plan.warnings.join('\n')).toContain('weird');
+  });
+
+  it('全部场景都不认识时抛错（没有可渲染的东西）', () => {
+    expect(() =>
+      buildPlan({ script: scriptOf([{ id: 'a', type: 'hologram' as never, narration: '未知。' }]) }),
+    ).toThrow('没有可渲染的场景');
+  });
+});
+
+describe('时长来源', () => {
+  it('durations.json 的实测值优先，且向上取整', () => {
+    const durations: DurationsDocument = {
+      durations: 1,
+      generatedAt: '2026-10-07T00:00:00+08:00',
+      provider: 'say',
+      track: 'audio/narration.wav',
+      pause: 0.45,
+      scenes: [{ id: 'a', audio: 'audio/a.wav', audioSec: 5.32, duration: 5.77, subs: [['好。', 5.77]] }],
+    };
+    const plan = buildPlan({
+      script: scriptOf([
+        { id: 'a', type: 'outro', title: '完', narration: '好。', durationSec: 99 },
+        { id: 'b', type: 'outro', title: '完二', narration: '第二场没有实测，用字数估。' },
+      ]),
+      durations,
+    });
+    // 5.77s @30fps = 173.1 → 174 帧（向上取整，宁可多一帧）
+    expect(plan.scenes[0]?.durationInFrames).toBe(174);
+    expect(plan.scenes[1]?.durationInFrames).toBeGreaterThan(0);
+    expect(plan.warnings.join('\n')).toContain('b');
+  });
+
+  it('targetDurationSec 只在没配音时缩放，且总帧数精确等于目标', () => {
+    const plan = buildPlan({
+      script: scriptOf(
+        [
+          { id: 'a', type: 'outro', title: '完', narration: '第一场。' },
+          { id: 'b', type: 'outro', title: '完二', narration: '第二场。' },
+        ],
+        { video: { targetDurationSec: 10 } },
+      ),
+    });
+    expect(plan.composition.durationInFrames).toBe(10 * DEFAULT_VIDEO.fps);
+  });
+});
+
+describe('标题兜底', () => {
+  it('file / document / clip 用文件名，cover 用目录名', () => {
+    expect(defaultTitle({ id: 'a', type: 'file', file: 'src/index.ts', narration: '' }, '演示目录')).toBe('index.ts');
+    expect(defaultTitle({ id: 'a', type: 'document', source: 'docs/report.pdf', narration: '' }, '演示目录')).toBe('report.pdf');
+    expect(defaultTitle({ id: 'a', type: 'cover', narration: '' }, '演示目录')).toBe('演示目录');
+    expect(defaultTitle({ id: 'a', type: 'file', file: 'a.ts', narration: '', title: '入口' }, '演示目录')).toBe('入口');
   });
 });

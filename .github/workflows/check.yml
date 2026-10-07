@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  docs:
-    name: 文档与契约
+  check:
+    name: 检查与测试
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,154 +36,73 @@ jobs:
       - name: 单元与集成测试
         run: pnpm run test
 
-      # 拿仓库自身当用例跑一遍工具链：分析器产出的解读必须能过契约校验。
-      # 解读不进版本库（可重算），所以这里先生成再校验。
-      - name: 分析本仓库并校验解读
+      # 讲稿现写一份最小的（script.json 是创作产物、不进版本库），验三条不依赖外部
+      # 工具的路径：契约校验、计划计算、以及「缺浏览器时的结构化引导」。
+      - name: 讲稿校验与无浏览器渲染引导
         run: |
-          pnpm run analyze .
-          pnpm run validate .
-
-      # 出片要浏览器，**这一层 CI 里不装**：缺浏览器时渲染阶段必须给出结构化引导并退出 3，
-      # 这里正好验那条路径（也验证「缺浏览器不影响别的阶段」）。真出片由本机验收，
-      # 判据与证据记在 docs/ROADMAP.md 的 M7 记录里。
-      #
-      # 讲稿现写一份最小的：`script.json` 是创作产物、不进版本库，而渲染阶段「运行时加载讲稿」
-      # 这条判据只有真的喂一份进去才成立。旁白里刻意不放长路径 —— 一个路径就超过字幕的
-      # 24 宽度单位，校验器会拦（这正是它该干的事）。
-      - name: 无浏览器时的渲染引导
-        run: |
+          mkdir -p .foldercast
           node -e '
             const fs = require("node:fs");
-            const reading = JSON.parse(fs.readFileSync(".foldercast/foldercast.json", "utf8"));
-            const seen = new Set();
-            const usable = (path) =>
-              !["lib/", "node_modules", "tests/", "fixtures/"].some((part) => path.includes(part));
-            const picks = [];
-            const consider = (path) => {
-              if (picks.length < 4 && usable(path) && !seen.has(path)) {
-                seen.add(path);
-                picks.push(path);
-              }
-            };
-            for (const hub of reading.graph.hubs ?? []) consider(hub.path);
-            for (const root of reading.graph.roots ?? []) consider(root);
-            for (const entry of reading.manifest) {
-              if (picks.length >= 4) break;
-              if (entry.kind === "code" || entry.kind === "text") consider(entry.path);
-            }
-            const groups = Object.entries(reading.stats.kindCounts)
-              .filter(([, count]) => count > 0)
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 5)
-              .map(([kind, count]) => ({ kind, count }));
             fs.writeFileSync(".foldercast/script.json", JSON.stringify({
               foldercast: 1,
-              source: { root: reading.source.root },
+              source: { root: process.cwd() },
               title: "foldercast",
               scenes: [
                 { id: "cover", type: "cover", title: "foldercast", subtitle: "目录放映", narration: "这是 foldercast 自己的目录。" },
-                { id: "layout", type: "tree", title: "结构", highlight: ["packages", "docs"], narration: "代码在 packages 目录，文档在 docs 目录。" },
-                { id: "kinds", type: "inventory", title: "构成", groups, narration: "内容以代码与文档为主，两者加起来占了大半。" },
-                ...picks.map((path, index) => ({
-                  id: `file-${index}`,
-                  type: "file",
-                  title: path.split("/").pop(),
-                  file: path,
-                  narration: `第 ${index + 1} 个值得看的文件，标题就写在画面上。`,
-                })),
-                { id: "outro", type: "outro", title: "完", narration: "就这些。" },
-              ],
+                { id: "layout", type: "tree", title: "结构",
+                  entries: [
+                    { path: "packages", files: 20, highlight: true },
+                    { path: "docs", files: 3 },
+                    { path: "scripts", files: 6 }
+                  ],
+                  narration: "代码在 packages，契约在 docs，工具在 scripts。" },
+                { id: "kinds", type: "inventory", title: "构成",
+                  groups: [{ label: "代码", count: 25 }, { label: "文档", count: 6 }],
+                  total: 31,
+                  narration: "内容以代码为主，文档其次。" },
+                { id: "outro", type: "outro", title: "完", narration: "就这些。" }
+              ]
             }, null, 2));
           '
-          # 讲稿必须先过校验（机器能判的那一层），否则后面验的是「坏讲稿怎么报错」
-          pnpm run validate .
           # --check 不碰浏览器，任何机器上都要成功
           pnpm run render . --check
 
           # 真渲染分两种情况，两条都算通过：
-          #   · 有浏览器 → 出片（本机、装了 Chrome 的机器走这条）
+          #   · 有浏览器 → 出片（装了 Chrome 的机器走这条）
           #   · 没有浏览器 → 结构化引导 + 退出码 3（这一层 CI 走这条，也是要钉住的行为）
           set +e
           pnpm run render . --json > render.json 2> render.log
           code=$?
           set -e
-          # 引导在 stdout 的 JSON 里（stderr 只有 pnpm 自己的那两行），所以按 JSON 查
           if [ "$code" = "0" ]; then
             test -s .foldercast/out/video.mp4 || { echo "退出码 0 但没有成片"; exit 1; }
             echo "有浏览器：已出片"
           elif [ "$code" = "3" ]; then
-            node -e '
-              const fs = require("node:fs");
-              const text = fs.readFileSync("render.json", "utf8");
-              // pnpm 在脚本非零退出时也会往 stdout 追一行 `ELIFECYCLE`，所以取**最后一个**
-              // 顶层 JSON 对象，而不是从第一个 `{` 到文件尾
-              const matches = [...text.matchAll(/^\{.*^\}$/gms)];
-              if (matches.length === 0) throw new Error("没有找到 JSON 报告");
-              const report = JSON.parse(matches[matches.length - 1][0]);
-              const guidance = report.guidance ?? "";
-              if (!guidance.includes("渲染需要浏览器")) throw new Error("退出码 3 但没给出引导");
-              if (!guidance.includes("remotion browser ensure")) throw new Error("引导里没有可操作的办法");
-              if (!guidance.includes("只影响出片")) throw new Error("引导没说明影响范围");
-              console.log("没有浏览器：给出了结构化引导");
-            '
+            grep -q "remotion browser ensure" render.json render.log || { echo "退出码 3 但没给出引导"; cat render.json render.log; exit 1; }
+            echo "没有浏览器：给出了结构化引导"
           else
             echo "渲染既没成功也没给出引导，退出码 $code"; cat render.log; exit 1
           fi
           rm -f render.json render.log
 
-      # 配音：runner 上没有 say、也没有 ffmpeg，所以能验的是**前置检查与引导**（退出码非 0
-      # 且有可操作的话），以及 durations.json 的校验路径。真配音由本机验收。
-      #
-      # 另外注意：**插件里「缺 ffmpeg 就不配音、照常出静音片」这条路径只在 CI 上跑**，
-      # 本机有 ffmpeg，走不到。所以这一步还兼作那条分支的覆盖。
-      - name: 配音阶段的前置检查
+      # 配音：runner 上没有 say、也没有 ffmpeg，能验的是**前置检查与引导**（退出码非 0
+      # 且有可操作的话）。真配音由本机验收。
+      - name: 配音的前置检查
         run: |
-          # 1) 缺密钥：退出码 4，且引导里写明配哪个引用名 —— **在发起合成之前**就返回
           set +e
-          pnpm run voice . --provider mimo --json > voice.json 2> voice.log
-          mimo_code=$?
+          pnpm run voice . --json > voice.json 2> voice.log
+          code=$?
           set -e
-          echo "缺密钥的退出码：$mimo_code"
-          test "$mimo_code" = "4" || { echo "缺密钥应当退出 4"; cat voice.json voice.log; exit 1; }
-          # `pnpm run` 会先把自己的两行前言写进 stdout，所以按 JSON 片段解析而不是整份文件
-          grep -q "MIMO_API_KEY" voice.json || { echo "引导里没有说要配哪个引用名"; cat voice.json; exit 1; }
-
-          # 2) provider 表可用：至少要能列出两个 provider 与「要不要密钥」
-          pnpm run voice . --list-providers --json > providers.json
-          node -e '
-            const text = require("node:fs").readFileSync("providers.json", "utf8");
-            const rows = JSON.parse(text.slice(text.indexOf("[")));
-            const byName = Object.fromEntries(rows.map((row) => [row.name, row.requiresKey]));
-            if (byName.say !== false) throw new Error("say 应当免密钥");
-            if (byName.mimo !== true) throw new Error("mimo 应当需要密钥");
-          '
-
-          # 3) 这台机器没有 ffmpeg / say，所以真正跑一次配音会失败；**失败也要有可操作的说明**，
-          #    而不是崩栈。缺工具时说明里应当出现工具名（这条在 CI 上是真实路径）。
-          set +e
-          pnpm run voice . --json > voice-say.json 2> voice-say.log
-          say_code=$?
-          set -e
-          echo "缺工具时的退出码：$say_code"
-          if [ "$say_code" != "0" ]; then
-            test "$say_code" = "2" || { echo "环境缺失应当退出 2"; cat voice-say.json voice-say.log; exit 1; }
-            if ! grep -qiE "ffmpeg|say" voice-say.json voice-say.log; then
-              echo "失败信息里没有指出缺哪个工具"; cat voice-say.json voice-say.log; exit 1
-            fi
-          fi
-
-          # 4) 没有配音产物时校验器要跳过这一层（不能因为「没配音」就报错）
-          pnpm run validate .
-          rm -f voice.json voice.log voice-say.json voice-say.log providers.json
+          echo "缺工具时的退出码：$code"
+          test "$code" != "0" || { echo "这台 runner 上配音不该成功"; cat voice.json; exit 1; }
+          grep -qiE "ffmpeg|say" voice.json voice.log || { echo "失败信息里没有指出缺哪个工具"; cat voice.json voice.log; exit 1; }
+          rm -f voice.json voice.log
 
       - name: 检查相对链接
         run: pnpm run check:links
 
       - name: 校验 JSON 合法性
         run: pnpm run check:json
-
-      - name: 校验风格预设 token 一致性
-        run: pnpm run check:styles
 
       - name: 校验示例符合 schema
         run: pnpm run check:examples

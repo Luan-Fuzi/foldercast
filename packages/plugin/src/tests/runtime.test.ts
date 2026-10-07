@@ -23,9 +23,9 @@ function makePackage(layout: 'source' | 'built'): string {
   const root = mkdtempSync(join(tmpdir(), 'foldercast-pkg-'));
   writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'dsh-foldercast', version: '0.0.0' }));
 
-  const dirs = layout === 'source' ? ['src', 'scripts/analyzer'] : ['lib/src', 'lib/scripts/analyzer'];
+  const dirs = layout === 'source' ? ['src', 'scripts/renderer'] : ['lib/src', 'lib/scripts/renderer'];
   for (const dir of dirs) mkdirSync(join(root, dir), { recursive: true });
-  const entry = layout === 'source' ? 'scripts/analyzer/main.ts' : 'lib/scripts/analyzer/main.js';
+  const entry = layout === 'source' ? 'scripts/renderer/main.ts' : 'lib/scripts/renderer/main.js';
   writeFileSync(join(root, entry), '');
 
   return root;
@@ -51,37 +51,37 @@ describe('findPackageRoot', () => {
 describe('resolveStageEntry', () => {
   it('仓库内（不在 node_modules）：跑 TypeScript 源码', () => {
     const root = makePackage('source');
-    const entry = resolveStageEntry(root, 'analyze');
+    const entry = resolveStageEntry(root, 'render');
 
-    expect(entry.relative).toBe(join('scripts', 'analyzer', 'main.ts'));
+    expect(entry.relative).toBe(join('scripts', 'renderer', 'main.ts'));
     expect(existsSync(entry.absolute)).toBe(true);
   });
 
   it('装进 node_modules：跑编译产物（Node 不允许在那里剥离类型）', () => {
     const root = join(mkdtempSync(join(tmpdir(), 'foldercast-installed-')), 'node_modules', 'dsh-foldercast');
-    mkdirSync(join(root, 'scripts/analyzer'), { recursive: true });
-    mkdirSync(join(root, 'lib/scripts/analyzer'), { recursive: true });
+    mkdirSync(join(root, 'scripts/renderer'), { recursive: true });
+    mkdirSync(join(root, 'lib/scripts/renderer'), { recursive: true });
     writeFileSync(join(root, 'package.json'), '{}');
     // 两套入口都在，仍然必须选 JS：这是 Node 的硬约束，不是偏好
-    writeFileSync(join(root, 'scripts/analyzer/main.ts'), '');
-    writeFileSync(join(root, 'lib/scripts/analyzer/main.js'), '');
+    writeFileSync(join(root, 'scripts/renderer/main.ts'), '');
+    writeFileSync(join(root, 'lib/scripts/renderer/main.js'), '');
 
-    const entry = resolveStageEntry(root, 'analyze');
+    const entry = resolveStageEntry(root, 'render');
 
-    expect(entry.relative).toBe(join('lib', 'scripts', 'analyzer', 'main.js'));
+    expect(entry.relative).toBe(join('lib', 'scripts', 'renderer', 'main.js'));
     expect(existsSync(entry.absolute)).toBe(true);
   });
 
   it('源码缺失时回退到编译产物', () => {
     const root = makePackage('built');
-    const entry = resolveStageEntry(root, 'analyze');
+    const entry = resolveStageEntry(root, 'render');
 
-    expect(entry.relative).toBe(join('lib', 'scripts', 'analyzer', 'main.js'));
+    expect(entry.relative).toBe(join('lib', 'scripts', 'renderer', 'main.js'));
   });
 });
 
 describe('随包脚本', () => {
-  it('三个阶段入口都在', () => {
+  it('两个阶段入口都在', () => {
     expect(scriptsInstalled()).toEqual({ ok: true, missing: [] });
   });
 
@@ -90,9 +90,9 @@ describe('随包脚本', () => {
     mkdirSync(join(root, 'lib/src'), { recursive: true });
     writeFileSync(join(root, 'package.json'), '{}');
 
-    const entry = resolveStageEntry(root, 'validate');
+    const entry = resolveStageEntry(root, 'voice');
 
-    expect(entry.relative).toBe(join('lib', 'scripts', 'validate', 'main.js'));
+    expect(entry.relative).toBe(join('lib', 'scripts', 'voice', 'main.js'));
     expect(existsSync(entry.absolute)).toBe(false);
   });
 });
@@ -109,9 +109,7 @@ describe.skipIf(!existsSync(BUILT_RUNTIME))('编译产物', () => {
 
     expect(built.PACKAGE_ROOT).toBe(REAL_PACKAGE_ROOT);
     expect(built.scriptsInstalled()).toEqual({ ok: true, missing: [] });
-    expect(existsSync(built.stageEntryPath('analyze'))).toBe(true);
-    expect(existsSync(built.stageEntryPath('assets'))).toBe(true);
-    expect(existsSync(built.stageEntryPath('validate'))).toBe(true);
     expect(existsSync(built.stageEntryPath('render'))).toBe(true);
+    expect(existsSync(built.stageEntryPath('voice'))).toBe(true);
   });
 });

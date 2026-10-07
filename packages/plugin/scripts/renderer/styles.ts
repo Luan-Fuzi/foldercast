@@ -1,21 +1,14 @@
 /**
- * 样式 token 的解析与应用层。`styles/*.json` 是数据（四套预设），这里把预设 + 讲稿里的
- * `style.overrides` 合成渲染器直接可用的 token。
+ * 画面样式。**一套硬编码 token，没有预设、没有覆盖** —— 收缩时把四套预设 × 31 token
+ * 的系统删掉了：没看到真实成片之前，暴露「可换风格」只是在给判断增加面。
+ * 要改观感，改这里的常量。
  *
- * **第一版只用一套硬编码预设**（`deck`，16:9 深色）—— 风格预设的暴露押后到看到真实成片
- * 之后（见 ROADMAP 押后表）。但 token 层现在就位，理由有两条：
- *
- * 1. 组件里不出现颜色字面量，改风格只改 JSON；
- * 2. `style.overrides` 的语义（点号路径覆盖任意 token）在 M7 就能验证。
- *
- * 预设里的 `narration` 段是给写稿阶段的语气提示（M5），渲染器**不读**它 —— 那是叙事层的
- * 输入，不是画面 token。显式丢掉，避免「两个阶段读同一份配置的不同部分」这种隐性耦合。
+ * 组件里不出现颜色字面量，都走 token 与 CSS 变量 —— 所以改这一处就能换整套观感。
  */
-import type { StyleSpec } from '../contracts/foldercast.ts';
+import type { VideoSpec } from '../contracts/script.ts';
 
-/** 渲染器真正用到的 token，**扁平且封闭**：多一个字段就要在组件里有用。 */
+/** 渲染器真正用到的 token，扁平且封闭：多一个字段就要在组件里有用。 */
 export type Tokens = {
-  preset: string;
   width: number;
   height: number;
   safeMargin: number;
@@ -30,36 +23,26 @@ export type Tokens = {
   fontBody: string;
   fontMono: string;
   titleWeight: number;
-  /** 面板圆角（像素）。 */
   radius: number;
-  /** 面板阴影的强度：0 无、1 柔和、2 明显。 */
-  shadow: number;
-  /** 背景颗粒强度：0 无。 */
+  shadow: 0 | 1 | 2;
   grain: number;
-  /** 主标题字号（像素，按 1920×1080 画布）。 */
   titleSize: number;
-  /** 场景内小标题字号。 */
   headingSize: number;
-  /** 正文字号。 */
   bodySize: number;
-  /** 字幕字号。 */
   captionSize: number;
+  density: 'compact' | 'normal' | 'airy';
+  space: number;
+  rule: 0 | 1 | 2;
+  numbering: 'none' | 'decimal' | 'roman';
+  header: 'none' | 'title' | 'chapter-progress';
+  pace: number;
+  enter: 'fade' | 'slide' | 'type' | 'none';
+  easing: string;
+  transition: 'cut' | 'fade' | 'wipe';
 };
 
-/** 预设 JSON 的形状（只声明用到的部分）。 */
-export type PresetJson = {
-  name?: string;
-  canvas?: { width?: unknown; height?: unknown; safeMargin?: unknown };
-  palette?: Record<string, unknown>;
-  typography?: Record<string, unknown>;
-  layout?: Record<string, unknown>;
-  motion?: Record<string, unknown>;
-  texture?: Record<string, unknown>;
-};
-
-/** 兜底预设：`styles/deck.json` 读不到时也必须能渲染。 */
-export const FALLBACK_TOKENS: Tokens = {
-  preset: 'deck',
+/** 唯一的一套 token（16:9 深色汇报风）。画布尺寸在 plan 里按讲稿的 `video` 改写。 */
+export const TOKENS: Tokens = {
   width: 1920,
   height: 1080,
   safeMargin: 80,
@@ -81,13 +64,32 @@ export const FALLBACK_TOKENS: Tokens = {
   headingSize: 44,
   bodySize: 30,
   captionSize: 40,
+  density: 'normal',
+  space: 1,
+  rule: 0,
+  numbering: 'none',
+  header: 'title',
+  pace: 1,
+  enter: 'slide',
+  easing: 'easeOutQuint',
+  transition: 'fade',
 };
 
-/** `motion.pace` → 字号缩放。慢节奏（纸质风）字号大一些，快节奏（终端风）小一些。 */
-const PACE_SCALE: Record<string, number> = { slow: 1.12, normal: 1, fast: 0.94 };
-
-/** `texture.shadow` → 强度。 */
-const SHADOW_LEVEL: Record<string, number> = { none: 0, soft: 1, hard: 2 };
+/** 讲稿写了 `video` 尺寸时跟着改：安全边距按画布比例算。 */
+export function tokensFor(video: VideoSpec | undefined): Tokens {
+  const tokens = { ...TOKENS };
+  if (video?.width !== undefined) tokens.width = video.width;
+  if (video?.height !== undefined) tokens.height = video.height;
+  if (video?.width !== undefined || video?.height !== undefined) {
+    const scale = Math.min(tokens.width / TOKENS.width, tokens.height / TOKENS.height);
+    tokens.safeMargin = Math.round(TOKENS.safeMargin * scale);
+    tokens.titleSize = Math.round(TOKENS.titleSize * scale);
+    tokens.headingSize = Math.round(TOKENS.headingSize * scale);
+    tokens.bodySize = Math.round(TOKENS.bodySize * scale);
+    tokens.captionSize = Math.round(TOKENS.captionSize * scale);
+  }
+  return tokens;
+}
 
 const SHADOW_CSS: Record<number, string> = {
   0: 'none',
@@ -95,92 +97,9 @@ const SHADOW_CSS: Record<number, string> = {
   2: '0 24px 64px rgba(0, 0, 0, 0.6)',
 };
 
-function str(value: unknown, fallback: string): string {
-  return typeof value === 'string' && value !== '' ? value : fallback;
-}
+const RULE_WIDTH: Record<number, number> = { 0: 0, 1: 1, 2: 3 };
 
-function num(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-/**
- * 把预设 JSON 变成 token。**只读白名单字段**：预设里没有的键一律取兜底值，
- * 这样新增预设不必同步改渲染器，拼错的键也不会静默变成 `undefined` 画到屏幕上。
- */
-export function tokensFromPreset(preset: PresetJson | null | undefined): Tokens {
-  const base = { ...FALLBACK_TOKENS };
-  if (preset === null || preset === undefined) return base;
-
-  const palette = preset.palette ?? {};
-  const typography = preset.typography ?? {};
-  const texture = preset.texture ?? {};
-  const canvas = preset.canvas ?? {};
-  const pace = str(typography['pace'], 'normal');
-  const scale = PACE_SCALE[pace] ?? 1;
-  const shadowName = str(texture['shadow'], 'soft');
-
-  return {
-    preset: str(preset.name, base.preset),
-    width: num(canvas.width, base.width),
-    height: num(canvas.height, base.height),
-    safeMargin: num(canvas.safeMargin, base.safeMargin),
-    bg: str(palette['bg'], base.bg),
-    ink: str(palette['ink'], base.ink),
-    muted: str(palette['muted'], base.muted),
-    line: str(palette['line'], base.line),
-    accent: str(palette['accent'], base.accent),
-    panel: str(palette['panel'], base.panel),
-    codeBg: str(palette['codeBg'], base.codeBg),
-    fontTitle: str(typography['title'], base.fontTitle),
-    fontBody: str(typography['body'], base.fontBody),
-    fontMono: str(typography['mono'], base.fontMono),
-    titleWeight: num(typography['titleWeight'], base.titleWeight),
-    radius: num(texture['radius'], base.radius),
-    shadow: SHADOW_LEVEL[shadowName] ?? base.shadow,
-    grain: num(texture['grain'], base.grain),
-    titleSize: Math.round(base.titleSize * scale),
-    headingSize: Math.round(base.headingSize * scale),
-    bodySize: Math.round(base.bodySize * scale),
-    captionSize: Math.round(base.captionSize * scale),
-  };
-}
-
-/**
- * 应用 `style.overrides`。键是点号路径（`palette.bg`、`typography.title`…），与
- * `styles/*.json` 的结构一致 —— 讲稿的 overrides 覆盖的是**预设文件里的键**，不是 token 字段，
- * 所以这里先把二者合并再转 token。
- *
- * 返回认不出的键：不静默丢弃，交给调用方报出来（与 `style.unresolved` 同一态度）。
- */
-export function applyOverrides(
-  preset: PresetJson,
-  overrides: StyleSpec['overrides'] | undefined,
-): { preset: PresetJson; ignored: string[] } {
-  if (overrides === undefined) return { preset, ignored: [] };
-
-  const merged = structuredClone(preset) as Record<string, unknown>;
-  const ignored: string[] = [];
-
-  for (const [path, value] of Object.entries(overrides)) {
-    const parts = path.split('.');
-    const section = parts[0];
-    const key = parts[1];
-    if (parts.length !== 2 || section === undefined || key === undefined) {
-      ignored.push(path);
-      continue;
-    }
-    const target = merged[section];
-    if (target === undefined || typeof target !== 'object' || target === null) {
-      ignored.push(path);
-      continue;
-    }
-    (target as Record<string, unknown>)[key] = value;
-  }
-
-  return { preset: merged as PresetJson, ignored };
-}
-
-/** token → CSS 变量表。组件只认这几个变量名，换预设不必改组件。 */
+/** token → CSS 变量表。组件只认这几个变量名。 */
 export function cssVariables(tokens: Tokens): Record<string, string> {
   return {
     '--bg': tokens.bg,
@@ -194,16 +113,18 @@ export function cssVariables(tokens: Tokens): Record<string, string> {
     '--font-body': tokens.fontBody,
     '--font-mono': tokens.fontMono,
     '--radius': `${tokens.radius}px`,
-    '--shadow': SHADOW_CSS[tokens.shadow] ?? SHADOW_CSS[1] ?? 'none',
+    '--shadow': SHADOW_CSS[tokens.shadow] ?? 'none',
+    '--space': String(tokens.space),
+    '--rule-w': `${RULE_WIDTH[tokens.rule] ?? 0}px`,
   };
 }
 
-/* ------------------------------------------------------------ 派生色 */
+/* ---------------------------------------------------------------- 派生色 */
 
 /** RGB 三元组，各分量 0–255。 */
 export type Rgb = { r: number; g: number; b: number };
 
-/** `#rgb` / `#rrggbb`。认不出返回 undefined（预设里写了变量名或颜色函数时不猜）。 */
+/** `#rgb` / `#rrggbb`。认不出返回 undefined。 */
 export function parseHex(color: string): Rgb | undefined {
   const text = color.trim();
   const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(text);
@@ -250,45 +171,11 @@ export function luminance(color: string): number {
   return 0.2126 * channel(rgb.r) + 0.7152 * channel(rgb.g) + 0.0722 * channel(rgb.b);
 }
 
-/**
- * 这套预设是浅底还是深底。
- *
- * **所有派生色都以此为准**：同一份组件要在四套预设下都能读。深底上「亮一点」才醒目，
- * 浅底上必须「暗一点」 —— 早期版本把颜色写死在组件里，换 `swiss` / `paper` 之后
- * 分类条与文字几乎看不见。
- */
 export function isLight(tokens: Tokens): boolean {
   return luminance(tokens.bg) > 0.5;
 }
 
-/**
- * 内容分类的颜色。**以预设的强调色为基准**，按类型偏一点色相，再按底色深浅决定明暗 ——
- * 不引第二套配色表，换预设时整张图仍然是一套颜色。
- */
-const KIND_HUE_OFFSET: Record<string, number> = {
-  code: 0,
-  markup: 18,
-  text: -95,
-  data: 45,
-  office: 25,
-  pdf: -20,
-  image: 150,
-  video: -30,
-  audio: 130,
-  archive: 0,
-  binary: 0,
-  other: 0,
-};
-
-export function kindColor(kind: string, tokens: Tokens): string {
-  const base = parseHex(tokens.accent) ?? { r: 77, g: 158, b: 255 };
-  const offset = KIND_HUE_OFFSET[kind] ?? 0;
-  const shifted = toHex(rotateHue(base, offset));
-  // 浅底上压暗、深底上提亮：条形图要在两种底上都有分量，而不是融进背景。
-  return isLight(tokens) ? mixColors(shifted, '#101010', 0.4) : mixColors(shifted, '#FFFFFF', 0.08);
-}
-
-/** 色相旋转（保持明度与饱和度），用于把强调色派生成一组同族的颜色。 */
+/** 色相旋转（保持明度与饱和度）。 */
 function rotateHue({ r, g, b }: Rgb, degrees: number): Rgb {
   const max = Math.max(r, g, b) / 255;
   const min = Math.min(r, g, b) / 255;
@@ -324,8 +211,20 @@ function rotateHue({ r, g, b }: Rgb, degrees: number): Rgb {
 }
 
 /**
+ * 一个标签的颜色：以强调色为基准，按标签文字的哈希偏一点色相 —— 同名标签永远同色，
+ * 不同标签大多不同色，且整张图仍是一套颜色。深底提亮、浅底压暗，保证条形图有分量。
+ */
+export function labelColor(label: string, tokens: Tokens): string {
+  let hash = 0;
+  for (const char of label) hash = (hash * 31 + char.codePointAt(0)!) % 9973;
+  const base = parseHex(tokens.accent) ?? { r: 77, g: 158, b: 255 };
+  const shifted = toHex(rotateHue(base, (hash % 12) * 30));
+  return isLight(tokens) ? mixColors(shifted, '#101010', 0.4) : mixColors(shifted, '#FFFFFF', 0.08);
+}
+
+/**
  * 字幕条与它的文字色。深底用「深色半透明面板 + 白字」，浅底反过来 ——
- * 白字压在浅色文档页上会看不见（实测 `paper` 预设）。
+ * 白字压在浅色文档页上会看不见。
  */
 export function captionColors(tokens: Tokens): { background: string; color: string; shadow: string } {
   return isLight(tokens)

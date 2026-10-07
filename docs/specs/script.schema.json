@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://foldercast.dev/schema/script-1.json",
   "title": "foldercast 讲稿",
-  "description": "目录解读的讲稿（分镜）。由叙事层或人产出，是创作产物。字段语义见 docs/specs/SPEC-data-format.md 第二节；它引用的解读见 foldercast.schema.json。",
+  "description": "讲稿（分镜），agent 写的创作产物。它是自足的：画面要画的一切都在里面；引用的文件用相对源目录的路径，必须真实存在。跨字段判据（路径存在、字幕可切）在渲染入口的 check 里查。",
   "type": "object",
   "required": [
     "foldercast",
@@ -12,7 +12,7 @@
   "additionalProperties": false,
   "allOf": [
     {
-      "$comment": "每种场景除 id / type / narration 之外的必需字段，与 SPEC-data-format.md 的「场景类型清单（MVP）」那张表一致。这里用条件约束表达，是校验器报出的「缺哪个字段」的依据。",
+      "$comment": "每种场景除 id / type / narration 之外的必需字段，与 contracts/script.ts 的 SCENE_REQUIRED_FIELDS 一致。",
       "if": {
         "type": "object",
         "properties": {
@@ -44,7 +44,7 @@
       },
       "then": {
         "required": [
-          "highlight"
+          "entries"
         ]
       }
     },
@@ -134,8 +134,7 @@
       },
       "then": {
         "required": [
-          "source",
-          "pages"
+          "source"
         ]
       }
     },
@@ -159,25 +158,8 @@
     }
   ],
   "$defs": {
-    "kind": {
-      "description": "文件内容类别。场景引用文件时用于说明类型。",
-      "enum": [
-        "code",
-        "text",
-        "markup",
-        "data",
-        "office",
-        "pdf",
-        "image",
-        "video",
-        "audio",
-        "archive",
-        "binary",
-        "other"
-      ]
-    },
     "sceneType": {
-      "description": "开放枚举：渲染器遇到不认识的类型应跳过并警告，而非崩溃。",
+      "description": "开放枚举：渲染器遇到不认识的类型跳过并警告，而非崩溃。",
       "enum": [
         "cover",
         "tree",
@@ -188,6 +170,55 @@
         "document",
         "outro"
       ]
+    },
+    "treeEntry": {
+      "type": "object",
+      "required": [
+        "path",
+        "files"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "相对源目录的子路径（通常是顶层目录）"
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "这个子路径下的文件数，条形图按它画宽度"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "字节数，可选；写了就显示"
+        },
+        "highlight": {
+          "type": "boolean",
+          "description": "用强调色画这一行"
+        }
+      },
+      "additionalProperties": false
+    },
+    "inventoryGroup": {
+      "type": "object",
+      "required": [
+        "label",
+        "count"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "自由文本标签，如「Markdown 笔记」「Office 汇报」"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     },
     "scene": {
       "type": "object",
@@ -212,68 +243,62 @@
         },
         "narration": {
           "type": "string",
-          "description": "既是配音文本，也是字幕来源。字幕块由阶段③按标点与字数切分。"
+          "description": "配音文本，也是字幕来源。要能切成每块 ≤24 显示宽度（中英混排按宽度折算）的字幕块。"
         },
         "durationSec": {
           "type": [
             "number",
             "null"
           ],
-          "description": "null 表示由阶段③按实测音频回填"
+          "description": "手写时长（秒）。配音跑过后以实测为准。"
         },
-        "highlight": {
+        "entries": {
           "type": "array",
+          "minItems": 1,
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/treeEntry"
           },
-          "description": "tree 场景：需要强调的子路径"
+          "description": "tree 场景：目录结构摘要，agent 自己数好写进来"
         },
         "groups": {
           "type": "array",
-          "description": "inventory 场景：内容分组盘点",
+          "minItems": 1,
           "items": {
-            "type": "object",
-            "required": [
-              "kind",
-              "count"
-            ],
-            "properties": {
-              "kind": {
-                "$ref": "#/$defs/kind"
-              },
-              "count": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "note": {
-                "type": "string"
-              }
-            },
-            "additionalProperties": false
-          }
+            "$ref": "#/$defs/inventoryGroup"
+          },
+          "description": "inventory 场景：内容分组盘点"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "inventory 场景的分母。缺省用各组 count 之和。"
         },
         "file": {
           "type": "string",
-          "description": "file 场景：相对 source.root 的路径。必须存在于解读的 manifest 里"
+          "description": "file 场景：相对源目录的路径，必须存在"
         },
-        "asset": {
+        "note": {
           "type": "string",
-          "description": "file 场景：已生成的素材路径"
+          "description": "file 场景：一行说明（「TypeScript · 约 140 行」），agent 写"
         },
-        "items": {
+        "excerpt": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "gallery 场景：图片素材路径列表"
+          "description": "file 场景：摘录的原文行。没有素材图的文件靠它上画面。"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "gallery 场景：一组源文件路径（图片；视频会用它的封面图）"
         },
         "source": {
           "type": "string",
-          "description": "clip/document 场景：源文件路径"
-        },
-        "poster": {
-          "type": "string",
-          "description": "clip 场景：封面图"
+          "description": "clip / document 场景：源文件路径，相对源目录"
         },
         "clipRange": {
           "type": "array",
@@ -283,14 +308,22 @@
           },
           "minItems": 2,
           "maxItems": 2,
-          "description": "clip 场景：片段区间 [起秒, 止秒]"
+          "description": "clip 场景：片段区间 [起秒, 止秒]，只用来标注，不真的截播"
         },
         "pages": {
           "type": "array",
           "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "document 场景：要翻的页码（1 起）。缺省翻全部。"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
             "type": "string"
           },
-          "description": "document 场景：逐页转图后的素材路径"
+          "description": "outro 场景：结尾的几行小结"
         }
       },
       "additionalProperties": false
@@ -300,11 +333,7 @@
     "foldercast": {
       "type": "integer",
       "const": 1,
-      "description": "所引用的解读格式版本。解读与讲稿各自独立版本化。"
-    },
-    "generatedAt": {
-      "type": "string",
-      "format": "date-time"
+      "description": "格式版本。破坏性变更时递增。"
     },
     "source": {
       "type": "object",
@@ -314,7 +343,7 @@
       "properties": {
         "root": {
           "type": "string",
-          "description": "被讲解目录的绝对路径，须与解读一致"
+          "description": "被讲解目录的绝对路径"
         },
         "label": {
           "type": "string",
@@ -325,11 +354,11 @@
     },
     "title": {
       "type": "string",
-      "description": "整片标题，可选"
+      "description": "整片标题，可选。缺省用目录名。"
     },
     "video": {
       "type": "object",
-      "description": "出片规格。与解读里的 video 同形状；讲稿这一份优先。渲染阶段（M7）读它，缺省 1920×1080 / 30fps。",
+      "description": "出片规格，全部可选。缺省 1920×1080 @ 30fps。",
       "properties": {
         "width": {
           "type": "integer",
@@ -351,76 +380,22 @@
             "integer",
             "null"
           ],
-          "description": "期望时长，软约束。null 表示由内容决定。写了就按比例缩放各场景时长，不硬截断文案。"
-        },
-        "language": {
-          "type": "string",
-          "default": "zh-CN"
+          "description": "期望时长，软约束。没配音时按比例缩放各场景时长；配过音以实测为准、忽略它。"
         }
       },
       "additionalProperties": false
     },
     "voice": {
       "type": "object",
-      "description": "配音配置（需求 R6）。provider 与 voice 是 provider 内的字符串，不做跨 provider 统一枚举。实际使用的以 durations.json 为准。",
+      "description": "配音配置。provider 固定是 macOS 自带的 say；实际用的音色以 durations.json 为准。",
       "properties": {
-        "provider": {
-          "type": "string",
-          "description": "TTS 供应商标识，如 say / mimo"
-        },
         "voice": {
           "type": "string",
-          "description": "provider 内的音色标识。say 是系统音色名，MiMo 是「白桦」这样的字符串 ID"
+          "description": "say 的系统音色名。缺省自动挑一个中文音色。"
         },
         "style": {
           "type": "string",
-          "description": "怎么读：风格指令、语速、情绪。各 provider 自行翻译（MiMo 的 user 消息 / say 的 -r）"
-        },
-        "format": {
-          "type": "string",
-          "enum": [
-            "wav",
-            "mp3"
-          ],
-          "description": "音频格式。默认 wav"
-        }
-      },
-      "additionalProperties": false
-    },
-    "style": {
-      "type": "object",
-      "description": "风格：预设名 + token 覆盖。写稿阶段选定，渲染阶段应用（M7）。",
-      "required": [
-        "preset"
-      ],
-      "properties": {
-        "preset": {
-          "type": "string",
-          "description": "预设名，见 styles/ 下的文件名"
-        },
-        "overrides": {
-          "type": "object",
-          "description": "覆盖预设里的任意 token。键为点分路径，如 palette.bg。",
-          "additionalProperties": {
-            "type": [
-              "string",
-              "number",
-              "boolean"
-            ]
-          }
-        },
-        "natural": {
-          "type": "string"
-        },
-        "unresolved": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "resolvedAt": {
-          "type": "string",
-          "format": "date-time"
+          "description": "怎么读。say 只认其中形如「180 字/分」的数字当语速。"
         }
       },
       "additionalProperties": false
@@ -428,7 +403,7 @@
     "scenes": {
       "type": "array",
       "minItems": 1,
-      "description": "分镜。只能引用解读里存在的路径，生成后必须校验，幻觉路径要拦截。",
+      "description": "分镜。引用的文件必须真实存在；渲染入口的 check 会逐条核对。",
       "items": {
         "$ref": "#/$defs/scene"
       }

@@ -3,22 +3,19 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "把任意人类可读的目录变成讲解视频。本文件只服务仓库工具；产品代码在 packages/plugin 下（M1 起）。",
+  "description": "把任意人类可读的目录变成讲解视频的 DSH 插件。本文件只服务仓库工具；产品代码在 packages/plugin 下。",
   "packageManager": "pnpm@9.14.4",
   "engines": {
     "node": ">=22.19"
   },
   "scripts": {
-    "check": "pnpm run check:links && pnpm run check:json && pnpm run check:styles && pnpm run check:examples",
+    "check": "pnpm run check:links && pnpm run check:json && pnpm run check:examples",
     "check:links": "node scripts/check-links.ts",
     "check:json": "node scripts/check-json.ts",
-    "check:styles": "node scripts/check-styles.ts",
     "check:examples": "node scripts/check-examples.ts",
-    "analyze": "node packages/plugin/scripts/analyzer/main.ts",
-    "assets": "node packages/plugin/scripts/assets/main.ts",
-    "validate": "node packages/plugin/scripts/validate/main.ts",
     "render": "node packages/plugin/scripts/renderer/main.ts",
     "voice": "node packages/plugin/scripts/voice/main.ts",
+    "text": "node packages/plugin/scripts/assets/text.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && pnpm --filter dsh-foldercast typecheck"
   },

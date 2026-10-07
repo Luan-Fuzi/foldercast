@@ -19,7 +19,6 @@ const addFormats = require('ajv-formats') as FormatsPlugin;
 
 /** [示例文件, 对应 schema, 打印用名称] */
 const PAIRS: ReadonlyArray<readonly [string, string, string]> = [
-  ['examples/foldercast.example.json', 'docs/specs/foldercast.schema.json', '解读示例'],
   ['examples/script.example.json', 'docs/specs/script.schema.json', '讲稿示例'],
 ];
 

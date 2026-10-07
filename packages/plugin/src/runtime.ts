@@ -194,6 +194,37 @@ function hasExecutable(command: string, versionFlag: string): Promise<boolean> {
 }
 
 /**
+ * 安装指引按 `process.platform` 分支：macOS 的文案保持历史原样（不惊动已有用户），
+ * 其余平台给各自的包管理器命令。**只分支文案，探测判据与行为不变。**
+ */
+
+/** ffmpeg 的安装命令（ffprobe 随它一起装，不单独立项）。 */
+function ffmpegInstallHint(): string {
+  const consequence = '缺它时配音不可用，渲染仍能出静音片。';
+  switch (process.platform) {
+    case 'win32':
+      return `视频封面、音频拼接与配音都要 ffmpeg（Windows：winget install --id Gyan.FFmpeg，或 choco install ffmpeg）。${consequence}`;
+    case 'linux':
+      return `视频封面、音频拼接与配音都要 ffmpeg（Linux：apt install ffmpeg，或所用发行版的等价命令）。${consequence}`;
+    default:
+      return `视频封面、音频拼接与配音都要 ffmpeg（macOS：brew install ffmpeg）。${consequence}`;
+  }
+}
+
+/** 浏览器的安装指引：三个平台认的浏览器一样（Chrome / Chromium / Edge），装法不同。 */
+function browserInstallHint(): string {
+  const fallback = '或跑 npx remotion browser ensure 让 Remotion 下载，或用 FOLDERCAST_BROWSER 指定路径。只影响出片。';
+  switch (process.platform) {
+    case 'win32':
+      return `出片需要浏览器（Remotion 用它排版）。装一个系统浏览器（如 winget install Google.Chrome；Chromium / Edge 也认），${fallback}`;
+    case 'linux':
+      return `出片需要浏览器（Remotion 用它排版）。装一个系统浏览器（发行版包管理器装 chromium，如 apt install chromium；Chrome / Edge 也认），${fallback}`;
+    default:
+      return `出片需要浏览器（Remotion 用它排版）。装 Google Chrome / Chromium / Edge，${fallback}`;
+  }
+}
+
+/**
  * 找浏览器：系统 Chrome / Chromium / Edge，或 Remotion 已经下过的 Headless Shell。
  *
  * 与渲染脚本共用同一份判据（`scripts/renderer/browser.ts`），所以「插件说可用」与
@@ -243,7 +274,7 @@ export async function detectDependencies(): Promise<Dependency[]> {
       name: 'ffmpeg',
       ok: await hasExecutable('ffmpeg', '-version'),
       required: false,
-      hint: '视频封面、音频拼接与配音都要 ffmpeg（macOS：brew install ffmpeg）。缺它时配音不可用，渲染仍能出静音片。',
+      hint: ffmpegInstallHint(),
     },
     {
       name: 'ffprobe',
@@ -272,10 +303,7 @@ export async function detectDependencies(): Promise<Dependency[]> {
       required: false,
       // **不是硬条件**：缺浏览器时只有出片不能，讲稿校验（--check）照常。
       // 所以这里只如实报告，不触发下载（下载由用户决定，150–300 MB）。
-      hint:
-        browser === undefined
-          ? '出片需要浏览器（Remotion 用它排版）。装 Google Chrome / Chromium / Edge，或跑 npx remotion browser ensure 让 Remotion 下载，或用 FOLDERCAST_BROWSER 指定路径。只影响出片。'
-          : `出片可用（${browser.name}）。`,
+      hint: browser === undefined ? browserInstallHint() : `出片可用（${browser.name}）。`,
     },
   ];
 

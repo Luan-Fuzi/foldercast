@@ -43,6 +43,23 @@ Agent（有 bash）：rg --files → 挑重点读 → 数数字 → 写 script.j
 
 ---
 
+## 环境与依赖
+
+缺依赖**不会炸**：每一步开工前先探测，缺什么就给对应平台的安装指引；讲稿校验
+（`--check`）在任何机器上都能跑。仓库内开发用 pnpm（版本由 `packageManager` 固定）。
+
+| 依赖 | 什么时候需要 | macOS | Windows | Linux |
+|---|---|---|---|---|
+| Node 22.19+ | 必需：阶段脚本用 TypeScript 直跑（类型剥离） | 官网安装包 / brew | 官网安装包 / winget | 发行版包管理器 / nvm |
+| 浏览器（Chrome / Chromium / Edge 任一） | 只有**出片**需要 | 装任一系统浏览器，或 `npx remotion browser ensure` 让 Remotion 下载（约 150–300 MB），或 `FOLDERCAST_BROWSER=<路径>` 指定 —— 三平台同样 | 同左 | 同左 |
+| ffmpeg / ffprobe | 配音、实测时长、视频封面；非 mac 平台的图片缩放也回退到它 | `brew install ffmpeg` | `winget install --id Gyan.FFmpeg`（或 `choco install ffmpeg`） | `apt install ffmpeg`（或发行版等价命令） |
+| `@deepseek-ai/libreoffice-kit`（提供 `dsoffice`） | 可选：Office / PDF 的逐页图与文本提取 | 随包以 optionalDependency 自动安装（公共 npm，三平台各有变体；Linux 落到 wasm 变体）。装不上只影响 office/pdf 素材，其余类型照常 | 同左 | 同左 |
+
+macOS 自带的两样也在此列：`sips`（图片缩放，其他平台回退 ffmpeg）与 `say`
+（配音的默认引擎，免密钥；其他平台不配音、出静音片）。
+
+---
+
 ## 装进 DSH
 
 ```bash

@@ -78,17 +78,21 @@ export function makeSecretReader(sources: SecretSources = {}): (ref: string) => 
   };
 }
 
-/** 可执行文件在不在（`which`）。 */
+/**
+ * 可执行文件在不在。跨平台：Windows 没有 `which`，用它的对应物 `where`
+ * （认 PATH 与 PATHEXT，所以 `ffmpeg` 也能找到 `ffmpeg.exe`）。
+ */
 export function hasCommand(command: string): boolean {
+  const probe = process.platform === 'win32' ? 'where' : 'which';
   try {
-    execFileSync('which', [command], { stdio: 'ignore' });
+    execFileSync(probe, [command], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
   }
 }
 
-/** 跑一个命令，stdout 与 stderr 都留下（`say -v '?'` 的输出在 stderr 上）。 */
+/** 跑一个命令，stdout 与 stderr 都留下（有些工具把人话写在 stderr 上，别只看一边）。 */
 export function execCommand(command: string, args: readonly string[]): Promise<ExecResult> {
   return new Promise((resolvePromise) => {
     execFile(command, [...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }, (error, stdout, stderr) => {

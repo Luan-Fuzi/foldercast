@@ -16,13 +16,14 @@
  *    这与 provider 无关，所以放在调度层（rd 文档第四节第 4 条）。
  * 3. **场景时长 = 实测 + 留白**，两者都记进 `durations.json`（`audioSec` / `duration`）。
  *    留白算在场景里，于是音轨与画面只有一条时间轴。
- * 4. **`provider` / `voice` 记实际用的**，不是配置里写的 —— 配置可能写 `say` 而实际
- *    自动挑了一个中文音色，报告必须如实。
+ * 4. **`provider` / `voice` 记实际用的**，不是配置里写的 —— 配置可能没写音色而实际
+ *    用了 provider 的默认音色，报告必须如实。
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   DURATIONS_VERSION,
+  EXIT_CREDENTIAL_MISSING,
   type DurationsDocument,
   type SceneDuration,
   type Sub,
@@ -33,7 +34,7 @@ import { allocateByWidth } from '../contracts/spans.ts';
 import { splitSubtitles } from '../contracts/subtitles.ts';
 import type { ScriptDocument, VoiceSpec } from '../contracts/script.ts';
 import { buildTrack, probeDurationSec, readJsonIfExists } from './audio.ts';
-import { sayProvider } from './providers/say.ts';
+import { edgeProvider } from './providers/edge.ts';
 
 /** 每个场景末尾的留白（秒）。**算进场景时长**，所以画面与配音不会因此错开。 */
 export const DEFAULT_PAUSE_SEC = 0.45;
@@ -41,8 +42,8 @@ export const DEFAULT_PAUSE_SEC = 0.45;
 /**
  * 从 provider 的说明里认出实际用的音色。
  *
- * 为什么要这么做：`say` 不指定音色时会自己挑一个（系统默认是英文音色），而
- * `durations.json` 要记的是**实际用的**，不是配置里写的。没有显式音色时就从说明里取，
+ * 为什么要这么做：provider 不指定音色时会用**它自己的默认**（如 edge 的中文默认音色），
+ * 而 `durations.json` 要记的是**实际用的**，不是配置里写的。没有显式音色时就从说明里取，
  * 取不到也不编 —— 那只是少一个字段，不是错。
  */
 function voiceFromNotes(notes: readonly string[]): string | undefined {
@@ -64,7 +65,7 @@ export type SynthOptions = {
   /** 讲稿路径覆盖。 */
   scriptPath?: string;
   /**
-   * provider：默认 `say`。给一个实现是为了**测试** —— 调度与算术（跳过已存在的音频、
+   * provider：默认 `edge`。给一个实现是为了**测试** —— 调度与算术（跳过已存在的音频、
    * 实测时长、写 durations.json）都可以用假 provider 完全离线地验，不必真的调 TTS。
    */
   provider?: TtsProvider;
@@ -86,7 +87,7 @@ export type SynthOptions = {
   /** 进度回调。 */
   onProgress?: (event: { sceneId: string; index: number; total: number; cached: boolean; seconds: number }) => void;
   /**
-   * 已知的实际音色（上一次跑出来的）。**全部命中缓存时靠它**：`say` 会自动挑音色，
+   * 已知的实际音色（上一次跑出来的）。**全部命中缓存时靠它**：provider 可能用默认音色，
    * 而挑的动作发生在合成里，跳过合成之后就没地方知道了 —— 报告与 `durations.json`
    * 都要记「实际用的」，不能因为这次没合成就不写。
    */
@@ -101,7 +102,7 @@ export type SynthReport = {
   trackPath?: string;
   provider: string;
   voice?: string;
-  /** 实际用了哪些音色（`say` 没指定时会自动挑，报告要如实）。 */
+  /** 实际用了哪些音色（provider 没指定时会用自己的默认，报告要如实）。 */
   notes: string[];
   scenes: { id: string; audio: string; audioSec: number; duration: number; parts: number; cached: boolean }[];
   totalSec: number;
@@ -172,11 +173,13 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
   const script = JSON.parse(readFileSync(scriptPath, 'utf8')) as ScriptDocument;
   const spec: VoiceSpec = script.voice ?? {};
 
-  const provider = options.provider ?? sayProvider;
+  const provider = options.provider ?? edgeProvider;
 
   const preflight = provider.preflight(env);
   if (!preflight.ok) {
-    throw new SynthError(`provider ${provider.name} 还不能用（${preflight.reason}）：\n${preflight.hint}`, 2);
+    // 缺密钥是可操作的环境问题（专用退出码 4），与参数、讲稿问题（2）分开
+    const exitCode = preflight.reason === 'credential-missing' ? EXIT_CREDENTIAL_MISSING : 2;
+    throw new SynthError(`provider ${provider.name} 还不能用（${preflight.reason}）：\n${preflight.hint}`, exitCode);
   }
 
   const style = options.style ?? spec.style;
@@ -274,7 +277,7 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
     rmSync(join(workRoot, 'tmp', 'voice'), { recursive: true, force: true });
   }
 
-  // 兜底：provider 说不出音色时，从它在合成说明里留下的痕迹里认（`say` 的说明里带音色名）
+  // 兜底：provider 说不出音色时，从它在合成说明里留下的痕迹里认（说明里带「音色「…」」字样）
   const actualVoice = voice ?? voiceFromNotes(notes);
 
   const document: DurationsDocument = {

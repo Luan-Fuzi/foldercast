@@ -7,7 +7,7 @@
 
 ```
 Agent（有 bash）：rg --files → 挑重点读 → 数数字 → 写 script.json（讲稿）
-一个工具：校验 →（显式要求）say 配音 → 按需转换素材 → Remotion 出片
+一个工具：校验 →（显式要求）edge 配音 → 按需转换素材 → Remotion 出片
 ```
 
 **没有分析器替 agent 干活。** 探目录、读文件、判断什么重要，都是 agent 自己做；
@@ -26,7 +26,7 @@ Agent（有 bash）：rg --files → 挑重点读 → 数数字 → 写 script.j
    ┌──────────────────┐      ┌───────────────┐      ┌──────────────┐
    │ 探目录 + 写讲稿    │ ──► │ 校验 + 按需转图 │ ──► │ 配音 + 渲染   │
    └──────────────────┘      └───────────────┘      └──────────────┘
-    Agent 用 bash 与眼睛        确定性程序              say / Remotion
+    Agent 用 bash 与眼睛        确定性程序              edge TTS / Remotion
 ```
 
 两份文件落在 `<目录>/.foldercast/` 下：
@@ -55,7 +55,10 @@ subagent 评审（结论写 `review.md`）→ 评审通过后**显式传 `render
 （要旁白同时传 `voice: true`）。
 
 **昂贵步骤默认不跑**：不出片就不传 `render`，只要静音片就不传 `voice`。
-渲染几分钟到几十分钟；配音用 macOS 自带的 `say`（免密钥、本地）。
+渲染几分钟到几十分钟；配音走云端 TTS——默认 `edge`（免密钥），`mimo` 中文更自然但要
+`MIMO_API_KEY`（缺密钥时以退出码 4 结束并给配置办法，见
+[决策记录](docs/decisions/0002-tts-providers.md)）。**配音需要网络**，断网时只剩
+静音片（`voice` 不传即可）。
 
 **改过 `src/` 之后要重启 DSH**（插件入口不热加载），否则旧代码会报「插件包不完整」。
 
@@ -73,7 +76,7 @@ subagent 评审（结论写 `review.md`）→ 评审通过后**显式传 `render
 pnpm render <目录>              # 讲稿 → mp4（默认静音；配音产物存在时自动带旁白）
 pnpm render <目录> --still 3.5  # 出一张静帧，调画面用，不必整片重渲
 pnpm render <目录> --check      # 只校验讲稿并报时长分镜，不需要浏览器
-pnpm voice  <目录>              # 讲稿 → 逐场景音频 + 实测时长 + 整条音轨
+pnpm voice  <目录>              # 讲稿 → 逐场景音频 + 实测时长 + 整条音轨（--provider edge|mimo）
 pnpm text   <文件>              # Office / PDF → Markdown 打到 stdout（agent 通读用）
 ```
 

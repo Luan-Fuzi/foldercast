@@ -163,7 +163,7 @@ describe.skipIf(!hasFfmpeg)('合成调度', () => {
   });
 
   it('全部命中缓存时仍然报出「实际用的音色」（不能因为没合成就不写）', async () => {
-    // 这条是实测踩出来的：`say` 会在合成时自动挑中文音色，而全缓存那一次合成根本不跑，
+    // 这条是实测踩出来的：provider 会在没指定音色时用默认音色，而全缓存那一次合成根本不跑，
     // 于是 durations.json 里的 voice 变成空 —— 报告与产物都要记「实际用的」。
     const naming: TtsProvider = {
       ...fake,

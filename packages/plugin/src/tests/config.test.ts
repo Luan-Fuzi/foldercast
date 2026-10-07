@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Config, resolveSettings, type RawConfig } from '../config.ts';
+import { DEFAULT_STYLE_NAME, STYLE_NAMES } from '../../scripts/page/styles.ts';
 
 /** volatile 字段解析后的形态：带 get() 的引用（宿主保存设置后往里写新值）。 */
 function ref<T>(value: T): { get(): T } {
@@ -29,6 +30,13 @@ describe('Config schema（设置页的形状）', () => {
     expect(String(Config)).toContain('"edge" | "mimo"');
     expect(String(Config)).not.toContain('say');
     expect(String(Config)).not.toContain('rate');
+  });
+
+  it('page.style 枚举与页面阶段的三套预设一致（src 不 import scripts，靠这条防漂移）', () => {
+    const text = String(Config);
+    for (const name of STYLE_NAMES) expect(text).toContain(`"${name}"`);
+    expect(STYLE_NAMES).toContain(DEFAULT_STYLE_NAME);
+    expect(text).toContain(DEFAULT_STYLE_NAME);
   });
 
   it('解析后的 volatile 字段是引用（get 的值跟着走）', () => {
@@ -53,7 +61,7 @@ describe('resolveSettings（三种形态都认）', () => {
       resolveSettings({
         voice: { provider: 'mimo', voice: '茉莉', style: '自然讲解语气' },
         render: { browserPath: '/usr/bin/chromium', concurrency: 2 },
-        page: { style: 'plain' },
+        page: { style: '杂志' },
       }),
     ).toEqual({
       provider: 'mimo',
@@ -61,7 +69,7 @@ describe('resolveSettings（三种形态都认）', () => {
       voiceStyle: '自然讲解语气',
       browserPath: '/usr/bin/chromium',
       concurrency: 2,
-      pageStyle: 'plain',
+      pageStyle: '杂志',
     });
   });
 

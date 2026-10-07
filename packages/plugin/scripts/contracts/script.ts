@@ -20,11 +20,11 @@ export type VideoSpec = {
   targetDurationSec?: number | null;
 };
 
-/** 配音配置。provider 固定是 macOS 自带的 `say`，这里只剩音色与语速描述。 */
+/** 配音配置（provider 由设置页定、经 `--provider` 透传，讲稿里只剩音色与语态描述）。 */
 export type VoiceSpec = {
-  /** `say` 的系统音色名。缺省自动挑一个中文音色。 */
+  /** 音色，provider 各自的叫法（edge 如 zh-CN-XiaoxiaoNeural）。缺省自动挑中文音色。 */
   voice?: string;
-  /** 「怎么读」的描述；`say` 只认其中形如「180 字/分」的数字当语速。 */
+  /** 「怎么读」的自然语描述；mimo 用作风格指令，edge 表达不了。 */
   style?: string;
 };
 

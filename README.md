@@ -55,8 +55,7 @@ Agent（有 bash）：rg --files → 挑重点读 → 数数字 → 写 script.j
 | ffmpeg / ffprobe | 配音、实测时长、视频封面；非 mac 平台的图片缩放也回退到它 | `brew install ffmpeg` | `winget install --id Gyan.FFmpeg`（或 `choco install ffmpeg`） | `apt install ffmpeg`（或发行版等价命令） |
 | `@deepseek-ai/libreoffice-kit`（提供 `dsoffice`） | 可选：Office / PDF 的逐页图与文本提取 | 随包以 optionalDependency 自动安装（公共 npm，三平台各有变体；Linux 落到 wasm 变体）。装不上只影响 office/pdf 素材，其余类型照常 | 同左 | 同左 |
 
-macOS 自带的两样也在此列：`sips`（图片缩放，其他平台回退 ffmpeg）与 `say`
-（配音的默认引擎，免密钥；其他平台不配音、出静音片）。
+macOS 自带的 `sips`（图片缩放）也在此列：其他平台回退 ffmpeg。
 
 ---
 
@@ -67,9 +66,9 @@ dsh plugin --profile <profile> add dsh-foldercast
 ```
 
 装完在插件管理页看到「目录放映」，对话里说「把这个目录讲一遍」即触发。agent 按
-skill 走：自己探目录 → 写 `script.json` → 调 `foldercast_cast` 校验 → 起独立
-subagent 评审（结论写 `review.md`）→ 评审通过后**显式传 `render: true`** 出片
-（要旁白同时传 `voice: true`）。
+skill 走：自己探目录 → 写 `script.json` → 调 `foldercast_cast` 校验（通过时顺手产出
+自包含的 `page.html` 导览页当预览）→ 起独立 subagent 评审（结论写 `review.md`）→
+评审通过后**显式传 `render: true`** 出片（要旁白同时传 `voice: true`）。
 
 **昂贵步骤默认不跑**：不出片就不传 `render`，只要静音片就不传 `voice`。
 渲染几分钟到几十分钟；配音走云端 TTS——默认 `edge`（免密钥），`mimo` 中文更自然但要
@@ -87,13 +86,14 @@ subagent 评审（结论写 `review.md`）→ 评审通过后**显式传 `render
 
 ## 脱离 DSH 直跑
 
-五个入口都能独立跑（仓库内 Node 22.19+ 直接运行 TypeScript，不需要构建）：
+六个入口都能独立跑（仓库内 Node 22.19+ 直接运行 TypeScript，不需要构建）：
 
 ```bash
 pnpm render <目录>              # 讲稿 → mp4（默认静音；配音产物存在时自动带旁白）
 pnpm render <目录> --still 3.5  # 出一张静帧，调画面用，不必整片重渲
 pnpm render <目录> --check      # 只校验讲稿并报时长分镜，不需要浏览器
 pnpm voice  <目录>              # 讲稿 → 逐场景音频 + 实测时长 + 整条音轨（--provider edge|mimo）
+pnpm page   <目录>              # 讲稿 → 自包含 HTML 导览页（--style 素稿|杂志|夜幕）
 pnpm text   <文件>              # Office / PDF → Markdown 打到 stdout（agent 通读用）
 ```
 
@@ -145,7 +145,8 @@ foldercast/
 │       ├── contracts/     讲稿/时长契约的类型 + 字幕切分与时长分配，各阶段共用
 │       ├── assets/        prep（按需转换 + mtime 缓存）、text 提取、转换本体
 │       ├── renderer/      TypeScript + Remotion：讲稿 → mp4（含契约校验 check）
-│       └── voice/         TypeScript：讲稿 → 逐场景音频 + 实测时长
+│       ├── page/          TypeScript：讲稿 → 自包含 HTML 导览页（三套风格预设）
+│       └── voice/         TypeScript：讲稿 → 逐场景音频 + 实测时长（edge / mimo）
 ├── examples/              讲稿示例（已通过 schema 校验）
 └── scripts/               仓库工具（链接、JSON、示例 schema 检查）
 ```

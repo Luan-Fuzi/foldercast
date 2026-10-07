@@ -184,15 +184,18 @@ describe('execute：有讲稿时跑校验', () => {
     expect(hallucinated[0]?.sceneId).toBe('entry');
   });
 
-  it('讲稿通过时 ok，且不渲染不配音', async () => {
+  it('讲稿通过时 ok：不渲染不配音，但顺手产出导览页', async () => {
     writeScript('src/index.ts');
 
     const value = await tool?.execute({ path: source }, { signal: new AbortController().signal });
     expect(value?.ok).toBe(true);
-    expect(value?.ran).toEqual(['check']);
+    expect(value?.ran).toEqual(['check', 'page']);
     expect((value?.validation as { blocker: number }).blocker).toBe(0);
     expect((value?.stages as Record<string, unknown>).render).toBeUndefined();
     expect(existsSync(join(source, '.foldercast', 'out', 'video.mp4'))).toBe(false);
+    // 页面是秒级预览：校验通过就该有，render 输出里也报得出落点
+    expect(value?.pagePath).toContain(join('.foldercast', 'out', 'page.html'));
+    expect(existsSync(value?.pagePath)).toBe(true);
   });
 
   it('render 输出能读的几句话，且不空', async () => {
@@ -214,9 +217,9 @@ describe('execute：有讲稿时跑校验', () => {
   it('传 voice 但缺配音命令时，说明缺什么、别的话照常说', async () => {
     writeScript('src/index.ts');
     const value = await tool?.execute({ path: source, voice: true }, { signal: new AbortController().signal });
-    // 本机有 say/ffmpeg 时会真的配音（say 很快、夹具只有三句），两条路径都算过
+    // 本机有 ffmpeg 且能联网时会真的配音（默认 edge，云端合成，夹具只有三句），两条路径都算过
     if (value?.ok !== true) {
-      expect(String(value?.error)).toMatch(/say|ffmpeg|ffprobe/);
+      expect(String(value?.error)).toMatch(/ffmpeg|ffprobe|edge/);
       return;
     }
     expect((value?.stages as Record<string, unknown>).voice).toBeDefined();

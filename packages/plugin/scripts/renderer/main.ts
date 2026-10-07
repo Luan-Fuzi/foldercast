@@ -386,7 +386,7 @@ function inlineAudio(path: string): string {
   return `data:${sniffAudioMime(bytes)};base64,${bytes.toString('base64')}`;
 }
 
-/** 按魔数认音频类型：wav 的头部是 `RIFF....WAVE`。**不按后缀猜**（say 的产物就骗过后缀）。 */
+/** 按魔数认音频类型：wav 的头部是 `RIFF....WAVE`。**不按后缀猜**（容器与后缀不一致的产物骗过后缀）。 */
 function sniffAudioMime(bytes: Buffer): string {
   if (bytes.length >= 12 && bytes.subarray(0, 4).toString('latin1') === 'RIFF' && bytes.subarray(8, 12).toString('latin1') === 'WAVE') {
     return 'audio/wav';

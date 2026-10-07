@@ -15,6 +15,7 @@ import type { FoldercastSettings } from './config.ts';
 import {
   detectDependencies,
   durationsPathFor,
+  pagePathFor,
   runStage,
   scriptPathFor,
   scriptsInstalled,
@@ -59,6 +60,7 @@ export type CastResult = {
   dependencies: Dependency[];
   stages: {
     check?: StageReport;
+    page?: StageReport;
     voice?: StageReport;
     render?: StageReport;
   };
@@ -67,13 +69,17 @@ export type CastResult = {
   voiceName?: string;
   /** 成片落点（渲染成功时才有意义）。 */
   videoPath?: string;
+  /** 导览页落点（页面阶段成功产出时才有）。 */
+  pagePath?: string;
   /** 给模型看的一句话说明（比如「配置选了未实现的 provider」）。 */
   notes?: string[];
 };
 
 /** 各步骤的预算。渲染最久：本机实测 13–15 帧/秒，预算按更慢的机器留足余量。 */
-const TIMEOUT_MS: Readonly<Record<'check' | 'render' | 'voice', number>> = {
+const TIMEOUT_MS: Readonly<Record<'check' | 'page' | 'render' | 'voice', number>> = {
   check: 120_000,
+  // 页面是纯字符串模板 + 图片缩放，本机秒级；预算留给大图集的 ffmpeg 转码
+  page: 120_000,
   render: 2_400_000,
   // 配音逐场景调 TTS，大目录按每场景十几秒算
   voice: 2_400_000,
@@ -271,6 +277,32 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     }
   }
 
+  // ── 页面（校验通过就自动跑：秒级预览，不阻塞后面的贵步骤） ──────
+  // 页面是讲稿的另一个出口（docs/decisions/0001 的「一份创作、多个出口」）：出片前
+  // 先有一页能看的 HTML。失败不致命——记进 stages 照常往下走，配音与渲染不依赖它。
+  let pagePath: string | undefined;
+  if (existsSync(scriptPath) && (validation === undefined || validation.blocker === 0)) {
+    const pageRun = await runStage('page', {
+      args: [
+        target,
+        '--json',
+        ...(options.settings?.pageStyle === undefined ? [] : ['--style', options.settings.pageStyle]),
+      ],
+      json: true,
+      timeoutMs: TIMEOUT_MS.page,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    });
+    if (pageRun.cancelled !== true) {
+      stages.page = reportOf(pageRun);
+      ran.push('page');
+      if (pageRun.ok) {
+        pagePath = pagePathFor(target);
+      } else {
+        notes.push(`页面没生成（不影响配音与出片）：${summaryOf(pageRun) ?? '见 stages.page'}`);
+      }
+    }
+  }
+
   // ── 配音（显式要求才跑） ─────────────────────────────
   if (options.voice === true) {
     if (!existsSync(scriptPath)) {
@@ -354,6 +386,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     ...voiceFacts,
     ...(validation === undefined ? {} : { validation }),
     videoPath: videoPathFor(target),
+    ...(pagePath === undefined ? {} : { pagePath }),
     ...(notes.length === 0 ? {} : { notes }),
   });
 }

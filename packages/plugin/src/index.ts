@@ -123,6 +123,7 @@ const OUTPUT_SCHEMA = {
     },
     voiceName: { type: 'string', description: '实际使用的音色（从时长表读，不是配置里写的）' },
     videoPath: { type: 'string', description: '成片落点' },
+    pagePath: { type: 'string', description: '导览页落点（校验通过时自动产出的自包含 HTML 预览）' },
     notes: {
       type: 'array',
       description: '给模型看的一句话说明（如「配置选了未实现的 provider」）',
@@ -143,6 +144,7 @@ type CastLike = {
   validation?: { blocker: number; warning: number; issues: { code: string; severity: string; message: string; path?: string; sceneId?: string }[] };
   voiceName?: string;
   videoPath?: string;
+  pagePath?: string;
   notes?: string[];
 };
 
@@ -179,6 +181,7 @@ function renderResult(value: CastLike): string {
   for (const note of value.notes ?? []) lines.push(note);
   if (value.voiceName !== undefined) lines.push(`配音音色：${value.voiceName}`);
   if (value.videoPath !== undefined) lines.push(`成片落点：${value.videoPath}`);
+  if (value.pagePath !== undefined) lines.push(`导览页落点：${value.pagePath}`);
 
   return lines.join('\n');
 }
@@ -189,7 +192,7 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
   tools.register({
     name: 'foldercast_cast',
     description:
-      'Validate the foldercast script.json (contract, referenced paths, subtitle splitting) and, only when explicitly asked, synthesise the voice-over (macOS say) and render the mp4. Exploring the folder and writing the script are the agent\'s job, not this tool\'s. Invoke it only when the user explicitly asked for a foldercast walk-through video — not for plain directory browsing or Q&A.',
+      'Validate the foldercast script.json (contract, referenced paths, subtitle splitting); when it passes, render a self-contained HTML preview page; and, only when explicitly asked, synthesise the voice-over (edge by default, or mimo) and render the mp4. Exploring the folder and writing the script are the agent\'s job, not this tool\'s. Invoke it only when the user explicitly asked for a foldercast walk-through video — not for plain directory browsing or Q&A.',
     timeoutMs: 2_400_000,
     parameters: {
       type: 'object',
@@ -207,11 +210,11 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
         voice: {
           type: 'boolean',
           description:
-            'Synthesise the narration (macOS say, no key) before rendering. Off by default. Requires an existing script.json.',
+            'Synthesise the narration before rendering. Off by default. Provider comes from settings (edge: key-free cloud; mimo: needs MIMO_API_KEY). Requires network. Requires an existing script.json.',
         },
         voiceName: {
           type: 'string',
-          description: 'say system voice name. Left out, a Chinese voice is picked automatically.',
+          description: 'Voice name in the provider\'s own namespace (e.g. zh-CN-XiaoxiaoNeural for edge). Left out, a Chinese voice is picked automatically.',
         },
         forceVoice: {
           type: 'boolean',
@@ -257,6 +260,7 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
       if (result.error !== undefined) value.error = result.error;
       if (result.voiceName !== undefined) value.voiceName = result.voiceName;
       if (result.videoPath !== undefined) value.videoPath = result.videoPath;
+      if (result.pagePath !== undefined) value.pagePath = result.pagePath;
       if (result.validation !== undefined) value.validation = result.validation;
       if (result.notes !== undefined) value.notes = result.notes;
 

@@ -181,7 +181,7 @@ describe('时长来源', () => {
     const durations: DurationsDocument = {
       durations: 1,
       generatedAt: '2026-10-07T00:00:00+08:00',
-      provider: 'say',
+      provider: 'edge',
       track: 'audio/narration.wav',
       pause: 0.45,
       scenes: [{ id: 'a', audio: 'audio/a.wav', audioSec: 5.32, duration: 5.77, subs: [['好。', 5.77]] }],

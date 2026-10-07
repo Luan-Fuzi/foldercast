@@ -44,14 +44,16 @@ export function findPackageRoot(start: string): string | undefined {
 /** 包根：脚本、随包 schema、依赖的 bin 都相对它定位。 */
 export const PACKAGE_ROOT = findPackageRoot(MODULE_DIR) ?? resolve(MODULE_DIR, '..');
 
-export type StageName = 'render' | 'voice';
+export type StageName = 'render' | 'voice' | 'page';
 
 /** 阶段脚本所在子目录，两套布局下同名。 */
 const STAGE_DIR: Readonly<Record<StageName, string>> = {
   // 渲染：讲稿 →（按需转换素材）→ mp4。需要浏览器，缺浏览器只影响这一步
   render: 'renderer',
-  // 配音：讲稿 → 逐场景音频 + durations.json + 整条音轨。需要 say 与 ffmpeg
+  // 配音：讲稿 → 逐场景音频 + durations.json + 整条音轨。云端 provider（edge / mimo）+ ffmpeg
   voice: 'voice',
+  // 页面：讲稿 → 自包含 HTML（零 JS、图片内联）。纯字符串模板，秒级，不依赖浏览器
+  page: 'page',
 };
 
 /** 这份 Node 能不能直接跑 TypeScript（类型剥离，22.19 起默认开）。 */
@@ -122,6 +124,11 @@ export function videoPathFor(target: string): string {
   return resolve(workRootFor(target), 'out', 'video.mp4');
 }
 
+/** 导览页的落点。页面阶段不传 `--out` 时就是它。 */
+export function pagePathFor(target: string): string {
+  return resolve(workRootFor(target), 'out', 'page.html');
+}
+
 /** 配音产物的落点（M8）：逐场景音频、整条音轨与实测时长表都在工作根下。 */
 export function durationsPathFor(target: string): string {
   return resolve(workRootFor(target), 'durations.json');
@@ -132,7 +139,7 @@ export function narrationPathFor(target: string): string {
   return resolve(workRootFor(target), 'audio', 'narration.wav');
 }
 
-export type DependencyName = 'node' | 'dsoffice' | 'ffmpeg' | 'ffprobe' | 'sips' | 'browser' | 'say';
+export type DependencyName = 'node' | 'dsoffice' | 'ffmpeg' | 'ffprobe' | 'sips' | 'browser';
 
 export type Dependency = {
   name: DependencyName;
@@ -283,13 +290,6 @@ export async function detectDependencies(): Promise<Dependency[]> {
       // 与 ffmpeg 分开报：它随 ffmpeg 一起装，但**用途不同** —— 「时长以实测为准」这条
       // 设计靠它，缺了就只能按字数估
       hint: '实测音频与视频时长需要 ffprobe（随 ffmpeg 一起装）。缺它时配音无法记录实测时长。',
-    },
-    {
-      name: 'say',
-      ok: await hasExecutable('say', '-v'),
-      required: false,
-      // 默认 provider 是它：免密钥、装了就能出片。缺了也能用云端 provider（要密钥）
-      hint: '配音用 macOS 自带的 say（免密钥）。没有它就不配音（不传 voice），画面照常。',
     },
     {
       name: 'sips',

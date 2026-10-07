@@ -44,10 +44,13 @@ export const Config = z.object({
     .description('渲染'),
   page: z
     .object({
+      // 三个名字与 scripts/page/styles.ts 的 PAGE_STYLES 键一致（src 不 import scripts，
+      // 编译产物的目录结构不同）；src/tests/config.test.ts 钉住两边不漂移
       style: z
-        .string()
+        .union(['素稿', '杂志', '夜幕'])
+        .default('素稿')
         .volatile()
-        .description('HTML 页面的风格预设名（page 分支接入后收窄为枚举，先留字符串占位）'),
+        .description('导览页风格：素稿（纸面白底）/ 杂志（暖纸衬线）/ 夜幕（深底，与成片同色）'),
     })
     .description('页面'),
 });

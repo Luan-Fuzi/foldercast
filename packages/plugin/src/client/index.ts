@@ -76,17 +76,19 @@ const NS = 'foldercast.settings';
 
 const zh = {
   title: '目录放映',
-  description: '配音与渲染的默认参数。',
+  description: '配音、渲染与导览页的默认参数。',
   provider: '配音引擎',
-  providerHint: '当前只实现了 say（macOS 自带、免密钥）；mimo 为预留，选了也仍用 say。',
-  voice: '音色（say）',
-  voiceHint: 'say 的系统音色名。留空自动挑一个中文音色。',
-  rate: '语速（字/分）',
-  rateHint: '60–400。留空用讲稿里写的或系统默认。',
+  providerHint: '都要网络。edge 免密钥（默认）；mimo 中文更自然，需要 MIMO_API_KEY。',
+  voice: '音色',
+  voiceHint: 'provider 各自的叫法（edge 如 zh-CN-XiaoxiaoNeural）。留空自动挑中文音色。',
+  style: '怎么读',
+  styleHint: '自然语描述（如「自然、清晰的讲解语气」）。mimo 用作风格指令；edge 表达不了。',
   browserPath: '浏览器路径',
   browserPathHint: '渲染用的 Chrome / Chromium 可执行文件。留空自动找系统 Chrome。',
   concurrency: '渲染并发数',
   concurrencyHint: '默认 1：多并发会让同一份讲稿渲不出逐帧一致的画面。',
+  pageStyle: '导览页风格',
+  pageStyleHint: '素稿（纸面白底，默认）/ 杂志（暖纸衬线）/ 夜幕（深底，与成片同色）。',
   overridden: '已覆盖',
   reset: '恢复默认',
   readOnly: '本部署的设置为只读。',
@@ -99,17 +101,19 @@ const zh = {
 
 const en = {
   title: 'Foldercast',
-  description: 'Default voice-over and render parameters.',
+  description: 'Default voice-over, render and page parameters.',
   provider: 'Voice engine',
-  providerHint: 'Only say (macOS built-in, key-free) is implemented; mimo is a reserved placeholder.',
-  voice: 'Voice (say)',
-  voiceHint: 'A say system voice name. Left blank, a Chinese voice is picked automatically.',
-  rate: 'Rate (words/min)',
-  rateHint: '60–400. Left blank, the script wins or the system default applies.',
+  providerHint: 'Both need network. edge is key-free (default); mimo sounds more natural in Chinese and needs MIMO_API_KEY.',
+  voice: 'Voice',
+  voiceHint: 'A voice name in the provider\'s namespace (e.g. zh-CN-XiaoxiaoNeural for edge). Left blank, a Chinese voice is picked automatically.',
+  style: 'How to read',
+  styleHint: 'Natural-language style (e.g. "natural, clear narration"). mimo uses it as an instruction; edge cannot express it.',
   browserPath: 'Browser path',
   browserPathHint: 'Chrome / Chromium executable for rendering. Left blank, the system Chrome is used.',
   concurrency: 'Render concurrency',
   concurrencyHint: 'Defaults to 1: higher values break frame-for-frame reproducibility.',
+  pageStyle: 'Page style',
+  pageStyleHint: '素稿 (plain, default) / 杂志 (editorial) / 夜幕 (dark, same palette as the film).',
   overridden: 'Overridden',
   reset: 'Reset to default',
   readOnly: 'This deployment stores settings read-only.',
@@ -124,9 +128,10 @@ const en = {
 const FIELDS = [
   { key: 'provider', path: ['voice', 'provider'], numeric: false },
   { key: 'voice', path: ['voice', 'voice'], numeric: false },
-  { key: 'rate', path: ['voice', 'rate'], numeric: true },
+  { key: 'style', path: ['voice', 'style'], numeric: false },
   { key: 'browserPath', path: ['render', 'browserPath'], numeric: false },
   { key: 'concurrency', path: ['render', 'concurrency'], numeric: true },
+  { key: 'pageStyle', path: ['page', 'style'], numeric: false },
 ] as const;
 
 type FieldKey = (typeof FIELDS)[number]['key'];
@@ -235,9 +240,10 @@ interface CardState extends Record<string, unknown> {
   writable: boolean;
   provider: FieldState;
   voice: FieldState;
-  rate: FieldState;
+  style: FieldState;
   browserPath: FieldState;
   concurrency: FieldState;
+  pageStyle: FieldState;
 }
 
 interface FieldState {
@@ -340,17 +346,19 @@ export function apply(ctx: ClientCtx): void {
     const next = new SettingsFormModel(flat as never, [
       settingsTextField('provider'),
       settingsTextField('voice'),
-      settingsNumberField('rate'),
+      settingsTextField('style'),
       settingsTextField('browserPath'),
       settingsNumberField('concurrency'),
+      settingsTextField('pageStyle'),
     ] as never);
     store = next.bind(() => ({
       ...next.shell(),
       provider: next.field('provider'),
       voice: next.field('voice'),
-      rate: next.field('rate'),
+      style: next.field('style'),
       browserPath: next.field('browserPath'),
       concurrency: next.field('concurrency'),
+      pageStyle: next.field('pageStyle'),
     })) as never;
     model = next as never;
   };

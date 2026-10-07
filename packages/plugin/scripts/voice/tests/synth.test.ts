@@ -36,6 +36,8 @@ let workRoot = '';
 function fakeProvider(): TtsProvider {
   return {
     name: 'fake',
+    requiresKey: false,
+    capabilities: [],
     describe: () => '测试用假 provider',
     preflight: () => ({ ok: true }),
     async synth(request) {

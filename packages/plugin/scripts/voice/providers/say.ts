@@ -71,6 +71,8 @@ export function rateFromStyle(style: string | undefined): number | undefined {
 
 export const sayProvider: TtsProvider = {
   name: 'say',
+  requiresKey: false,
+  capabilities: ['voices'],
   describe: () => 'macOS 自带 say：本地、免密钥、无配额。音质一般，适合先出片看效果。',
 
   preflight(env: VoiceEnv) {

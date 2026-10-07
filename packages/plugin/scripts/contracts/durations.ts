@@ -1,5 +1,5 @@
 /**
- * `durations.json`（配音产物）与 `say` provider 的类型。
+ * `durations.json`（配音产物）与 TTS provider 的接口。
  *
  * **它是可重算的缓存，不是创作产物**：删了能重跑，只是要重新合成一次。所以它记的是
  * 「实测事实」—— 时长、音色、音频路径 —— 而不是任何判断。
@@ -38,7 +38,7 @@ export type SceneDuration = {
 export type DurationsDocument = {
   durations: typeof DURATIONS_VERSION;
   generatedAt: string;
-  /** 实际使用的 provider（现在是 `say`）。 */
+  /** 实际使用的 provider（`say` / `edge` / `mimo`…）。 */
   provider: string;
   /** 实际使用的音色。 */
   voice?: string;
@@ -68,15 +68,27 @@ export type SynthResult = {
   note?: string;
 };
 
+/** provider 的能力声明。调用方按能力分支，而不是 try/catch 撞运气。 */
+export type TtsCapability = 'instruct' | 'voices';
+
 /**
- * TTS provider 的最小接口（现在只有 `say` 一个实现，接口保留是为了测试能注入假实现）。
- * `preflight` 在合成之前调用：缺命令时给可操作的引导，不等跑到一半才失败。
+ * 一个 TTS provider。接口在这里定死（P0 seam，见 docs/decisions/0002）：注册表认 `name` 与
+ * `requiresKey`，实现方各占一个文件（`voice/providers/`），互不依赖。
+ *
+ * `preflight` 在合成之前调用：缺命令、缺密钥时给可操作的引导，不等跑到一半才失败 ——
+ * 云端 provider 等一个 401 再报错，用户看不出该怎么办。
  */
 export type TtsProvider = {
   name: string;
+  /** 需要密钥的 provider 必须在 `preflight` 里查密钥（`env.secret` + `KEY_REFS`），缺了不发起请求。 */
+  requiresKey: boolean;
+  capabilities: readonly TtsCapability[];
+  /** 合成本次任务的开销说明（云端有费用，本地没有），给日志用。 */
   describe(): string;
   preflight(env: VoiceEnv): { ok: true } | { ok: false; reason: string; hint: string };
   synth(request: SynthRequest, env: VoiceEnv): Promise<SynthResult>;
+  /** 预置音色列表。要跑命令才知道的（如 `say -v '?'`）不实现它，用 `resolveVoice`。 */
+  listVoices?(): string[];
   /** 「实际会用哪个音色」。合成之前就要能答（全部命中缓存时也要记实际音色）。 */
   resolveVoice?(request: { voice?: string; style?: string }, env: VoiceEnv): Promise<string | undefined>;
 };
@@ -84,8 +96,23 @@ export type TtsProvider = {
 /** 外部命令的执行结果。stdout 与 stderr 都要留：`say -v '?'` 把音色表写在 stderr 上。 */
 export type ExecResult = { ok: boolean; stdout: string; stderr: string };
 
-/** 外部世界：注入而不是直接读 `process.env`，测试才好替换。 */
+/**
+ * 外部世界：注入而不是直接读 `process.env`，测试才好替换。
+ * 密钥只有 `secret` 一个读取口（实现方不直接碰 `process.env`），值不进日志与报告。
+ */
 export type VoiceEnv = {
+  /** 取凭据（按引用名，如 `MIMO_API_KEY`）。读不到就是没配。 */
+  secret: (ref: string) => string | undefined;
   has: (command: string) => boolean;
   exec: (command: string, args: readonly string[]) => Promise<ExecResult>;
 };
+
+/**
+ * 密钥的引用名。**配置里只放这个名字，值走凭据 seam**：哪个 provider 用哪个引用名，只有这一处。
+ */
+export const KEY_REFS: Readonly<Record<string, string>> = {
+  mimo: 'MIMO_API_KEY',
+};
+
+/** 缺密钥的专用退出码：可操作的环境问题，不是崩溃（与渲染缺浏览器用 3 同一套思路）。 */
+export const EXIT_CREDENTIAL_MISSING = 4;

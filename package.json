@@ -16,6 +16,7 @@
     "render": "node packages/plugin/scripts/renderer/main.ts",
     "voice": "node packages/plugin/scripts/voice/main.ts",
     "text": "node packages/plugin/scripts/assets/text.ts",
+    "page": "node packages/plugin/scripts/page/main.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && pnpm --filter dsh-foldercast typecheck"
   },

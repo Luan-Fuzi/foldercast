@@ -12,9 +12,18 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import type { TtsProvider } from '../contracts/durations.ts';
 import { makeVoiceEnv } from './env.ts';
 import { sayProvider } from './providers/say.ts';
 import { audioFileName, SynthError, synthesize, type SynthReport } from './synth.ts';
+
+/**
+ * provider 注册表：加 provider 就是往这里放一行（`edge` / `mimo` 由 voice-engine 分支接入，
+ * 见 docs/decisions/0002）。CLI 参数与设置页都用 `name` 在这里查。
+ */
+const PROVIDERS: Readonly<Record<string, TtsProvider>> = {
+  say: sayProvider,
+};
 
 const USAGE = `给讲稿配旁白，产出逐场景音频、实测时长与 durations.json。
 
@@ -22,6 +31,7 @@ const USAGE = `给讲稿配旁白，产出逐场景音频、实测时长与 dura
   pnpm voice <目录> [选项]
 
 选项：
+  --provider <引擎>   say（默认）。edge / mimo 由 voice-engine 分支接入
   --voice <音色>      say 的系统音色名。缺省自动挑一个中文音色
   --style <怎么读>    语速描述；只认「180 字/分」这类数字
   --pause <秒>        每个场景末尾的留白，算进场景时长。默认 0.45
@@ -37,6 +47,7 @@ const USAGE = `给讲稿配旁白，产出逐场景音频、实测时长与 dura
 
 type Options = {
   target: string;
+  provider?: string;
   voice?: string;
   style?: string;
   pause?: number;
@@ -70,6 +81,7 @@ function parseArgs(argv: string[]): Options | { error: string } {
       case '--json':
         options.json = true;
         break;
+      case '--provider':
       case '--voice':
       case '--style':
       case '--pause':
@@ -78,7 +90,8 @@ function parseArgs(argv: string[]): Options | { error: string } {
         const value = argv[i + 1];
         if (value === undefined) return { error: `${arg} 后面缺一个值` };
         i += 1;
-        if (arg === '--voice') options.voice = value;
+        if (arg === '--provider') options.provider = value;
+        else if (arg === '--voice') options.voice = value;
         else if (arg === '--style') options.style = value;
         else if (arg === '--script') options.script = value;
         else if (arg === '--pause') {
@@ -117,7 +130,13 @@ async function main(): Promise<number> {
   const target = resolve(parsed.target === '' ? process.cwd() : parsed.target);
   const workRoot = join(target, '.foldercast');
   const env = makeVoiceEnv();
-  const provider = sayProvider;
+  const provider = PROVIDERS[parsed.provider ?? 'say'];
+  if (provider === undefined) {
+    const hint = `不认识的配音引擎「${parsed.provider ?? ''}」。可用：${Object.keys(PROVIDERS).join('、')}。edge / mimo 由 voice-engine 分支接入（docs/decisions/0002）。`;
+    if (parsed.json) console.log(JSON.stringify({ ok: false, error: hint }, null, 2));
+    else console.error(hint);
+    return 2;
+  }
 
   // 前置检查：缺命令在这里就返回引导，**不发起合成**（等跑到一半才失败更难办）
   const preflight = provider.preflight(env);

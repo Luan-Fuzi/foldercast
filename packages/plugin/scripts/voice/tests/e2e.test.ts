@@ -50,6 +50,8 @@ function fakeProvider(name: string): TtsProvider {
   const sampleRate = 44100;
   return {
     name,
+    requiresKey: false,
+    capabilities: [],
     describe: () => `测试用假 provider（${name}）`,
     preflight: () => ({ ok: true }),
     async synth(request) {

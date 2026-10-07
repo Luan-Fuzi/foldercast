@@ -234,11 +234,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
   const scriptPath = scriptPathFor(target);
   const stages: CastResult['stages'] = {};
   const ran: string[] = [];
-  // 设置里选了未实现的 provider 时照常工作，但要把这件事说出来，不能静默换引擎
-  const notes: string[] =
-    options.settings?.provider === 'mimo'
-      ? ['设置里选了配音引擎 mimo，但当前版本只实现了 say —— 本次（及之后）仍用 say 配音。']
-      : [];
+  const notes: string[] = [];
 
   const finish = (extra: Partial<CastResult> = {}): CastResult => ({
     ok: true,
@@ -280,22 +276,27 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     if (!existsSync(scriptPath)) {
       return { ...finish(validation === undefined ? {} : { validation }), ok: false, error: `还没有讲稿：${scriptPath}。先写稿再配音。` };
     }
-    const missing = ['say', 'ffmpeg', 'ffprobe'].filter(
+    // provider 由设置页定（`--provider` 透传给配音阶段，未实现的引擎在那里报「未实现」）。
+    // `say` 是本地命令才预检它；云端 provider 缺的密钥由其 preflight 报（带引导，退出码 4）。
+    const provider = options.settings?.provider ?? 'say';
+    const missing = [...(provider === 'say' ? (['say'] as const) : []), 'ffmpeg' as const, 'ffprobe' as const].filter(
       (name) => dependencies.find((dependency) => dependency.name === name)?.ok !== true,
     );
     if (missing.length > 0) {
-      const note = `配音需要这些命令：${missing.join('、')}。say 与 ffmpeg 在 macOS 上都自带或 brew 一句装上；也可以跳过配音（不传 voice，出静音片）。`;
+      const note = `配音需要这些命令：${missing.join('、')}（macOS：brew install ffmpeg）。也可以跳过配音（不传 voice，出静音片）。`;
       return { ...finish({ ...(validation === undefined ? {} : { validation }) }), ok: false, error: note };
     }
     const scriptVoice = readScriptVoice(scriptPath);
     const wanted = options.voiceName ?? scriptVoice.voice ?? options.settings?.voiceName;
     const style =
       scriptVoice.style ??
+      options.settings?.voiceStyle ??
       (options.settings?.voiceRate === undefined ? undefined : `${String(options.settings.voiceRate)} 字/分`);
     const voiceRun = await runStage('voice', {
       args: [
         target,
         '--json',
+        ...(options.settings?.provider === undefined ? [] : ['--provider', options.settings.provider]),
         ...(wanted === undefined ? [] : ['--voice', wanted]),
         ...(style === undefined ? [] : ['--style', style]),
         ...(options.forceVoice === true ? ['--force'] : []),

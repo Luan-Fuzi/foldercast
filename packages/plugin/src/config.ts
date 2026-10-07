@@ -6,8 +6,9 @@
  * 解析出来的 volatile 字段是「带 `get()` 的对象」，不是普通值，`resolveSettings` 负责解包
  * （普通值与缺省也认，那是 profile patch 与测试的形状）。
  *
- * 现在的字段是**骨架**：`voice.provider` 里的 `mimo` 是预留（描述里写明未生效，代码里
- * 不接它）。真要接第二个 TTS 时，在这里补字段、在 `cast.ts` 接线即可，机制不用再动。
+ * `edge` / `mimo` 在这里是**已定接口、未接实现**的枚举位（P0 seam，见 docs/decisions/0002）：
+ * voice-engine 分支把实现装进 `voice/providers/` 后，`cast.ts` 无需再改 —— provider 名
+ * 经 `--provider` 透传给配音阶段。
  */
 import z from '@deepseek-ai/schemastery';
 
@@ -15,11 +16,17 @@ export const Config = z.object({
   voice: z
     .object({
       provider: z
-        .union(['say', 'mimo'])
+        .union(['say', 'edge', 'mimo'])
         .default('say')
         .volatile()
-        .description('配音引擎。当前只实现了 say（macOS 自带、免密钥）；mimo 为预留，选了也仍用 say'),
-      voice: z.string().volatile().description('say 的系统音色名。留空自动挑一个中文音色'),
+        .description(
+          '配音引擎。当前只实现了 say（macOS 自带、免密钥）；edge / mimo 由 voice-engine 分支接入，选了会提示未实现',
+        ),
+      voice: z.string().volatile().description('音色名（provider 各自的叫法）。留空用默认（say 自动挑中文音色）'),
+      style: z
+        .string()
+        .volatile()
+        .description('「怎么读」的自然语描述（如「自然、清晰的讲解语气」）。mimo 落在风格指令，say 只认语速数字'),
       rate: z.number().min(60).max(400).volatile().description('语速（字/分）。留空用讲稿里的或系统默认'),
     })
     .description('配音'),
@@ -37,22 +44,33 @@ export const Config = z.object({
         .description('渲染并发数。默认 1：多并发会破坏「同一讲稿两次渲染逐帧一致」'),
     })
     .description('渲染'),
+  page: z
+    .object({
+      style: z
+        .string()
+        .volatile()
+        .description('HTML 页面的风格预设名（page 分支接入后收窄为枚举，先留字符串占位）'),
+    })
+    .description('页面'),
 });
 
 /** 解析后的设置（全部可选：没配就是现在的默认行为）。 */
 export type FoldercastSettings = {
-  /** 配置里选的引擎。现在只有 say 一个实现；'mimo' 表示「用户选了预留项」。 */
-  provider?: 'say' | 'mimo';
+  /** 配置里选的引擎。'say' 是当前唯一实现；'edge' / 'mimo' 是已定接口的预留位。 */
+  provider?: 'say' | 'edge' | 'mimo';
   voiceName?: string;
+  voiceStyle?: string;
   voiceRate?: number;
   browserPath?: string;
   concurrency?: number;
+  pageStyle?: string;
 };
 
 /** 宿主递进来的原始配置：字段可能是 volatile 引用、普通值或缺省。 */
 export type RawConfig = {
-  voice?: { provider?: unknown; voice?: unknown; rate?: unknown };
+  voice?: { provider?: unknown; voice?: unknown; style?: unknown; rate?: unknown };
   render?: { browserPath?: unknown; concurrency?: unknown };
+  page?: { style?: unknown };
 };
 
 /** 读一个字段，解包 volatile 引用。 */
@@ -68,17 +86,21 @@ function read<T>(field: T | { get(): T | undefined } | undefined): T | undefined
 export function resolveSettings(config?: RawConfig): FoldercastSettings {
   const provider = read(config?.voice?.provider);
   const voiceName = read(config?.voice?.voice);
+  const voiceStyle = read(config?.voice?.style);
   const rate = read(config?.voice?.rate);
   const browserPath = read(config?.render?.browserPath);
   const concurrency = read(config?.render?.concurrency);
+  const pageStyle = read(config?.page?.style);
 
   return {
-    ...(provider === 'say' || provider === 'mimo' ? { provider } : {}),
+    ...(provider === 'say' || provider === 'edge' || provider === 'mimo' ? { provider } : {}),
     ...(typeof voiceName === 'string' && voiceName.trim() !== '' ? { voiceName } : {}),
+    ...(typeof voiceStyle === 'string' && voiceStyle.trim() !== '' ? { voiceStyle } : {}),
     ...(typeof rate === 'number' && Number.isFinite(rate) && rate >= 60 && rate <= 400 ? { voiceRate: rate } : {}),
     ...(typeof browserPath === 'string' && browserPath.trim() !== '' ? { browserPath } : {}),
     ...(typeof concurrency === 'number' && Number.isInteger(concurrency) && concurrency >= 1 && concurrency <= 8
       ? { concurrency }
       : {}),
+    ...(typeof pageStyle === 'string' && pageStyle.trim() !== '' ? { pageStyle } : {}),
   };
 }

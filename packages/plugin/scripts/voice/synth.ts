@@ -183,9 +183,13 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
   }
 
   const style = options.style ?? spec.style;
-  // 上一轮的产物：provider 说不出音色时的兜底（见 `voiceOverride`）
+  // 上一轮的产物：provider 说不出音色时的兜底（见 `voiceOverride`）。
+  // **只有 provider 一致时才复用它的音色**：音色名是 provider 内的字符串（契约注释写明
+  // 不做跨 provider 统一），say 时代的 durations.json 曾把 "Eddy (中文…)" 漏给 edge，
+  // 云端端点认不出这种名字，崩在一层很深的库里。
   const previous = readJsonIfExists<DurationsDocument>(join(workRoot, 'durations.json'));
-  const requestedVoice = options.voice ?? spec.voice ?? options.voiceOverride ?? previous?.voice;
+  const previousVoice = previous?.provider === provider.name ? previous?.voice : undefined;
+  const requestedVoice = options.voice ?? spec.voice ?? options.voiceOverride ?? previousVoice;
   // **在合成之前**解析实际音色：报告要记「实际用的」，而全部命中缓存时合成根本不会跑
   const resolvedVoice =
     provider.resolveVoice === undefined

@@ -187,6 +187,21 @@ describe.skipIf(!hasFfmpeg)('合成调度', () => {
     expect(report.voice).toBe('自动挑的音色');
   });
 
+  it('上一轮是别的 provider 时，不把它的音色名拿来用（say 时代的 durations.json 曾漏给 edge）', async () => {
+    // 场景音频上面已经合成过（provider 是 fake），这里只把 durations.json 伪造成别的引擎的
+    const stale = JSON.parse(readFileSync(join(workRoot, 'durations.json'), 'utf8')) as DurationsDocument;
+    writeFileSync(
+      join(workRoot, 'durations.json'),
+      `${JSON.stringify({ ...stale, provider: 'say', voice: 'Eddy (中文（中国大陆）)' }, null, 2)}\n`,
+    );
+    const report = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake });
+    // 音色名跨引擎不通吃：不复用旧值，而不是把它喂给新引擎在深处崩掉
+    expect(report.voice).toBeUndefined();
+    const document = JSON.parse(readFileSync(report.durationsPath, 'utf8')) as DurationsDocument;
+    expect(document.provider).toBe('fake');
+    expect(document.voice).toBeUndefined();
+  });
+
   it('--force 重新合成', async () => {
     const report = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake, force: true });
     expect(report.synthesized).toBe(2);

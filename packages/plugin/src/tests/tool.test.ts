@@ -194,8 +194,9 @@ describe('execute：有讲稿时跑校验', () => {
     expect((value?.stages as Record<string, unknown>).render).toBeUndefined();
     expect(existsSync(join(source, '.foldercast', 'out', 'video.mp4'))).toBe(false);
     // 页面是秒级预览：校验通过就该有，render 输出里也报得出落点
-    expect(value?.pagePath).toContain(join('.foldercast', 'out', 'page.html'));
-    expect(existsSync(value?.pagePath)).toBe(true);
+    const pagePath = value?.pagePath as string | undefined;
+    expect(pagePath).toContain(join('.foldercast', 'out', 'page.html'));
+    expect(existsSync(pagePath ?? '')).toBe(true);
   });
 
   it('render 输出能读的几句话，且不空', async () => {

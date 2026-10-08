@@ -140,7 +140,7 @@ jobs:
           node -e '
             const fs = require("node:fs");
             fs.writeFileSync(".foldercast/script.json", JSON.stringify({
-              foldercast: 1,
+              foldercast: 2,
               source: { root: process.cwd() },
               title: "foldercast",
               scenes: [
@@ -151,11 +151,16 @@ jobs:
                     { path: "docs", files: 3 },
                     { path: "scripts", files: 6 }
                   ],
-                  narration: "代码在 packages，契约在 docs，工具在 scripts。" },
+                  narration: "代码在 packages，契约在 docs，工具在 scripts。三个目录撑起整个仓库。",
+                  beats: [{ points: ["packages 二十个文件，主体", "docs 三份契约", "scripts 六个仓库工具"], enter: "reveal" }] },
                 { id: "kinds", type: "inventory", title: "构成",
                   groups: [{ label: "代码", count: 25 }, { label: "文档", count: 6 }],
                   total: 31,
-                  narration: "内容以代码为主，文档其次。" },
+                  narration: "内容以代码为主，文档其次。",
+                  beats: [
+                    { points: ["代码 25 · 文档 6"], enter: "reveal" },
+                    { graphic: "proportion", enter: "grow" }
+                  ] },
                 { id: "outro", type: "outro", title: "完", narration: "就这些。" }
               ]
             }, null, 2));

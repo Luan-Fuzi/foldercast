@@ -181,19 +181,21 @@ jobs:
           fi
           rm -f render.json render.log
 
-      # 配音：CI 只验**前置检查与引导**（退出码非 0 且有可操作的话）。真配音由本机验收
-      # （4af655d 的教训）。三台 runner 上的缺口各不相同，但都轮得到这步：
-      #   · Linux / Windows：装了 ffmpeg，缺 say；
-      #   · macOS：有 say，没装 ffmpeg。
-      - name: 配音的前置检查
+      # 配音：CI 只验**前置检查与引导**（4af655d 的教训：runner 只测它能证明的），不真调
+      # 云端。测「缺密钥的 provider 在发起请求之前就拦下、退出码 4、引导里写清凭据名」
+      # ——三台 runner 都没有 MIMO_API_KEY，这条路径确定性成立、不需要网络。
+      # （旧版这步断言「配音在 runner 上必然失败」：那是 say 时代的假设，默认引擎换成
+      # edge 后 ubuntu 上真的合成成功了，还让 CI 打了云端端点。）
+      # 真配音（edge / 配了密钥的 mimo）由本机验收，结论落 docs/。
+      - name: 配音的前置检查（缺密钥的引导）
         run: |
           set +e
-          pnpm run voice . --json > voice.json 2> voice.log
+          pnpm run voice . --provider mimo --json > voice.json 2> voice.log
           code=$?
           set -e
-          echo "缺工具时的退出码：$code"
-          test "$code" != "0" || { echo "这台 runner 上配音不该成功"; cat voice.json; exit 1; }
-          grep -qiE "ffmpeg|say" voice.json voice.log || { echo "失败信息里没有指出缺哪个工具"; cat voice.json voice.log; exit 1; }
+          echo "缺密钥时的退出码：$code"
+          test "$code" = "4" || { echo "缺密钥应当以退出码 4 结束，实际 $code"; cat voice.json voice.log; exit 1; }
+          grep -q "MIMO_API_KEY" voice.json voice.log || { echo "引导里没有指出缺哪个凭据"; cat voice.json voice.log; exit 1; }
           rm -f voice.json voice.log
 
       - name: 检查相对链接

@@ -156,8 +156,10 @@ async function main(): Promise<number> {
   // ── 图片内联：讲稿引用的图片缩到页面尺寸后进 data URI，超预算退相对路径 ──
   const embedded = embedPageImages(model.references, { sourceDir, outDir: dirname(outputPath) });
 
-  // 讲稿路径的展示写法：能相对被讲解目录写就相对写，页脚更可读
-  const scriptRef = relative(target, script.path) || script.path;
+  // 讲稿路径的展示写法：能相对被讲解目录写就相对写，页脚更可读。
+  // 分隔符统一成正斜杠：这是 HTML 里的展示文本，不是文件系统路径（Windows 上
+  // relative() 给反斜杠，页脚会出现 .foldercast\script.json 这种写法）
+  const scriptRef = (relative(target, script.path) || script.path).replaceAll('\\', '/');
   const html = renderPage({
     model,
     style,

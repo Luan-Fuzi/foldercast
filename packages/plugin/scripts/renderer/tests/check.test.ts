@@ -108,3 +108,28 @@ describe('数字自洽（warning）', () => {
     expect(issues).toContainEqual(expect.objectContaining({ code: 'inventory-total-mismatch', severity: 'warning' }));
   });
 });
+
+describe('时长闭环（warning）', () => {
+  // 每场旁白 40–80 字、约 10–20 秒是常态；下面用长旁白构造「预估远超目标」，
+  // 用一句话构造「远低于目标」。
+  const long = Array.from({ length: 12 }, (_, i) => `第${String(i)}句，讲一个模块的职责与要点。`).join('');
+  const script = (target: number): ScriptDocument => ({
+    ...issueScript([{ id: 'cover', type: 'cover', title: '目录', narration: long }]),
+    video: { targetDurationSec: target },
+  });
+
+  it('旁白量撑不起目标时长报 warning，带 fix', async () => {
+    const issues = await codesOf(script(600));
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'duration-mismatch', severity: 'warning', path: '/video/targetDurationSec' }));
+  });
+
+  it('旁白量远超目标也报（方向不重要，脱节才重要）', async () => {
+    const issues = await codesOf(script(30));
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'duration-mismatch' }));
+  });
+
+  it('没写 targetDurationSec 就不比（时长软约束，写稿人没定目标时不越位）', async () => {
+    const issues = await codesOf(issueScript([{ id: 'cover', type: 'cover', title: '目录', narration: long }]));
+    expect(issues.find((issue) => issue.code === 'duration-mismatch')).toBeUndefined();
+  });
+});

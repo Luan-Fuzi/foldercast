@@ -19,6 +19,7 @@ import {
 } from '../contracts/script.ts';
 import { prepKindOf } from '../contracts/prep.ts';
 import { validateSubtitles } from '../contracts/subtitles.ts';
+import { estimateSceneSec } from './estimate.ts';
 
 export type Issue = {
   code: string;
@@ -158,6 +159,24 @@ export async function checkScript(script: ScriptDocument, root: string): Promise
 
     pushPathChecks(scene, root, push);
     pushSubtitleCheck(scene, push);
+  }
+
+  // 时长闭环：写了 `video.targetDurationSec` 就比一比「旁白量撑不撑得起」。
+  // 有配音时成片时长由实测音频决定（target 是软约束），所以真正的时长旋钮是旁白量——
+  // 预估与目标差太远，说明场景规划与时长规划脱节，写稿人该知道。
+  const target = script.video?.targetDurationSec;
+  if (target !== undefined && target !== null && target > 0) {
+    const estimated = script.scenes.reduce((total, scene) => total + estimateSceneSec(scene.narration), 0);
+    const deviation = Math.abs(estimated - target) / target;
+    if (deviation > 0.35) {
+      push({
+        code: 'duration-mismatch',
+        severity: 'warning',
+        message: `旁白量与目标时长不匹配：预估约 ${Math.round(estimated)} 秒，目标 ${String(target)} 秒（差 ${Math.round(deviation * 100)}%）`,
+        path: '/video/targetDurationSec',
+        fix: '增删场景或旁白向目标靠拢，或按讲清的需要改目标——两者都可以，别脱节。',
+      });
+    }
   }
 
   return {

@@ -1,5 +1,5 @@
 {
-  "foldercast": 1,
+  "foldercast": 2,
   "source": {
     "root": "/Users/scliang/work/qiuzhao202608/lecture-videos",
     "label": "lecture-videos"
@@ -23,24 +23,72 @@
       "type": "tree",
       "title": "结构",
       "entries": [
-        { "path": "content", "files": 7, "bytes": 180000, "highlight": true },
-        { "path": "src", "files": 9, "bytes": 40000 },
-        { "path": "(根目录)", "files": 12, "bytes": 20000 }
+        {
+          "path": "content",
+          "files": 7,
+          "bytes": 180000,
+          "highlight": true
+        },
+        {
+          "path": "src",
+          "files": 9,
+          "bytes": 40000
+        },
+        {
+          "path": "(根目录)",
+          "files": 12,
+          "bytes": 20000
+        }
       ],
-      "narration": "七个讲次的内容放在 content 目录，渲染代码在 src。"
+      "narration": "七个讲次的内容放在 content 目录，渲染代码在 src，根目录还有配置文件。",
+      "beats": [
+        {
+          "points": [
+            "content 是主体，七个讲次",
+            "src 九个文件，渲染代码",
+            "根目录十二个散文件"
+          ],
+          "enter": "reveal"
+        }
+      ]
     },
     {
       "id": "kinds",
       "type": "inventory",
       "title": "构成",
       "groups": [
-        { "label": "音频", "count": 68, "note": "样片配音" },
-        { "label": "数据", "count": 10 },
-        { "label": "代码", "count": 9 },
-        { "label": "图片", "count": 4 }
+        {
+          "label": "音频",
+          "count": 68,
+          "note": "样片配音"
+        },
+        {
+          "label": "数据",
+          "count": 10
+        },
+        {
+          "label": "代码",
+          "count": 9
+        },
+        {
+          "label": "图片",
+          "count": 4
+        }
       ],
       "total": 94,
-      "narration": "目录里九十四个文件，七成是音频。"
+      "narration": "九十四个文件，七成是音频，数据其次，代码不到一成。",
+      "beats": [
+        {
+          "points": [
+            "音频 68 · 数据 10 · 代码 9 · 图片 4"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "graphic": "proportion",
+          "enter": "grow"
+        }
+      ]
     },
     {
       "id": "entry",
@@ -53,17 +101,38 @@
         "  <Composition",
         "    id=\"lecture\"",
         "    component={LectureVideo}",
-        "    durationInFrames={9000}"
+        "    durationInFrames={9000}",
+        "  />",
+        ");"
       ],
-      "narration": "Root.tsx 注册了全部合成入口，每一讲在这里挂载。"
+      "narration": "Root 注册了全部合成入口，每一讲在这里挂载，时长写死九千帧。",
+      "beats": [
+        {
+          "points": [
+            "每个 <Composition> 是一讲",
+            "时长在计划里定，不在浏览器里算"
+          ],
+          "enter": "slide"
+        }
+      ]
     },
     {
       "id": "outro",
       "type": "outro",
       "title": "小结",
       "subtitle": "七讲样片",
-      "lines": ["内容构成：音频 · 数据 · 代码"],
-      "narration": "就这些，谢谢观看。"
+      "lines": [
+        "内容构成：音频 · 数据 · 代码"
+      ],
+      "narration": "内容以音频为主，数据其次。就这些，谢谢观看。",
+      "beats": [
+        {
+          "points": [
+            "七讲样片全部由同一入口挂载"
+          ],
+          "enter": "fade"
+        }
+      ]
     }
   ]
 }

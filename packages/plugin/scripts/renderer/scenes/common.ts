@@ -265,3 +265,33 @@ export function useAppear(tokens: Tokens, frames = 10): CSSProperties {
   if (tokens.enter === 'fade') return { opacity: progress };
   return { opacity: progress, transform: `translateY(${Math.round((1 - progress) * 14)}px)` };
 }
+
+/**
+ * 节拍入场（v2，0004）：声明式意图 → 具体曲线，在这里一次实现。
+ *
+ * 四个意图的语义：`fade` 纯淡入；`reveal` 淡入 + 轻微上浮（信息「浮现」）；
+ * `grow` 从 96% 缩放长大（图形类，配合 transformOrigin 左侧）；`slide` 从左侧推入
+ * （强调「新东西加入版面」）。起点是**节拍的 startFrame**（对齐字幕时刻），不是 0 ——
+ * 这是「同一组信息不同时间出现」的机制本体。纯帧函数，逐帧一致不受影响。
+ *
+ * `visibility: hidden`（而不是不渲染）让未到时刻的节拍**占住版面位置**：布局从头到尾
+ * 稳定，后面的字幕不会因为节拍出现而跳版。
+ */
+export function beatStyle(enter: string, startFrame: number, frame: number): CSSProperties {
+  const span = 14;
+  const progress = interpolate(frame, [startFrame, startFrame + span], [0, 1], {
+    easing: EASINGS.easeOutCubic,
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  if (progress <= 0) return { opacity: 0, visibility: 'hidden' };
+
+  if (enter === 'fade') return { opacity: progress };
+  if (enter === 'grow') {
+    return { opacity: progress, transform: `scale(${(0.96 + progress * 0.04).toFixed(3)})`, transformOrigin: 'left center' };
+  }
+  if (enter === 'slide') {
+    return { opacity: progress, transform: `translateX(${Math.round((1 - progress) * -40)}px)` };
+  }
+  return { opacity: progress, transform: `translateY(${Math.round((1 - progress) * 14)}px)` };
+}

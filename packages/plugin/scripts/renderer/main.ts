@@ -23,6 +23,7 @@ import { resolveBrowser } from './browser.ts';
 import { summarizeDurations } from './estimate.ts';
 import { loadDurations, loadScript, LoadError, sourceDirOf, workRootOf } from './load.ts';
 import { buildPlan, type Plan } from './plan.ts';
+import { highlightExcerpts } from './highlight.ts';
 import { renderStillFrame, renderVideo } from './render.ts';
 import { collectReferences, prepare, type PrepReport } from '../assets/prep.ts';
 
@@ -238,6 +239,12 @@ async function main(): Promise<number> {
   } catch (error) {
     console.error(`算不出渲染计划：${(error as Error).message}`);
     return 2;
+  }
+
+  // excerpt 高亮在 Node 侧预算一次（shiki 异步且重，不进浏览器渲染循环）。
+  // 失败不致命：查不到 id 的场景落回等宽纯文本。
+  if (!parsed.check) {
+    plan = { ...plan, highlight: await highlightExcerpts(script.value) };
   }
 
   const warnings = plan.warnings;

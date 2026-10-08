@@ -12,7 +12,7 @@ import { buildPlan, DEFAULT_VIDEO, defaultTitle } from '../plan.ts';
 
 function scriptOf(scenes: ScriptDocument['scenes'], extra: Partial<ScriptDocument> = {}): ScriptDocument {
   return {
-    foldercast: 1,
+    foldercast: 2,
     source: { root: '/tmp/demo', label: '演示目录' },
     scenes,
     ...extra,

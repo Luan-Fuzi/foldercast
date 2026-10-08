@@ -101,7 +101,7 @@ beforeAll(() => {
     join(workRoot, 'script.json'),
     `${JSON.stringify(
       {
-        foldercast: 1,
+        foldercast: 2,
         source: { root },
         title: '配音端到端夹具',
         scenes: [

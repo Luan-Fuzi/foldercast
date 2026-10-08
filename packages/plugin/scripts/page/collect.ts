@@ -23,6 +23,8 @@ type SectionCommon = {
   title: string;
   /** 配音文本。页面里作为区块的引文展示。 */
   narration: string;
+  /** 节拍里的要点（v2）：页面不区分时刻，全部要点平铺成清单——页面密度跟着讲稿涨。 */
+  points?: string[];
 };
 
 export type HeroSection = SectionCommon & {
@@ -302,6 +304,17 @@ export function collectViewModel(script: ScriptDocument): PageModel {
         skipped.push({ id: scene.id, type: String((scene as Scene).type) });
         break;
     }
+  }
+
+  // v2 节拍要点平铺进区块：页面没有时刻概念，只把要点收成清单（密度跟着讲稿涨）。
+  const pointsById = new Map<string, string[]>();
+  for (const scene of script.scenes) {
+    const points = scene.beats?.flatMap((beat) => beat.points ?? []) ?? [];
+    if (points.length > 0) pointsById.set(scene.id, points);
+  }
+  if (hero !== undefined && pointsById.has(hero.id)) hero.points = pointsById.get(hero.id);
+  for (const section of sections) {
+    if (pointsById.has(section.id)) section.points = pointsById.get(section.id);
   }
 
   return {

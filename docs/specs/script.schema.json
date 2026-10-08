@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://foldercast.dev/schema/script-1.json",
+  "$id": "https://foldercast.dev/schema/script-2.json",
   "title": "foldercast 讲稿",
   "description": "讲稿（分镜），agent 写的创作产物。它是自足的：画面要画的一切都在里面；引用的文件用相对源目录的路径，必须真实存在。跨字段判据（路径存在、字幕可切）在渲染入口的 check 里查。",
   "type": "object",
@@ -324,6 +324,37 @@
             "type": "string"
           },
           "description": "outro 场景：结尾的几行小结"
+        },
+        "beats": {
+          "type": "array",
+          "description": "画面层节拍（v2）：第 i 拍在第 i 条字幕起始时出现。模型只写内容与入场意图。",
+          "items": {
+            "$ref": "#/$defs/beat"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "beat": {
+      "type": "object",
+      "description": "一组同时出现的画面元素 + 声明式入场意图。",
+      "properties": {
+        "points": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "要点组：一到三行，同拍出现。画面信息密度主要靠它。"
+        },
+        "graphic": {
+          "enum": ["proportion"],
+          "description": "命名图形，由场景的类型化字段确定性生成。proportion = 占比堆叠条（inventory）。"
+        },
+        "enter": {
+          "enum": ["fade", "reveal", "grow", "slide"],
+          "description": "入场意图，缺省 reveal。曲线由渲染器实现。"
         }
       },
       "additionalProperties": false
@@ -332,8 +363,8 @@
   "properties": {
     "foldercast": {
       "type": "integer",
-      "const": 1,
-      "description": "格式版本。破坏性变更时递增。"
+      "const": 2,
+      "description": "格式版本。v2：场景支持 beats 节拍（画面层）。"
     },
     "source": {
       "type": "object",
@@ -387,15 +418,15 @@
     },
     "voice": {
       "type": "object",
-      "description": "配音配置。provider 固定是 macOS 自带的 say；实际用的音色以 durations.json 为准。",
+      "description": "配音配置。provider 由设置页定（edge 默认 / mimo），实际音色以 durations.json 为准。",
       "properties": {
         "voice": {
           "type": "string",
-          "description": "say 的系统音色名。缺省自动挑一个中文音色。"
+          "description": "音色，provider 各自的叫法（edge 如 zh-CN-XiaoxiaoNeural）。缺省自动挑中文音色。"
         },
         "style": {
           "type": "string",
-          "description": "怎么读。say 只认其中形如「180 字/分」的数字当语速。"
+          "description": "怎么读。mimo 用作风格指令；edge 表达不了。"
         }
       },
       "additionalProperties": false

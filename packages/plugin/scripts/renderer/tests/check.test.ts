@@ -25,7 +25,7 @@ afterAll(() => {
 });
 
 function issueScript(scenes: unknown[]): ScriptDocument {
-  return { foldercast: 1, source: { root }, scenes: scenes as ScriptDocument['scenes'] };
+  return { foldercast: 2, source: { root }, scenes: scenes as ScriptDocument['scenes'] };
 }
 
 async function codesOf(script: ScriptDocument): Promise<{ code: string; severity: string; sceneId?: string; path?: string }[]> {
@@ -131,5 +131,96 @@ describe('时长闭环（warning）', () => {
   it('没写 targetDurationSec 就不比（时长软约束，写稿人没定目标时不越位）', async () => {
     const issues = await codesOf(issueScript([{ id: 'cover', type: 'cover', title: '目录', narration: long }]));
     expect(issues.find((issue) => issue.code === 'duration-mismatch')).toBeUndefined();
+  });
+});
+
+describe('契约 v2：beats 与密度', () => {
+  // 画面宽 ≈ 标题 2 + 摘录 25 + 要点；旁白短句 → 带内
+  const dense = {
+    id: 'entry',
+    type: 'file',
+    title: '入口',
+    file: 'src/index.ts',
+    excerpt: ['export const value = 1;'],
+    narration: '入口很短。旁白两句。',
+    beats: [{ points: ['一个要点', '第二个要点'], enter: 'reveal' }],
+  } as const;
+
+  it('空节拍（没 points 也没 graphic）是 blocker', async () => {
+    const issues = await codesOf(issueScript([{ ...dense, beats: [{ enter: 'fade' }] }]));
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'beat-empty', severity: 'blocker', sceneId: 'entry' }));
+  });
+
+  it('不认识的入场意图与图形是 blocker；proportion 配错场景类型是 warning', async () => {
+    const issues = await codesOf(
+      issueScript([{ ...dense, beats: [{ points: ['x'], enter: 'zoom' }, { graphic: 'donut' }, { graphic: 'proportion' }] }]),
+    );
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'beat-enter-unknown', severity: 'blocker' }));
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'beat-graphic-unknown', severity: 'blocker' }));
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'beat-graphic-unfit', severity: 'warning' }));
+  });
+
+  it('节拍多于字幕两倍报 warning（没和旁白对齐）', async () => {
+    const issues = await codesOf(
+      issueScript([{ ...dense, narration: '一句话。', beats: [1, 2, 3, 4].map(() => ({ points: ['要点'] })) }]),
+    );
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'beats-unaligned', severity: 'warning' }));
+  });
+
+  it('画面太空（密度比低于 1.5）报 warning', async () => {
+    const issues = await codesOf(
+      issueScript([{ ...dense, beats: undefined, excerpt: undefined, narration: '这一段的旁白比较长，足足有二十多个字，而画面只有标题。' }]),
+    );
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'density-out-of-band', severity: 'warning', sceneId: 'entry' }));
+  });
+
+  it('cover 不查密度（标题场景天然留白）', async () => {
+    const issues = await codesOf(
+      issueScript([{ id: 'c', type: 'cover', title: '片', narration: '很长的开场白，超过画面信息量的两倍还多，看看会不会报警。' }]),
+    );
+    expect(issues.find((issue) => issue.code === 'density-out-of-band')).toBeUndefined();
+  });
+
+  it('旧版讲稿（foldercast: 1）是 blocker，fix 告诉怎么迁', async () => {
+    const old = { ...issueScript([{ ...dense }]), foldercast: 1 } as unknown as ScriptDocument;
+    const issues = await codesOf(old);
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'script-version', severity: 'blocker', path: '/foldercast' }));
+  });
+});
+
+describe('digest（在场就顺带校验）', () => {
+  it('引用不存在的文件是 blocker；计数对得上就不报', async () => {
+    mkdirSync(join(root, '.foldercast'), { recursive: true });
+    // 夹具根目录下有两个文件（src/index.ts、logo.png），.foldercast 被口径排除
+    writeFileSync(
+      join(root, '.foldercast', 'digest.json'),
+      `${JSON.stringify({
+        digest: 1,
+        source: { root },
+        scale: { totalFiles: 2 },
+        modules: [{ path: 'src', role: '源码', files: 1 }],
+        excerpts: [{ file: 'nope.md', text: '编造的引用' }],
+      })}\n`,
+    );
+    const script = issueScript([{ id: 'cover', type: 'cover', title: '目录', narration: '封面。' }]);
+    const issues = await codesOf(script);
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'digest-path-missing', severity: 'blocker', path: '/digest/excerpts/0/file' }));
+    expect(issues.find((issue) => issue.code === 'digest-count-mismatch')).toBeUndefined();
+  });
+
+  it('totalFiles 与程序数出来的差太远报 warning', async () => {
+    writeFileSync(
+      join(root, '.foldercast', 'digest.json'),
+      `${JSON.stringify({
+        digest: 1,
+        source: { root },
+        scale: { totalFiles: 50 },
+        modules: [],
+        excerpts: [],
+      })}\n`,
+    );
+    const script = issueScript([{ id: 'cover', type: 'cover', title: '目录', narration: '封面。' }]);
+    const issues = await codesOf(script);
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'digest-count-mismatch', severity: 'warning' }));
   });
 });

@@ -117,6 +117,8 @@ main { display: block; padding: calc(8px * var(--space)) 0 32px; }
 .scene h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 24px; line-height: 1.3; font-weight: 700; }
 .quote { margin: 0 0 18px; padding: 10px 16px; border-left: 3px solid var(--accent); background: var(--panel); border-radius: 0 var(--radius) var(--radius) 0; color: var(--ink); }
 .quote::before { content: "旁白 · "; font-size: 12px; letter-spacing: 0.1em; color: var(--muted); }
+.points { margin: 0 0 14px; padding: 0 0 0 22px; color: var(--ink); }
+.points li { margin: 4px 0; }
 
 /* ── 条形图（tree / inventory 共用） ────────────────── */
 .bars { list-style: none; margin: 0; padding: 0; }
@@ -309,9 +311,16 @@ function renderSection(section: PageSection, index: number, images: ReadonlyMap<
       <h2>${escapeHtml(section.title)}</h2>
     </div>
   </div>
-  <blockquote class="quote">${escapeHtml(section.narration)}</blockquote>
+${renderPoints(section)}  <blockquote class="quote">${escapeHtml(section.narration)}</blockquote>
 ${body}
 </section>`;
+}
+
+/** 节拍要点的平铺清单（v2）：零 JS 页面没有时刻，要点按顺序排成列表。 */
+function renderPoints(section: { points?: string[] }): string {
+  if (section.points === undefined || section.points.length === 0) return '';
+  const items = section.points.map((point) => `<li>${escapeHtml(point)}</li>`).join('');
+  return `  <ul class="points">\n${items}\n  </ul>\n`;
 }
 
 /* ---------------------------------------------------------------- 页面 */

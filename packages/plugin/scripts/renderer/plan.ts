@@ -54,6 +54,17 @@ export type SceneCommon = {
   title: string;
   durationInFrames: number;
   parts: { text: string; from: number; to: number }[];
+  /** 画面层节拍（v2）：`startFrame` 对齐到第 i 条字幕的起始（0004）。空数组 = 静态版式。 */
+  beats: PlanBeat[];
+};
+
+/** 计划里的一个节拍：契约的 Beat + 算好的起始帧。 */
+export type PlanBeat = {
+  points?: string[];
+  graphic?: 'proportion';
+  /** 入场意图（缺省已填成 reveal）。曲线在 scenes/common.ts 实现。 */
+  enter: string;
+  startFrame: number;
 };
 
 export type Fact = { label: string; value: string };
@@ -149,6 +160,12 @@ export type Plan = {
   scenes: PlanScene[];
   /** 渲染前的提醒（素材缺失、未知场景类型…）。有内容照样渲染。 */
   warnings: string[];
+  /**
+   * 场景 id → shiki 高亮 HTML（v2）。**Node 侧预算**：高亮是重活且要异步加载语言，
+   * 放进浏览器 bundle 会拖慢每一帧的渲染循环；在这里算一次，浏览器只消费纯字符串。
+   * `plan.ts` 保持纯函数不 import shiki，测试与 page 不受影响。
+   */
+  highlight?: Record<string, string>;
 };
 
 /** 出片规格的兜底值。讲稿没写 `video` 时用它。 */
@@ -391,14 +408,42 @@ type SceneBuild = SceneContext & {
   spec?: ScriptDocument['video'];
 };
 
+/**
+ * 节拍时刻：**第 i 拍对齐第 i 条字幕的起始帧**（时间来自实测音频，逐帧一致不破）。
+ * 节拍多于字幕时，余下的在字幕结束后的剩余时间里均摊 —— 宁可稍密也不让最后一拍
+ * 挤在片尾一帧里闪过。
+ */
+function beatsFor(beats: Scene['beats'], parts: SceneCommon['parts'], frames: number): PlanBeat[] {
+  if (beats === undefined || beats.length === 0) return [];
+  return beats.map((beat, index) => {
+    let startFrame: number;
+    if (index < parts.length) {
+      startFrame = parts[index]?.from ?? 0;
+    } else {
+      const lastTo = parts.length > 0 ? parts[parts.length - 1]?.to ?? frames : 0;
+      const extra = Math.max(1, beats.length - parts.length);
+      const span = Math.max(1, frames - lastTo);
+      startFrame = lastTo + Math.round(((index - parts.length) / extra) * span);
+    }
+    return {
+      ...(beat.points === undefined ? {} : { points: beat.points }),
+      ...(beat.graphic === undefined ? {} : { graphic: beat.graphic }),
+      enter: beat.enter ?? 'reveal',
+      startFrame: Math.max(0, Math.min(startFrame, Math.max(0, frames - 1))),
+    };
+  });
+}
+
 function buildScene(scene: Scene, build: SceneBuild): PlanScene {
+  const parts = partsFor(scene, build);
   const common: SceneCommon = {
     id: scene.id,
     type: scene.type,
     narration: scene.narration,
     title: build.title,
     durationInFrames: build.frames,
-    parts: partsFor(scene, build),
+    parts,
+    beats: beatsFor(scene.beats ?? [], parts, build.frames),
   };
 
   switch (scene.type) {

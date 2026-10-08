@@ -35,7 +35,7 @@ afterAll(() => {
 
 function scriptReferencing(paths: string[]): ScriptDocument {
   return {
-    foldercast: 1,
+    foldercast: 2,
     source: { root },
     scenes: [
       { id: 'g', type: 'gallery', items: paths, narration: '图。' },
@@ -51,7 +51,7 @@ describe('collectReferences', () => {
 
   it('file 与 source 场景的引用也收', () => {
     const script: ScriptDocument = {
-      foldercast: 1,
+      foldercast: 2,
       source: { root },
       scenes: [
         { id: 'a', type: 'file', file: 'shots/b.png', narration: '一。' },

@@ -65,14 +65,14 @@ export const SCENE_REQUIRED_FIELDS: Readonly<Record<SceneType, readonly string[]
 
 /** 每种场景**允许**出现的字段。未列出的字段出现在该场景里就是错误（多半是笔误）。 */
 export const SCENE_ALLOWED_FIELDS: Readonly<Record<SceneType, readonly string[]>> = {
-  cover: ['id', 'type', 'title', 'subtitle', 'narration', 'durationSec'],
-  tree: ['id', 'type', 'title', 'narration', 'durationSec', 'entries'],
-  inventory: ['id', 'type', 'title', 'narration', 'durationSec', 'groups', 'total'],
-  file: ['id', 'type', 'title', 'narration', 'durationSec', 'file', 'note', 'excerpt'],
-  gallery: ['id', 'type', 'title', 'narration', 'durationSec', 'items'],
-  clip: ['id', 'type', 'title', 'narration', 'durationSec', 'source', 'clipRange'],
-  document: ['id', 'type', 'title', 'narration', 'durationSec', 'source', 'pages'],
-  outro: ['id', 'type', 'title', 'subtitle', 'narration', 'durationSec', 'lines'],
+  cover: ['id', 'type', 'title', 'subtitle', 'narration', 'durationSec', 'beats'],
+  tree: ['id', 'type', 'title', 'narration', 'durationSec', 'entries', 'beats'],
+  inventory: ['id', 'type', 'title', 'narration', 'durationSec', 'groups', 'total', 'beats'],
+  file: ['id', 'type', 'title', 'narration', 'durationSec', 'file', 'note', 'excerpt', 'beats'],
+  gallery: ['id', 'type', 'title', 'narration', 'durationSec', 'items', 'beats'],
+  clip: ['id', 'type', 'title', 'narration', 'durationSec', 'source', 'clipRange', 'beats'],
+  document: ['id', 'type', 'title', 'narration', 'durationSec', 'source', 'pages', 'beats'],
+  outro: ['id', 'type', 'title', 'subtitle', 'narration', 'durationSec', 'lines', 'beats'],
 };
 
 /** tree 的一行：agent 自己数好写进来的目录摘要。 */
@@ -93,6 +93,30 @@ export type InventoryGroup = {
   count: number;
   note?: string;
 };
+
+/** 讲稿契约版本。v2：加 beats（画面层节拍），见 docs/decisions/0004。 */
+export const SCRIPT_VERSION = 2 as const;
+
+/**
+ * 场景内的一个**节拍**：一组同时出现的画面元素 + 声明式入场意图（0004）。
+ *
+ * 节拍时刻由渲染器对齐到字幕：第 i 拍在第 i 条字幕起始时出现（时间来自实测音频，
+ * 逐帧一致不破）。模型只写「什么内容、按什么顺序、什么入场意图」；曲线归渲染器。
+ */
+export type Beat = {
+  /** 要点组：一到三行，同拍出现（画面的信息密度主要靠它）。 */
+  points?: string[];
+  /** 命名图形（由场景的类型化字段确定性生成，模型只点名）：proportion = 占比堆叠条（inventory）。 */
+  graphic?: 'proportion';
+  /** 入场意图，缺省 reveal。四个够用，渲染器各自实现曲线。 */
+  enter?: 'fade' | 'reveal' | 'grow' | 'slide';
+};
+
+/** 节拍的入场意图枚举（校验与 schema 用）。 */
+export const BEAT_ENTERS = ['fade', 'reveal', 'grow', 'slide'] as const;
+
+/** 节拍可点名的图形枚举（校验与 schema 用）。 */
+export const BEAT_GRAPHICS = ['proportion'] as const;
 
 /**
  * 一个分镜。跨字段约束（哪种场景要哪些字段、引用的文件在不在）不在类型里表达，
@@ -131,10 +155,12 @@ export type Scene = {
   pages?: number[];
   /** outro：结尾的几行小结。 */
   lines?: string[];
+  /** 画面层节拍（v2，0004）：没有 beats 的场景按 v1 的静态版式渲染（兼容降级，不报错）。 */
+  beats?: Beat[];
 };
 
 export type ScriptDocument = {
-  foldercast: 1;
+  foldercast: typeof SCRIPT_VERSION;
   source: {
     /** 被讲解目录的绝对路径。 */
     root: string;

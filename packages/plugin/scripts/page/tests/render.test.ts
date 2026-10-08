@@ -136,7 +136,7 @@ describe('折叠与目录', () => {
 
   it('区块少于 4 个时不出现目录', () => {
     const script: ScriptDocument = {
-      foldercast: 1,
+      foldercast: 2,
       source: { root: '/tmp/x' },
       scenes: [
         { id: 'cover', type: 'cover', title: 'x', narration: '开头。' },

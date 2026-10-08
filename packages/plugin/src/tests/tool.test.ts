@@ -84,7 +84,7 @@ function writeScript(entryPath: string): void {
     join(source, '.foldercast', 'script.json'),
     `${JSON.stringify(
       {
-        foldercast: 1,
+        foldercast: 2,
         source: { root: source },
         scenes: [
           { id: 'cover', type: 'cover', title: '封面', narration: '封面场景。' },

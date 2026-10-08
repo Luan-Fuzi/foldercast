@@ -55,7 +55,7 @@ function fakeProvider(): TtsProvider {
 
 function writeFixture(narrationParts: string[]): void {
   const script = {
-    foldercast: 1,
+    foldercast: 2,
     source: { root },
     title: '配音夹具',
     scenes: narrationParts.map((narration, index) => ({

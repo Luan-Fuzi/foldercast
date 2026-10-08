@@ -59,7 +59,7 @@ function sha256(path: string): string {
 /** 三个场景的讲稿：封面、结构、结尾。旁白短，总长约 22 秒。自足式 —— 数字都是写死的。 */
 function fixtureScript(): ScriptDocument {
   return {
-    foldercast: 1,
+    foldercast: 2,
     source: { root: source, label: '夹具目录' },
     title: '夹具目录',
     video: { width: DEFAULT_VIDEO.width, height: DEFAULT_VIDEO.height, fps: DEFAULT_VIDEO.fps, targetDurationSec: null },
@@ -73,7 +73,8 @@ function fixtureScript(): ScriptDocument {
           { path: 'src', files: 1, bytes: 1024, highlight: true },
           { path: '(根目录)', files: 2, bytes: 1024 },
         ],
-        narration: '结构很简单，源码放在 src 下。',
+        narration: '结构很简单，源码在 src 下。',
+        beats: [{ points: ['src 一个源码文件', '根目录两个散文件', '数字写死，夹具自足'], enter: 'reveal' }],
       },
       { id: 'outro', type: 'outro', title: '小结', lines: ['三个文件，一个小目录。'], narration: '就这些，谢谢观看。' },
     ],
@@ -141,7 +142,7 @@ describe('CLI 端到端', () => {
 
   it('没有场景的讲稿被拦下', () => {
     const broken = join(source, 'broken.json');
-    writeFileSync(broken, `${JSON.stringify({ foldercast: 1, source: { root: source }, scenes: [] }, null, 2)}\n`);
+    writeFileSync(broken, `${JSON.stringify({ foldercast: 2, source: { root: source }, scenes: [] }, null, 2)}\n`);
     const result = run([source, '--script', broken, '--check']);
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('没有场景');

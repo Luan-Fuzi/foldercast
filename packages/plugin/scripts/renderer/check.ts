@@ -7,18 +7,22 @@
  *
  * blocker 必须修（编了路径、字段用错、字幕切不开）；warning 是「可能是笔误，自己确认」。
  */
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, parse, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  BEAT_ENTERS,
+  BEAT_GRAPHICS,
   SCENE_ALLOWED_FIELDS,
   SCENE_REQUIRED_FIELDS,
+  SCRIPT_VERSION,
   isSceneType,
   type ScriptDocument,
   type Scene,
 } from '../contracts/script.ts';
+import { checkDigest, type DigestDocument } from '../contracts/digest.ts';
 import { prepKindOf } from '../contracts/prep.ts';
-import { validateSubtitles } from '../contracts/subtitles.ts';
+import { splitSubtitles, textWidth, validateSubtitles } from '../contracts/subtitles.ts';
 import { estimateSceneSec } from './estimate.ts';
 
 export type Issue = {
@@ -104,6 +108,17 @@ export async function checkScript(script: ScriptDocument, root: string): Promise
     }
   }
 
+  // 契约版本：v2 起 beats 进画面层（0004）。v1 是旧版讲稿，字段大体重叠但没有节拍。
+  if ((script as { foldercast?: number }).foldercast !== SCRIPT_VERSION) {
+    push({
+      code: 'script-version',
+      severity: 'blocker',
+      message: `讲稿版本是 ${String((script as { foldercast?: number }).foldercast)}，当前契约要 ${String(SCRIPT_VERSION)}（v2：场景支持 beats 节拍）`,
+      path: '/foldercast',
+      fix: '把 "foldercast" 改成 2；v1 字段大部分照用，按 skill 的密度判据补 points/beats。',
+    });
+  }
+
   const seen = new Map<string, number>();
   for (const [index, scene] of script.scenes.entries()) {
     const at = (field: string): string => `/scenes/${String(index)}/${field}`;
@@ -159,6 +174,31 @@ export async function checkScript(script: ScriptDocument, root: string): Promise
 
     pushPathChecks(scene, root, push);
     pushSubtitleCheck(scene, push);
+    pushBeatChecks(scene, push, at);
+  }
+
+  // digest 是两阶段创作的第一站（0004）：在场就顺带校验（引用路径 + 计数抽查），
+  // 缺席不报错 —— 讲稿对渲染自足，管线不强制 digest。
+  const digestPath = join(root, '.foldercast', 'digest.json');
+  if (existsSync(digestPath)) {
+    try {
+      const digest = JSON.parse(readFileSync(digestPath, 'utf8')) as DigestDocument;
+      for (const issue of checkDigest(digest, root)) {
+        push({
+          code: issue.code,
+          severity: issue.severity === 'blocker' ? 'blocker' : 'warning',
+          message: issue.message,
+          path: issue.path === undefined ? '/digest' : `/digest${issue.path}`,
+        });
+      }
+    } catch (error) {
+      push({
+        code: 'digest-unreadable',
+        severity: 'warning',
+        message: `digest.json 不是合法 JSON（${(error as Error).message}），跳过它的检查`,
+        path: '/digest',
+      });
+    }
   }
 
   // 时长闭环：写了 `video.targetDurationSec` 就比一比「旁白量撑不撑得起」。
@@ -186,8 +226,112 @@ export async function checkScript(script: ScriptDocument, root: string): Promise
   };
 }
 
-function pushPathChecks(scene: Scene, root: string, push: (issue: Issue) => void): void {
-  const exists = (relative: string | undefined): boolean => {
+/** 画面阅读量（显示宽度）：标题、说明、摘录、类型化字段（路径/标签/计数）与要点。 */
+function visualWidth(scene: Scene): number {
+  let width = textWidth(scene.title ?? '');
+  if (scene.subtitle !== undefined) width += textWidth(scene.subtitle);
+  if (scene.note !== undefined) width += textWidth(scene.note);
+  width += scene.excerpt?.reduce((sum, line) => sum + textWidth(line), 0) ?? 0;
+  width += scene.lines?.reduce((sum, line) => sum + textWidth(line), 0) ?? 0;
+  width += scene.entries?.reduce((sum, entry) => sum + textWidth(entry.path) + String(entry.files).length, 0) ?? 0;
+  width += scene.groups?.reduce((sum, group) => sum + textWidth(group.label) + String(group.count).length, 0) ?? 0;
+  width += scene.beats?.reduce((sum, beat) => sum + (beat.points?.reduce((inner, point) => inner + textWidth(point), 0) ?? 0), 0) ?? 0;
+  return width;
+}
+
+/**
+ * 节拍检查（v2，0004）：形状合法、与旁白句大致一拍一句、画面密度落在 1.5×–3×。
+ * 密度只查内容场景——cover / outro 是标题场景，天然留白。
+ */
+function pushBeatChecks(scene: Scene, push: (issue: Issue) => void, at: (field: string) => string): void {
+  const beats = scene.beats ?? [];
+
+  for (const [index, beat] of beats.entries()) {
+    const beatAt = (field: string): string => `${at('beats')}/${String(index)}/${field}`;
+    const hasPoints = beat.points !== undefined && beat.points.some((point) => point.trim() !== '');
+    if (!hasPoints && beat.graphic === undefined) {
+      push({
+        code: 'beat-empty',
+        severity: 'blocker',
+        message: '节拍既没有 points 也没有 graphic，画不出东西',
+        sceneId: scene.id,
+        path: at('beats'),
+      });
+      continue;
+    }
+    if (beat.points?.some((point) => point.trim() === '') === true) {
+      push({
+        code: 'beat-point-empty',
+        severity: 'blocker',
+        message: '节拍里有空要点（写了 points 数组就要条条有内容）',
+        sceneId: scene.id,
+        path: beatAt('points'),
+      });
+    }
+    if (beat.enter !== undefined && !BEAT_ENTERS.includes(beat.enter)) {
+      push({
+        code: 'beat-enter-unknown',
+        severity: 'blocker',
+        message: `入场意图 ${String(beat.enter)} 不认识。可用：${BEAT_ENTERS.join(' / ')}`,
+        sceneId: scene.id,
+        path: beatAt('enter'),
+      });
+    }
+    if (beat.graphic !== undefined) {
+      if (!BEAT_GRAPHICS.includes(beat.graphic)) {
+        push({
+          code: 'beat-graphic-unknown',
+          severity: 'blocker',
+          message: `图形 ${String(beat.graphic)} 不认识。可用：${BEAT_GRAPHICS.join(' / ')}`,
+          sceneId: scene.id,
+          path: beatAt('graphic'),
+        });
+      } else if (beat.graphic === 'proportion' && scene.type !== 'inventory') {
+        push({
+          code: 'beat-graphic-unfit',
+          severity: 'warning',
+          message: 'proportion 图形吃 inventory 的 groups 数据；这个场景类型没有可占比的数据',
+          sceneId: scene.id,
+          path: beatAt('graphic'),
+        });
+      }
+    }
+  }
+
+  if (beats.length > 0) {
+    const parts = splitSubtitles(scene.narration);
+    if (parts.length > 0 && beats.length > parts.length * 2) {
+      push({
+        code: 'beats-unaligned',
+        severity: 'warning',
+        message: `${String(beats.length)} 个节拍对 ${String(parts.length)} 条字幕 —— 节拍应与旁白句大致一拍一句`,
+        sceneId: scene.id,
+        path: at('beats'),
+        fix: '合并节拍，或给旁白加句（每句旁白对应一个画面动作）。',
+      });
+    }
+  }
+
+  if (scene.type !== 'cover' && scene.type !== 'outro') {
+    const visual = visualWidth(scene);
+    const spoken = textWidth(scene.narration);
+    if (spoken > 0) {
+      const ratio = visual / spoken;
+      if (ratio < 1.5 || ratio > 3) {
+        push({
+          code: 'density-out-of-band',
+          severity: 'warning',
+          message: `画面信息量 / 旁白量 = ${ratio.toFixed(2)}（画面 ${String(Math.round(visual))} 宽，旁白 ${String(Math.round(spoken))} 宽），合理区间 1.5–3`,
+          sceneId: scene.id,
+          path: at('title'),
+          fix: ratio < 1.5 ? '画面太空：加 points 要点、摘长一点的 excerpt' : '画面过载：删要点，或让旁白多承担一些',
+        });
+      }
+    }
+  }
+}
+
+function pushPathChecks(scene: Scene, root: string, push: (issue: Issue) => void): void {  const exists = (relative: string | undefined): boolean => {
     if (relative === undefined) return false;
     const stats = statSync(resolve(root, relative), { throwIfNoEntry: false });
     return stats !== undefined && stats.isFile();

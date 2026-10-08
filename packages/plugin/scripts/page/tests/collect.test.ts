@@ -45,10 +45,10 @@ describe('场景 → 区块映射', () => {
     if (entry?.kind !== 'file') throw new Error('缺 file 区块');
     expect(entry.file).toBe('src/main.ts');
     expect(entry.note).toBe('TypeScript · 约 40 行');
-    expect(entry.excerpt).toEqual(['export const main = () => {', '  return 0;', '}']);
+    expect(entry.excerpt).toEqual(['export const main = () => {', '  const plan = buildPlan(root);', '  const page = renderPage(plan);', '  writeFileSync(out, page);', '  return 0;', '}']);
     const shot = files[1];
     if (shot?.kind !== 'file') throw new Error('缺第二个 file 区块');
-    expect(shot.title).toBe('architecture.png');
+    expect(shot.title).toBe('架构图');
   });
 
   it('gallery → 图片网格：图片/视频按扩展名标注，非图片项不出画面标记', () => {
@@ -111,7 +111,7 @@ describe('边界情况', () => {
 
   it('没有 cover 时页面仍有标题（讲稿 title > label > 目录名）', () => {
     const script: ScriptDocument = {
-      foldercast: 1,
+      foldercast: 2,
       source: { root: '/tmp/some-project' },
       scenes: [{ id: 'outro', type: 'outro', title: '完', narration: '完。' }],
     };
@@ -123,7 +123,7 @@ describe('边界情况', () => {
 
   it('tree 全是 0 个文件时 share 不产生 NaN', () => {
     const script: ScriptDocument = {
-      foldercast: 1,
+      foldercast: 2,
       source: { root: '/tmp/x' },
       scenes: [
         {

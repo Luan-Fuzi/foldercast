@@ -8,7 +8,7 @@ import type { ScriptDocument } from '../../contracts/script.ts';
 
 export function fullScript(root: string): ScriptDocument {
   return {
-    foldercast: 1,
+    foldercast: 2,
     source: { root, label: '示例目录' },
     title: '示例目录 · 导览',
     video: { width: 1920, height: 1080, fps: 30 },
@@ -29,7 +29,8 @@ export function fullScript(root: string): ScriptDocument {
           { path: 'docs', files: 3, bytes: 180000 },
           { path: '(根目录)', files: 3 },
         ],
-        narration: '代码在 src，文档在 docs。',
+        narration: '代码在 src，文档在 docs，根目录还有一点配置。',
+        beats: [{ points: ['src 是主体，九个文件', 'docs 三份文档，占了大头体积'], enter: 'reveal' }],
       },
       {
         id: 'kinds',
@@ -40,7 +41,11 @@ export function fullScript(root: string): ScriptDocument {
           { label: '文档', count: 3 },
           { label: '图片', count: 2 },
         ],
-        narration: '代码占了大半。',
+        narration: '十四个文件里，代码占了大半，文档其次。',
+        beats: [
+          { points: ['代码 9 · 文档 3 · 图片 2', '以 TypeScript 为主'], enter: 'reveal' },
+          { graphic: 'proportion', enter: 'grow' },
+        ],
       },
       {
         id: 'entry',
@@ -48,21 +53,26 @@ export function fullScript(root: string): ScriptDocument {
         title: '渲染入口',
         file: 'src/main.ts',
         note: 'TypeScript · 约 40 行',
-        excerpt: ['export const main = () => {', '  return 0;', '}'],
-        narration: '入口在这里。',
+        excerpt: ['export const main = () => {', '  const plan = buildPlan(root);', '  const page = renderPage(plan);', '  writeFileSync(out, page);', '  return 0;', '}'],
+        narration: '入口只有四十行上下。它把构建计划、页面渲染与写盘这三步串成一条线，没有全局状态。',
+        beats: [{ points: ['buildPlan → renderPage → 写盘', '纯函数串联，无全局状态'], enter: 'slide' }],
       },
       {
         id: 'shot',
         type: 'file',
+        title: '架构图',
         file: 'assets/architecture.png',
-        narration: '一张架构图。',
+        note: 'PNG · 分层示意',
+        narration: '一张架构图，画出分层关系。',
+        beats: [{ points: ['自上而下：入口 → 渲染 → 产物'], enter: 'fade' }],
       },
       {
         id: 'shots',
         type: 'gallery',
         title: '截图',
         items: ['assets/architecture.png', 'assets/ui.png', 'assets/demo.mp4'],
-        narration: '几张截图。',
+        narration: '几张截图，架构、界面与演示。',
+        beats: [{ points: ['assets 下三份素材', '其中 demo.mp4 用视频封面'], enter: 'reveal' }],
       },
       {
         id: 'tour',
@@ -70,7 +80,8 @@ export function fullScript(root: string): ScriptDocument {
         title: '演示',
         source: 'assets/demo.mp4',
         clipRange: [12, 18.5],
-        narration: '演示片段。',
+        narration: '演示片段，十二秒到十八秒半。',
+        beats: [{ points: ['画面用封面，不播活动画面', '区间来自讲稿的 clipRange'], enter: 'fade' }],
       },
       {
         id: 'spec',
@@ -78,7 +89,8 @@ export function fullScript(root: string): ScriptDocument {
         title: '规格',
         source: 'docs/spec.pdf',
         pages: [2, 4],
-        narration: '规格文档。',
+        narration: '规格文档，翻第二和第四页。',
+        beats: [{ points: ['LibreOffice 转页图', '页码与 Word 分页可能不同'], enter: 'reveal' }],
       },
       {
         id: 'outro',

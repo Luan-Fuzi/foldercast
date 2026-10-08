@@ -21,13 +21,62 @@ import {
 } from '../plan.ts';
 import { labelColor } from '../styles.ts';
 import { progressStyle } from './captions.ts';
-import { assetUrl, contentBox, panel, sceneHeader, useAppear } from './common.ts';
+import { assetUrl, beatStyle, contentBox, panel, sceneHeader, useAppear } from './common.ts';
 
 /** 场景组件的统一入参：只有纯数据（素材已在 `plan.ts` 里解析成 `data:` URI）。 */
 export type SceneProps<S extends PlanScene> = {
   scene: S;
   plan: Plan;
 };
+
+/**
+ * 节拍侧栏：points 类的节拍按时刻在右侧竖排浮现（0004）。
+ *
+ * 放侧栏而不是叠在正文上：内容场景的正文（摘录 / 条形 / 页图）已经占满画面，
+ * 要点作为「旁白引导的注释流」挂右边，与字幕带错开。cover / outro 自带版式，
+ * 不走 Shell，也就没有这层。
+ */
+const PointsRail = ({ scene, plan }: SceneProps<PlanScene>) => {
+  const frame = useCurrentFrame();
+  const tokens = plan.tokens;
+  const beats = scene.beats.filter((beat) => beat.points !== undefined && beat.points.length > 0);
+  if (beats.length === 0) return null;
+  return h(
+    'div',
+    { style: { width: Math.round(tokens.width * 0.24), flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18, justifyContent: 'center' } },
+    ...beats.map((beat, index) =>
+      h(
+        'div',
+        {
+          key: `beat-${String(index)}`,
+          style: {
+            ...beatStyle(beat.enter, beat.startFrame, frame),
+            borderLeft: `3px solid var(--accent)`,
+            paddingLeft: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          },
+        },
+        ...(beat.points ?? []).map((point, pointIndex) =>
+          h(
+            'div',
+            {
+              key: `point-${String(pointIndex)}`,
+              style: { fontSize: Math.round(tokens.bodySize * 0.82), lineHeight: 1.5, color: 'var(--ink)' },
+            },
+            point,
+          ),
+        ),
+      ),
+    ),
+  );
+};
+
+/** 场景 id → shiki 高亮 HTML（Node 侧预算，纯展示数据）。 */
+function highlightOf(plan: Plan, sceneId: string): string | undefined {
+  return plan.highlight?.[sceneId];
+}
 
 /** 画面外壳：进度条 + （可选）头部 + 内容区。 */
 const Shell = (props: {
@@ -53,7 +102,12 @@ const Shell = (props: {
       'div',
       { style: contentBox(plan.tokens) },
       sceneHeader(scene, plan, eyebrow),
-      h('div', { style: { flex: 1, minHeight: 0 } }, body),
+      h(
+        'div',
+        { style: { flex: 1, minHeight: 0, display: 'flex', gap: 26 } },
+        h('div', { style: { flex: 1, minWidth: 0 } }, body),
+        h(PointsRail, { scene: scene as PlanScene, plan }),
+      ),
     ),
   );
 };
@@ -203,8 +257,11 @@ const Tree = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'tree' }>>)
 
 const Inventory = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'inventory' }>>) => {
   const appear = useAppear(plan.tokens);
+  const frame = useCurrentFrame();
   const tokens = plan.tokens;
   const max = scene.groups.reduce((value, group) => Math.max(value, group.count), 1);
+  // proportion 节拍：一条按占比分段的堆叠条（吃 groups 的 share，确定性生成）。
+  const proportion = scene.beats.find((beat) => beat.graphic === 'proportion');
   return h(
     'div',
     { style: { ...appear, display: 'flex', flexDirection: 'column', gap: 14, width: '100%' } },
@@ -269,6 +326,32 @@ const Inventory = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'inven
       { style: { marginTop: 6, fontSize: Math.round(tokens.bodySize * 0.72), color: 'var(--muted)' } },
       `共 ${String(scene.totalFiles)} 个文件（写稿时清点的数字）`,
     ),
+    proportion === undefined
+      ? null
+      : h(
+          'div',
+          {
+            style: {
+              ...beatStyle(proportion.enter, proportion.startFrame, frame),
+              marginTop: 10,
+              display: 'flex',
+              height: 30,
+              borderRadius: 6,
+              overflow: 'hidden',
+              backgroundColor: 'var(--line)',
+            },
+          },
+          ...scene.groups.map((group, index) =>
+            h('div', {
+              key: `seg-${String(index)}`,
+              style: {
+                width: `${Math.max(0.5, group.share * 100).toFixed(2)}%`,
+                backgroundColor: labelColor(group.label, tokens),
+                opacity: 0.9,
+              },
+            }),
+          ),
+        ),
   );
 };
 
@@ -306,6 +389,7 @@ const File = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'file' }>>)
             h(Img, { src: url, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' } }),
           )
         : // 没有素材图时画**写稿人摘的原文行**：它说明这个文件写了什么，比一句「没有素材」有用。
+          // 有 shiki 高亮（`plan.highlight`，Node 侧预算好的 HTML）就上色；没有就等宽纯文本。
           panel(
             { flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', overflow: 'hidden' },
             scene.excerpt.length === 0
@@ -314,20 +398,30 @@ const File = ({ scene, plan }: SceneProps<Extract<PlanScene, { type: 'file' }>>)
                   { style: { fontSize: tokens.bodySize, color: 'var(--muted)' } },
                   scene.noteMissing ?? '没有素材，也没有摘录 —— 写稿时给这个文件加几行 excerpt',
                 )
-              : h(
-                  'div',
-                  {
-                    style: {
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: fitSize(scene.excerpt.join('\n'), Math.round(tokens.bodySize * 0.86), Math.round(tokens.bodySize * 0.6)),
-                      lineHeight: 1.6,
-                      color: 'var(--ink)',
-                      opacity: 0.92,
-                      whiteSpace: 'pre',
+              : highlightOf(plan, scene.id) === undefined
+                ? h(
+                    'div',
+                    {
+                      style: {
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: fitSize(scene.excerpt.join('\n'), Math.round(tokens.bodySize * 0.86), Math.round(tokens.bodySize * 0.6)),
+                        lineHeight: 1.6,
+                        color: 'var(--ink)',
+                        opacity: 0.92,
+                        whiteSpace: 'pre',
+                      },
                     },
-                  },
-                  scene.excerpt.join('\n'),
-                ),
+                    scene.excerpt.join('\n'),
+                  )
+                : h('div', {
+                    dangerouslySetInnerHTML: { __html: highlightOf(plan, scene.id) as string },
+                    style: {
+                      width: '100%',
+                      overflow: 'hidden',
+                      // shiki 产物自带 <pre> 的白底与内边距，这里统一交给面板配色与字号
+                      fontSize: fitSize(scene.excerpt.join('\n'), Math.round(tokens.bodySize * 0.8), Math.round(tokens.bodySize * 0.56)),
+                    },
+                  }),
           ),
     ),
   );

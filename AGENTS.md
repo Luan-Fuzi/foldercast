@@ -16,11 +16,14 @@
 
 ## 产物与契约
 
-- `<目录>/.foldercast/script.json`：讲稿，agent 写，schema 在
-  `docs/specs/script.schema.json`，示例在 `examples/`。讲稿自足：引用的文件用
-  相对源目录路径，必须真实存在，校验器逐条拦编造路径。
+- `<目录>/.foldercast/digest.json`：**知识压缩产物**（0004 两阶段创作的第一站），agent 写；
+  校验器会查引用路径并抽查 `totalFiles`。只给写稿与评审的模型消费，渲染器不读它。
+- `<目录>/.foldercast/script.json`：讲稿（`foldercast: 2`，场景带 `beats` 节拍），agent 写，
+  schema 在 `docs/specs/script.schema.json`，示例在 `examples/`。讲稿自足：引用的文件用
+  相对源目录路径，必须真实存在，校验器逐条拦编造路径。校验器还查**密度比**
+  （画面阅读量 / 旁白量，带外报警）与节拍-旁白对齐。
 - `<目录>/.foldercast/durations.json`：配音实测时长（`ffprobe`），程序产出、可重算；
-  字数只用于字幕分配，不定时长。
+  字数只用于字幕分配，不定时长。**节拍时刻对齐字幕**（第 i 拍随第 i 句旁白出现）。
 - 贵步骤不默认跑：`render` / `voice` 都要显式传参。退出码约定：2 参数/讲稿/环境
   问题，3 缺浏览器，4 缺密钥。缺依赖降级、不阻塞（`detectDependencies` 的
   `required: false` 模型）。

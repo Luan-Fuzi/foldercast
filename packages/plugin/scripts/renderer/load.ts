@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { DurationsDocument } from '../contracts/durations.ts';
-import type { ScriptDocument } from '../contracts/script.ts';
+import { SCRIPT_VERSION, type ScriptDocument } from '../contracts/script.ts';
 
 /** 一个读进来的文件，附带它的来源路径（报错与日志要用）。 */
 export type Loaded<T> = { value: T; path: string };
@@ -49,9 +49,9 @@ export function loadScript(workRoot: string, override?: string): Loaded<ScriptDo
   const path = override === undefined ? join(workRoot, 'script.json') : resolve(override);
   const loaded = readJson<ScriptDocument>(path, '讲稿', '先按 skill 写一份 script.json（或手写）。');
   const version = (loaded.value as { foldercast?: unknown }).foldercast;
-  if (version !== 1) {
+  if (version !== SCRIPT_VERSION) {
     throw new LoadError(
-      `讲稿的格式版本是 ${String(version)}，这个版本只认 1：${path}\n按当前契约重写讲稿。`,
+      `讲稿的格式版本是 ${String(version)}，这个版本只认 ${String(SCRIPT_VERSION)}：${path}\n按当前契约重写讲稿（v2：场景支持 beats 节拍）。`,
     );
   }
   if (!Array.isArray(loaded.value.scenes) || loaded.value.scenes.length === 0) {

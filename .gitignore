@@ -48,3 +48,7 @@ Thumbs.db
 # 夹具里跑出来的工作根仍然是产物（上面那条 `!` 会把它们重新放进来）：
 # 跑一次 analyze/assets 就会在夹具里生成 .foldercast/，不该入库。
 packages/plugin/scripts/**/tests/fixtures/**/.foldercast/
+
+# 其他 agent 插件在本仓库留下的缓存标记（video2code / video-agent-kit 的 plugin_root）
+.v2c/
+.video_agent/

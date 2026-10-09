@@ -1,6 +1,6 @@
 {
   "name": "dsh-foldercast",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "把任意人类可读的目录变成讲解视频：讲稿校验、按需素材转换、配音与渲染随包分发。",
   "license": "MIT",

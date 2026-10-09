@@ -13,7 +13,7 @@
 import type { Prepared, PrepProduct } from '../contracts/prep.ts';
 import { primaryOf } from '../contracts/prep.ts';
 import type { DurationsDocument, SceneDuration } from '../contracts/durations.ts';
-import type { Scene, SceneType, ScriptDocument } from '../contracts/script.ts';
+import { isSceneType, type Scene, type SceneType, type ScriptDocument } from '../contracts/script.ts';
 import { allocateByWidth } from '../contracts/spans.ts';
 import {
   captionWindows,
@@ -98,6 +98,8 @@ export type FileScene = SceneCommon & {
   note?: string;
   /** 写稿 agent 摘的原文行；没有素材图的文件靠它上画面。 */
   excerpt: string[];
+  /** 摘录首行在源文件中的 1 基行号；写了画面就带行号槽与来源区间（0005）。 */
+  excerptStart?: number;
   media?: Media;
   /** 素材缺失的说明（讲稿引用了转不出来的文件时写在这里，画面照样出）。 */
   noteMissing?: string;
@@ -130,6 +132,29 @@ export type OutroScene = SceneCommon & {
   lines: string[];
 };
 
+export type ConceptScene = SceneCommon & {
+  type: 'concept';
+  /** 大字论断（0005 WP3）。 */
+  statement: string;
+  /** 论断下的支撑要点。 */
+  points: string[];
+};
+
+export type CompareSideView = { label: string; lines: string[] };
+
+export type CompareScene = SceneCommon & {
+  type: 'compare';
+  left: CompareSideView;
+  right: CompareSideView;
+};
+
+export type FlowStepView = { label: string; note?: string };
+
+export type FlowScene = SceneCommon & {
+  type: 'flow';
+  steps: FlowStepView[];
+};
+
 export type PlanScene =
   | CoverScene
   | TreeScene
@@ -138,7 +163,10 @@ export type PlanScene =
   | GalleryScene
   | ClipScene
   | DocumentScene
-  | OutroScene;
+  | OutroScene
+  | ConceptScene
+  | CompareScene
+  | FlowScene;
 
 export type Composition = {
   id: string;
@@ -214,6 +242,12 @@ export function defaultTitle(scene: Scene, label: string): string {
       return basename(scene.file ?? '');
     case 'clip':
       return basename(scene.source ?? '');
+    case 'concept':
+      return '论点';
+    case 'compare':
+      return '对比';
+    case 'flow':
+      return '流程';
     default:
       return label;
   }
@@ -455,6 +489,12 @@ function buildScene(scene: Scene, build: SceneBuild): PlanScene {
       return inventoryScene(scene, common);
     case 'file':
       return fileScene(scene, common, build);
+    case 'concept':
+      return conceptScene(scene, common);
+    case 'compare':
+      return compareScene(scene, common);
+    case 'flow':
+      return flowScene(scene, common);
     case 'gallery':
       return galleryScene(scene, common, build);
     case 'clip':
@@ -530,13 +570,41 @@ function fileScene(scene: Scene, common: SceneCommon, build: SceneBuild): FileSc
     path,
     ...(scene.note === undefined ? {} : { note: scene.note }),
     excerpt: scene.excerpt ?? [],
+    ...(scene.excerptStart === undefined ? {} : { excerptStart: scene.excerptStart }),
     ...(resolved.media === undefined ? {} : { media: resolved.media }),
     ...(resolved.media === undefined && resolved.missing !== undefined ? { noteMissing: resolved.missing } : {}),
   };
 }
 
-function galleryScene(scene: Scene, common: SceneCommon, build: SceneBuild): GalleryScene {
-  const items: Media[] = [];
+function conceptScene(scene: Scene, common: SceneCommon): ConceptScene {
+  return {
+    ...common,
+    type: 'concept',
+    statement: scene.statement ?? '',
+    points: scene.points ?? [],
+  };
+}
+
+function compareScene(scene: Scene, common: SceneCommon): CompareScene {
+  const side = (value: Scene['left']): CompareSideView => ({
+    label: value?.label ?? '',
+    lines: value?.lines ?? [],
+  });
+  return { ...common, type: 'compare', left: side(scene.left), right: side(scene.right) };
+}
+
+function flowScene(scene: Scene, common: SceneCommon): FlowScene {
+  return {
+    ...common,
+    type: 'flow',
+    steps: (scene.steps ?? []).map((step) => ({
+      label: step.label,
+      ...(step.note === undefined ? {} : { note: step.note }),
+    })),
+  };
+}
+
+function galleryScene(scene: Scene, common: SceneCommon, build: SceneBuild): GalleryScene {  const items: Media[] = [];
   for (const item of scene.items ?? []) {
     const resolved = build.mediaOf(item);
     if (resolved.media === undefined) {
@@ -594,15 +662,7 @@ function documentScene(scene: Scene, common: SceneCommon, build: SceneBuild): Do
   };
 }
 
+/** 已知类型判定收口到契约的 `isSceneType`——这里自己再列一张表，加类型时就会漏（踩过）。 */
 function isKnownSceneType(type: string): type is SceneType {
-  return (
-    type === 'cover' ||
-    type === 'tree' ||
-    type === 'inventory' ||
-    type === 'file' ||
-    type === 'gallery' ||
-    type === 'clip' ||
-    type === 'document' ||
-    type === 'outro'
-  );
+  return isSceneType(type);
 }

@@ -94,6 +94,9 @@ jobs:
           excludes=(
             --exclude 'packages/plugin/scripts/renderer/tests/e2e.test.ts'
             --exclude 'packages/plugin/scripts/voice/tests/e2e.test.ts'
+            # 画面基线是「本机字体 + 本机 Chrome」的产物（golden.local.json 不入库）：
+            # CI 的一次性容器上没有基线可比，跑了也只是每次重写，留给本机。
+            --exclude 'packages/plugin/scripts/renderer/tests/golden.test.ts'
           )
           if [ "$runner_os" = "Windows" ]; then
             excludes+=(

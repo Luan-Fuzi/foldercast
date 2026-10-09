@@ -16,12 +16,16 @@
 
 ## 产物与契约
 
-- `<目录>/.foldercast/digest.json`：**知识压缩产物**（0004 两阶段创作的第一站），agent 写；
-  校验器会查引用路径并抽查 `totalFiles`。只给写稿与评审的模型消费，渲染器不读它。
+- `<目录>/.foldercast/digest.json`：**知识压缩产物**（0004 两阶段创作的第一站；0005 起
+  excerpts 是**块级摘录** `{ file, lines, start, why }`，digest: 2），agent 写；
+  校验器会查版本、引用路径、摘录真实性并抽查 `totalFiles`。只给写稿与评审的模型消费，
+  渲染器不读它。
 - `<目录>/.foldercast/script.json`：讲稿（`foldercast: 2`，场景带 `beats` 节拍），agent 写，
-  schema 在 `docs/specs/script.schema.json`，示例在 `examples/`。讲稿自足：引用的文件用
-  相对源目录路径，必须真实存在，校验器逐条拦编造路径。校验器还查**密度比**
-  （画面阅读量 / 旁白量，带外报警）与节拍-旁白对齐。
+  schema 在 `docs/specs/script.schema.json`，示例在 `examples/`。场景 11 种
+  （0005 加 concept / compare / flow 三个文本原生类型）。讲稿自足：引用的文件用
+  相对源目录路径，必须真实存在，校验器逐条拦编造路径与编造摘录（excerpt 须是原文、
+  带 `excerptStart` 行号）。校验器还查**密度比**（摘录按扫读打折计宽）、
+  **摘录行数下限**与节拍-旁白对齐，file 占比过高提醒 `layout-monotony`。
 - `<目录>/.foldercast/durations.json`：配音实测时长（`ffprobe`），程序产出、可重算；
   字数只用于字幕分配，不定时长。**节拍时刻对齐字幕**（第 i 拍随第 i 句旁白出现）。
 - 贵步骤不默认跑：`render` / `voice` 都要显式传参。退出码约定：2 参数/讲稿/环境

@@ -173,8 +173,23 @@ export async function checkScript(script: ScriptDocument, root: string): Promise
     }
 
     pushPathChecks(scene, root, push);
+    pushExcerptChecks(scene, root, push);
     pushSubtitleCheck(scene, push);
     pushBeatChecks(scene, push, at);
+  }
+
+  // 版式多样性提醒（0005 WP3）：file 连播是自举片翻过车的坑。只提醒不强制——
+  // 哪种形态讲哪段是创作判断，校验器只把「全片一种版式」这件事报给写稿人。
+  const contentScenes = script.scenes.filter((scene) => scene.type !== 'cover' && scene.type !== 'outro');
+  const fileScenes = contentScenes.filter((scene) => scene.type === 'file').length;
+  if (contentScenes.length >= 6 && fileScenes / contentScenes.length > 0.6) {
+    push({
+      code: 'layout-monotony',
+      severity: 'warning',
+      message: `${String(fileScenes)}/${String(contentScenes.length)} 个内容场景都是 file 版式，画面形态单一`,
+      path: '/scenes',
+      fix: '论断用 concept、对比用 compare、流程用 flow；file 留给值得逐行看的文件。',
+    });
   }
 
   // digest 是两阶段创作的第一站（0004）：在场就顺带校验（引用路径 + 计数抽查），
@@ -231,11 +246,23 @@ function visualWidth(scene: Scene): number {
   let width = textWidth(scene.title ?? '');
   if (scene.subtitle !== undefined) width += textWidth(scene.subtitle);
   if (scene.note !== undefined) width += textWidth(scene.note);
-  width += scene.excerpt?.reduce((sum, line) => sum + textWidth(line), 0) ?? 0;
+  // 摘录（0005 起是 8–12 行整块）：画面上以小字号、带高亮呈现，观众**扫读锚定**而不是
+  // 逐行精读——阅读负载远低于同宽度的散文。按 1/4 计宽且封顶 100（约三条要点的量），
+  // 否则「标准画面」永远爆密度上界、两行旧摘录反而落在带内，信号就反了。
+  const excerptRaw = scene.excerpt?.reduce((sum, line) => sum + textWidth(line), 0) ?? 0;
+  width += Math.min(Math.round(excerptRaw * 0.25), 100);
   width += scene.lines?.reduce((sum, line) => sum + textWidth(line), 0) ?? 0;
   width += scene.entries?.reduce((sum, entry) => sum + textWidth(entry.path) + String(entry.files).length, 0) ?? 0;
   width += scene.groups?.reduce((sum, group) => sum + textWidth(group.label) + String(group.count).length, 0) ?? 0;
   width += scene.beats?.reduce((sum, beat) => sum + (beat.points?.reduce((inner, point) => inner + textWidth(point), 0) ?? 0), 0) ?? 0;
+  // 0005 WP3 的三个文本原生场景：论断、对比两栏、流程步骤
+  width += textWidth(scene.statement ?? '');
+  width += scene.points?.reduce((sum, point) => sum + textWidth(point), 0) ?? 0;
+  for (const side of [scene.left, scene.right]) {
+    width += textWidth(side?.label ?? '');
+    width += side?.lines.reduce((sum, line) => sum + textWidth(line), 0) ?? 0;
+  }
+  width += scene.steps?.reduce((sum, step) => sum + textWidth(step.label) + textWidth(step.note ?? ''), 0) ?? 0;
   return width;
 }
 
@@ -389,6 +416,82 @@ function pushSubtitleCheck(scene: Scene, push: (issue: Issue) => void): void {
       message: `这段没有可切点，切不出 ≤24 显示宽度的字幕块（最长一块 ${String(piece.width)} 宽）：${piece.text}`,
       sceneId: scene.id,
       fix: '加标点或拆句 —— 字幕先按句末标点切、超长在逗号处再切，一句没有任何标点就切不开。',
+    });
+  }
+}
+
+/**
+ * 摘录层检查（0005 WP1）：只管「画面 = 摘录文字」的 file 场景（没有素材转换的那些）。
+ * 有素材的画面不是摘录，行数下限与真实性都不适用。三条都是 warning：
+ * 行数太少是观感问题（写稿判断），摘录对不上原文可能是换行拼接（也可能真是编造），
+ * 都不该像编造路径那样拦死整条管线。
+ */
+const EXCERPT_MIN_LINES = 6;
+/** 超过这个大小的源文件不读来做真实性比对（摘录校验不值得为几十 MB 的文件买单）。 */
+const EXCERPT_VERIFY_MAX_BYTES = 2_000_000;
+
+function pushExcerptChecks(scene: Scene, root: string, push: (issue: Issue) => void): void {
+  if (scene.type !== 'file' || scene.file === undefined) return;
+  if (prepKindOf(scene.file) !== undefined) return; // 图片 / 视频 / Office / PDF 走素材画面
+
+  const nonEmpty = (scene.excerpt ?? []).filter((line) => line.trim() !== '');
+  if (nonEmpty.length === 0) {
+    push({
+      code: 'excerpt-too-short',
+      severity: 'warning',
+      message: 'file 场景没有素材也没有摘录，画面会是空的',
+      sceneId: scene.id,
+      fix: '从源文件摘原文进讲稿（digest 的 excerpts 里选），或改讲有素材的文件。',
+    });
+    return;
+  }
+
+  let content: string | undefined;
+  try {
+    const size = statSync(resolve(root, scene.file), { throwIfNoEntry: false })?.size ?? 0;
+    if (size > EXCERPT_VERIFY_MAX_BYTES) return;
+    content = readFileSync(resolve(root, scene.file), 'utf8');
+  } catch {
+    return; // 路径存在性由 path 检查兜底；读不了的不做内容比对
+  }
+  if (content === undefined) return;
+  const haystack = content.replace(/\r\n/g, '\n');
+
+  // 真实性：摘录行必须是源文件原文（两端空白可容忍 —— 续行缩进是正常的）
+  const missing = nonEmpty.find((line) => !haystack.includes(line.trim()));
+  if (missing !== undefined) {
+    push({
+      code: 'excerpt-unverifiable',
+      severity: 'warning',
+      message: `摘录行在源文件里找不到：「${missing.trim().slice(0, 40)}」`,
+      sceneId: scene.id,
+      fix: '摘录必须是原文（回源文件复制）；要转述就写进 note 或旁白，别冒充摘录。',
+    });
+  }
+
+  if (scene.excerptStart !== undefined) {
+    const at = haystack.split('\n')[scene.excerptStart - 1];
+    if (at === undefined || at.trim() !== (nonEmpty[0] ?? '').trim()) {
+      push({
+        code: 'excerpt-start-mismatch',
+        severity: 'warning',
+        message: `excerptStart ${String(scene.excerptStart)} 对不上：源文件那一行不是摘录的第一行`,
+        sceneId: scene.id,
+        fix: 'excerptStart 是摘录首行在源文件中的 1 基行号，数一下再写。',
+      });
+    }
+  }
+
+  // 行数下限：短文件全文摘录是合法的，下限取 min(6, 文件非空行数)
+  const totalLines = haystack.split('\n').filter((line) => line.trim() !== '').length;
+  const floor = Math.min(EXCERPT_MIN_LINES, totalLines);
+  if (nonEmpty.length < floor) {
+    push({
+      code: 'excerpt-too-short',
+      severity: 'warning',
+      message: `摘录只有 ${String(nonEmpty.length)} 行，画面会大面积留白（这个文件建议 ≥${String(floor)} 行）`,
+      sceneId: scene.id,
+      fix: '回 digest 摘整块原文（8–12 行、带行号）；文件本身就短且已全文摘录时忽略这条。',
     });
   }
 }

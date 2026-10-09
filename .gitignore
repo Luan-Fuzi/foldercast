@@ -27,6 +27,9 @@ durations.json
 # node_modules 里剥离 TypeScript 类型，所以分发的必须是 JS。
 /packages/plugin/lib/
 
+# 画面基线（renderer/tests/golden.test.ts 首跑生成）：机器与字体相关，跨机器不可比，不入库
+packages/plugin/scripts/renderer/tests/golden.local.json
+
 # 密钥 —— 绝不能提交
 .*_api_key
 .*_key

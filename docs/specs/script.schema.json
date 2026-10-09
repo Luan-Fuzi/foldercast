@@ -155,6 +155,61 @@
           "title"
         ]
       }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "concept"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "statement"
+        ]
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "compare"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "left",
+          "right"
+        ]
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "flow"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "steps"
+        ]
+      }
     }
   ],
   "$defs": {
@@ -168,7 +223,10 @@
         "gallery",
         "clip",
         "document",
-        "outro"
+        "outro",
+        "concept",
+        "compare",
+        "flow"
       ]
     },
     "treeEntry": {
@@ -288,6 +346,11 @@
           },
           "description": "file 场景：摘录的原文行。没有素材图的文件靠它上画面。"
         },
+        "excerptStart": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "file 场景：摘录首行在源文件中的 1 基行号。写了画面就带行号槽与来源区间。"
+        },
         "items": {
           "type": "array",
           "minItems": 1,
@@ -325,6 +388,35 @@
           },
           "description": "outro 场景：结尾的几行小结"
         },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "description": "concept 场景：大字论断，画面主角是这句话本身"
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "concept 场景：论断下的支撑要点"
+        },
+        "left": {
+          "$ref": "#/$defs/compareSide",
+          "description": "compare 场景：左栏"
+        },
+        "right": {
+          "$ref": "#/$defs/compareSide",
+          "description": "compare 场景：右栏"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          },
+          "description": "flow 场景：步骤条（2–6 步，按顺序画）"
+        },
         "beats": {
           "type": "array",
           "description": "画面层节拍（v2）：第 i 拍在第 i 条字幕起始时出现。模型只写内容与入场意图。",
@@ -355,6 +447,41 @@
         "enter": {
           "enum": ["fade", "reveal", "grow", "slide"],
           "description": "入场意图，缺省 reveal。曲线由渲染器实现。"
+        }
+      },
+      "additionalProperties": false
+    },
+    "compareSide": {
+      "type": "object",
+      "description": "compare 场景的一侧：标签 + 几行内容。",
+      "required": ["label", "lines"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "这一侧的名字（如「edge」「mimo」）"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "这一侧的几行内容"
+        }
+      },
+      "additionalProperties": false
+    },
+    "flowStep": {
+      "type": "object",
+      "description": "flow 场景的一步。",
+      "required": ["label"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "步骤名（两三个词）"
+        },
+        "note": {
+          "type": "string",
+          "description": "一步的补充说明（一行以内）"
         }
       },
       "additionalProperties": false

@@ -37,6 +37,9 @@ const KIND_LABEL: Record<PageSection['kind'], string> = {
   structure: '结构',
   inventory: '盘点',
   file: '文件',
+  concept: '论点',
+  compare: '对比',
+  flow: '流程',
   gallery: '图集',
   clip: '视频',
   document: '文档',
@@ -132,6 +135,21 @@ main { display: block; padding: calc(8px * var(--space)) 0 32px; }
 .bar-value { white-space: nowrap; font-size: 13px; color: var(--muted); }
 .bar-note { grid-column: 1 / -1; margin: -2px 0 0; font-size: 12.5px; color: var(--muted); }
 .bars-total { margin: 10px 0 0; font-size: 13px; color: var(--muted); text-align: right; }
+
+/* ── 论点 / 对比 / 流程（0005 WP3） ─────────────────── */
+.concept-statement { margin: 4px 0 10px; font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1.4; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 720px) { .compare { grid-template-columns: 1fr; } }
+.compare-side { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+.compare-side.is-accent { border-top: 3px solid var(--accent); }
+.compare-label { margin: 0 0 8px; font-weight: 700; }
+.compare-lines { margin: 0; padding: 0 0 0 20px; }
+.compare-lines li { margin: 5px 0; }
+.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.flow-step { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.flow-no { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); font-size: 12px; font-family: var(--font-mono); display: flex; align-items: center; justify-content: center; }
+.flow-label { font-weight: 600; }
+.flow-note { font-size: 12.5px; color: var(--muted); }
 
 /* ── 卡片（file / clip / document） ─────────────────── */
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
@@ -285,6 +303,41 @@ function renderOutro(section: Extract<PageSection, { kind: 'outro' }>): string {
   </div>`;
 }
 
+/** concept：论断单独一行大字，要点跟在下面（与视频里的大字版式同构）。 */
+function renderConcept(section: Extract<PageSection, { kind: 'concept' }>): string {
+  const points =
+    section.points.length === 0
+      ? ''
+      : `    <ul class="compare-lines">\n${section.points.map((point) => `      <li>${escapeHtml(point)}</li>`).join('\n')}\n    </ul>`;
+  return `    <p class="concept-statement">${escapeHtml(section.statement)}</p>${points}`;
+}
+
+/** compare：两栏并排（窄屏自动落成上下）。 */
+function renderCompare(section: Extract<PageSection, { kind: 'compare' }>): string {
+  const side = (data: { label: string; lines: string[] }, accent: boolean): string =>
+    `    <div class="compare-side${accent ? ' is-accent' : ''}">
+      <p class="compare-label">${escapeHtml(data.label)}</p>
+      <ul class="compare-lines">
+${data.lines.map((line) => `        <li>${escapeHtml(line)}</li>`).join('\n')}
+      </ul>
+    </div>`;
+  return `    <div class="compare">\n${side(section.left, true)}\n${side(section.right, false)}\n    </div>`;
+}
+
+/** flow：步骤条，编号 + 步骤名 + 补充说明。 */
+function renderFlow(section: Extract<PageSection, { kind: 'flow' }>): string {
+  const steps = section.steps
+    .map(
+      (step, index) => `      <li class="flow-step">
+        <span class="flow-no">${String(index + 1)}</span>
+        <span class="flow-label">${escapeHtml(step.label)}</span>
+        ${step.note === undefined ? '' : `<span class="flow-note">${escapeHtml(step.note)}</span>`}
+      </li>`,
+    )
+    .join('\n');
+  return `    <ol class="flow">\n${steps}\n    </ol>`;
+}
+
 function renderSection(section: PageSection, index: number, images: ReadonlyMap<string, PageImage>): string {
   // outro 不套区块外壳（自带居中版式），其余类型统一：编号 + 眉标 + 标题 + 引文 + 主体
   if (section.kind === 'outro') {
@@ -300,9 +353,15 @@ function renderSection(section: PageSection, index: number, images: ReadonlyMap<
         ? renderInventory(section)
         : section.kind === 'file'
           ? renderFile(section, images)
-          : section.kind === 'gallery'
-            ? renderGallery(section, images)
-            : renderRefCard(section);
+          : section.kind === 'concept'
+            ? renderConcept(section)
+            : section.kind === 'compare'
+              ? renderCompare(section)
+              : section.kind === 'flow'
+                ? renderFlow(section)
+                : section.kind === 'gallery'
+                  ? renderGallery(section, images)
+                  : renderRefCard(section);
   return `<section class="scene scene-${section.kind}" id="scene-${escapeHtml(section.id)}">
   <div class="scene-head">
     <span class="scene-no">${String(index + 1).padStart(2, '0')}</span>

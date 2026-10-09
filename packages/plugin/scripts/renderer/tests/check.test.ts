@@ -13,10 +13,19 @@ import { checkScript } from '../check.ts';
 
 let root = '';
 
+/** src/index.ts 夹具的前 6 行原文（摘录检查要求原文 + 够行数）。 */
+const EXCERPT6 = Array.from({ length: 6 }, (_, i) => `export const value${String(i)} = ${String(i)};`);
+
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), 'foldercast-check-'));
   mkdirSync(join(root, 'src'), { recursive: true });
-  writeFileSync(join(root, 'src/index.ts'), 'export const value = 1;\n');
+  // 摘录检查（0005）要求摘录是原文且够行数：夹具给 8 行原文，各用例从中挑
+  writeFileSync(
+    join(root, 'src/index.ts'),
+    `${Array.from({ length: 8 }, (_, i) => `export const value${String(i)} = ${String(i)};`).join('\n')}\n`,
+  );
+  // 短文件：全文摘录合法，用来钉「下限取 min(6, 文件行数)」
+  writeFileSync(join(root, 'src/tiny.ts'), 'export const tiny = 1;\nexport const mini = 2;\nexport const small = 3;\n');
   writeFileSync(join(root, 'logo.png'), Buffer.from('fake'));
 });
 
@@ -37,7 +46,15 @@ describe('合法讲稿', () => {
   it('没有问题就是没有问题（不是「没有跑）', async () => {
     const script = issueScript([
       { id: 'cover', type: 'cover', title: '目录', narration: '这是封面。' },
-      { id: 'entry', type: 'file', file: 'src/index.ts', excerpt: ['export const value = 1;'], narration: '入口文件。' },
+      {
+        id: 'entry',
+        type: 'file',
+        file: 'src/index.ts',
+        excerpt: EXCERPT6,
+        excerptStart: 1,
+        narration: '入口文件一共八行，导出八个常量，每一个都能在画面上对着行号找到。',
+        beats: [{ points: ['常量都在模块顶层，导出名一眼可读', '行号区间标在右上角，来源可查'], enter: 'reveal' }],
+      },
     ]);
     const report = await checkScript(script, root);
     expect(report.issues, JSON.stringify(report.issues)).toEqual([]);
@@ -135,16 +152,17 @@ describe('时长闭环（warning）', () => {
 });
 
 describe('契约 v2：beats 与密度', () => {
-  // 画面宽 ≈ 标题 2 + 摘录 25 + 要点；旁白短句 → 带内
+  // 画面宽 ≈ 标题 2 + 摘录 6 行 + 要点；旁白短句 → 带内
   const dense = {
     id: 'entry',
     type: 'file',
     title: '入口',
     file: 'src/index.ts',
-    excerpt: ['export const value = 1;'],
+    excerpt: EXCERPT6,
+    excerptStart: 1,
     narration: '入口很短。旁白两句。',
     beats: [{ points: ['一个要点', '第二个要点'], enter: 'reveal' }],
-  } as const;
+  };
 
   it('空节拍（没 points 也没 graphic）是 blocker', async () => {
     const issues = await codesOf(issueScript([{ ...dense, beats: [{ enter: 'fade' }] }]));
@@ -174,6 +192,41 @@ describe('契约 v2：beats 与密度', () => {
     expect(issues).toContainEqual(expect.objectContaining({ code: 'density-out-of-band', severity: 'warning', sceneId: 'entry' }));
   });
 
+  it('画面过载（密度比高于 3）也报，fix 指向删要点', async () => {
+    const report = await checkScript(
+      issueScript([{ ...dense, excerpt: undefined, narration: '短句。', beats: [{ points: ['要点一', '要点二', '要点三', '要点四'] }] }]),
+      root,
+    );
+    const density = report.issues.find((issue) => issue.code === 'density-out-of-band');
+    expect(density).toMatchObject({ severity: 'warning', sceneId: 'entry' });
+    expect(density?.fix ?? '').toContain('过载');
+  });
+
+  it('整块摘录按扫读打折计宽：8–12 行的标准画面落在带内，两行旧摘录落带下', async () => {
+    // 8 行原文摘录（raw ≈ 100 宽，打折后 25）+ 要点，对短旁白应当在带内
+    const eightLines = EXCERPT6.concat(['export const value6 = 6;', 'export const value7 = 7;']);
+    const ok = await codesOf(
+      issueScript([
+        {
+          id: 'a',
+          type: 'file',
+          file: 'src/index.ts',
+          excerpt: eightLines,
+          excerptStart: 1,
+          title: '入口',
+          narration: '入口文件八行，每个常量都对着行号。',
+          beats: [{ points: ['常量都在模块顶层，导出名一眼可读'], enter: 'reveal' }],
+        },
+      ]),
+    );
+    expect(ok.find((issue) => issue.code === 'density-out-of-band')).toBeUndefined();
+    // 两行旧摘录：打折后几乎不占宽，密度必然落带下——正是「画面太空」要抓的形状
+    const sparse = await codesOf(
+      issueScript([{ id: 'b', type: 'file', file: 'src/index.ts', excerpt: [EXCERPT6[0] ?? ''], narration: '这一段的旁白比较长，足足有二十多个字，而画面只有两行字。' }]),
+    );
+    expect(sparse).toContainEqual(expect.objectContaining({ code: 'density-out-of-band', severity: 'warning' }));
+  });
+
   it('cover 不查密度（标题场景天然留白）', async () => {
     const issues = await codesOf(
       issueScript([{ id: 'c', type: 'cover', title: '片', narration: '很长的开场白，超过画面信息量的两倍还多，看看会不会报警。' }]),
@@ -188,18 +241,76 @@ describe('契约 v2：beats 与密度', () => {
   });
 });
 
+describe('摘录层（0005 WP1，warning）', () => {
+  it('无素材的 file 场景摘录少于六行报 warning', async () => {
+    const issues = await codesOf(
+      issueScript([{ id: 'a', type: 'file', file: 'src/index.ts', excerpt: [EXCERPT6[0] ?? ''], narration: '讲它。' }]),
+    );
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'excerpt-too-short', severity: 'warning', sceneId: 'a' }));
+  });
+
+  it('没有摘录也没有素材同样报（画面会是空的）', async () => {
+    const issues = await codesOf(issueScript([{ id: 'a', type: 'file', file: 'src/index.ts', narration: '讲它。' }]));
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'excerpt-too-short', severity: 'warning', sceneId: 'a' }));
+  });
+
+  it('摘录行不是源文件原文报 warning（真实性判据）', async () => {
+    const issues = await codesOf(
+      issueScript([
+        {
+          id: 'a',
+          type: 'file',
+          file: 'src/index.ts',
+          excerpt: Array.from({ length: 6 }, (_, i) => `编造的第 ${String(i)} 行，源文件里没有这句话`),
+          narration: '讲它。',
+        },
+      ]),
+    );
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'excerpt-unverifiable', severity: 'warning', sceneId: 'a' }));
+  });
+
+  it('excerptStart 与摘录首行对不上报 warning', async () => {
+    const issues = await codesOf(
+      issueScript([
+        { id: 'a', type: 'file', file: 'src/index.ts', excerpt: EXCERPT6, excerptStart: 3, narration: '讲它。' },
+      ]),
+    );
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'excerpt-start-mismatch', severity: 'warning', sceneId: 'a' }));
+  });
+
+  it('短文件全文摘录不报行数下限（下限取 min(6, 文件行数)）', async () => {
+    const issues = await codesOf(
+      issueScript([
+        {
+          id: 'a',
+          type: 'file',
+          file: 'src/tiny.ts',
+          excerpt: ['export const tiny = 1;', 'export const mini = 2;', 'export const small = 3;'],
+          narration: '很短，但是全文。',
+        },
+      ]),
+    );
+    expect(issues.find((issue) => issue.code === 'excerpt-too-short')).toBeUndefined();
+  });
+
+  it('有素材的 file 场景不查摘录（画面走素材，不靠文字）', async () => {
+    const issues = await codesOf(issueScript([{ id: 'a', type: 'file', file: 'logo.png', narration: '讲这张图。' }]));
+    expect(issues.find((issue) => issue.code === 'excerpt-too-short')).toBeUndefined();
+  });
+});
+
 describe('digest（在场就顺带校验）', () => {
   it('引用不存在的文件是 blocker；计数对得上就不报', async () => {
     mkdirSync(join(root, '.foldercast'), { recursive: true });
-    // 夹具根目录下有两个文件（src/index.ts、logo.png），.foldercast 被口径排除
+    // 夹具根目录下有三个文件（src/index.ts、src/tiny.ts、logo.png），.foldercast 被口径排除
     writeFileSync(
       join(root, '.foldercast', 'digest.json'),
       `${JSON.stringify({
-        digest: 1,
+        digest: 2,
         source: { root },
-        scale: { totalFiles: 2 },
-        modules: [{ path: 'src', role: '源码', files: 1 }],
-        excerpts: [{ file: 'nope.md', text: '编造的引用' }],
+        scale: { totalFiles: 3 },
+        modules: [{ path: 'src', role: '源码', files: 2 }],
+        excerpts: [{ file: 'nope.md', lines: ['编造的引用'] }],
       })}\n`,
     );
     const script = issueScript([{ id: 'cover', type: 'cover', title: '目录', narration: '封面。' }]);
@@ -212,7 +323,7 @@ describe('digest（在场就顺带校验）', () => {
     writeFileSync(
       join(root, '.foldercast', 'digest.json'),
       `${JSON.stringify({
-        digest: 1,
+        digest: 2,
         source: { root },
         scale: { totalFiles: 50 },
         modules: [],
@@ -222,5 +333,101 @@ describe('digest（在场就顺带校验）', () => {
     const script = issueScript([{ id: 'cover', type: 'cover', title: '目录', narration: '封面。' }]);
     const issues = await codesOf(script);
     expect(issues).toContainEqual(expect.objectContaining({ code: 'digest-count-mismatch', severity: 'warning' }));
+  });
+
+  it('v1 digest（单句 excerpts 的旧形状）是 blocker，带迁移提示', async () => {
+    writeFileSync(
+      join(root, '.foldercast', 'digest.json'),
+      `${JSON.stringify({
+        digest: 1,
+        source: { root },
+        scale: { totalFiles: 3 },
+        modules: [],
+        excerpts: [{ file: 'src/index.ts', text: '旧形状的单句摘录' }],
+      })}\n`,
+    );
+    const script = issueScript([{ id: 'cover', type: 'cover', title: '目录', narration: '封面。' }]);
+    const issues = await codesOf(script);
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'digest-version', severity: 'blocker', path: '/digest' }));
+  });
+
+  it('v2 摘录行不是原文、start 对不上，各报一条 warning', async () => {
+    writeFileSync(
+      join(root, '.foldercast', 'digest.json'),
+      `${JSON.stringify({
+        digest: 2,
+        source: { root },
+        scale: { totalFiles: 3 },
+        modules: [],
+        excerpts: [{ file: 'src/index.ts', lines: ['编造的一行，源文件里没有', 'export const value0 = 0;'], start: 99 }],
+      })}\n`,
+    );
+    const script = issueScript([{ id: 'cover', type: 'cover', title: '目录', narration: '封面。' }]);
+    const issues = await codesOf(script);
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'digest-excerpt-unverifiable', severity: 'warning' }));
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'digest-start-mismatch', severity: 'warning' }));
+  });
+});
+
+describe('文本原生场景（0005 WP3）', () => {
+  it('concept 缺 statement、compare 缺一侧、flow 缺 steps 都是 blocker，带 JSON 指针', async () => {
+    const issues = await codesOf(
+      issueScript([
+        { id: 'c1', type: 'concept', narration: '缺论断。' },
+        { id: 'c2', type: 'compare', left: { label: '一', lines: ['第一行'] }, narration: '缺右侧。' },
+        { id: 'c3', type: 'flow', narration: '缺步骤。' },
+      ]),
+    );
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'scene-field-missing', severity: 'blocker', sceneId: 'c1', path: '/scenes/0/statement' }));
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'scene-field-missing', severity: 'blocker', sceneId: 'c2', path: '/scenes/1/right' }));
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'scene-field-missing', severity: 'blocker', sceneId: 'c3', path: '/scenes/2/steps' }));
+  });
+
+  it('形状齐的三个新类型不报字段错（schema 与字段表一致）', async () => {
+    const issues = await codesOf(
+      issueScript([
+        { id: 'c1', type: 'concept', statement: '程序只做 agent 干不了的事。', points: ['模型探目录', '程序管渲染'], narration: '一条判据，讲全片。' },
+        { id: 'c2', type: 'compare', left: { label: '模型', lines: ['探目录', '读文件'] }, right: { label: '程序', lines: ['校验', '渲染'] }, narration: '分工一比就清楚。' },
+        { id: 'c3', type: 'flow', steps: [{ label: 'digest' }, { label: '讲稿' }, { label: '渲染', note: '逐帧一致' }], narration: '三步一条线。' },
+      ]),
+    );
+    expect(issues.filter((issue) => issue.code === 'scene-field-missing' || issue.code === 'scene-field-unused')).toEqual([]);
+  });
+});
+
+describe('版式多样性（0005 WP3，warning）', () => {
+  const fileScene = (index: number) => ({
+    id: `f${String(index)}`,
+    type: 'file',
+    file: 'src/index.ts',
+    excerpt: EXCERPT6,
+    narration: `第${String(index)}场，讲一个文件的职责。`,
+  });
+
+  it('内容场景里 file 占比超六成报 warning', async () => {
+    const issues = await codesOf(
+      issueScript([
+        { id: 'c', type: 'cover', title: '封面', narration: '开场。' },
+        ...Array.from({ length: 8 }, (_, i) => fileScene(i)),
+        { id: 'o', type: 'outro', title: '完', narration: '收尾。' },
+      ]),
+    );
+    expect(issues).toContainEqual(expect.objectContaining({ code: 'layout-monotony', severity: 'warning', path: '/scenes' }));
+  });
+
+  it('类型混着用（或内容场景太少）不报', async () => {
+    const issues = await codesOf(
+      issueScript([
+        { id: 'c', type: 'cover', title: '封面', narration: '开场。' },
+        fileScene(0),
+        { id: 'd1', type: 'concept', statement: '一个论断。', narration: '论点。' },
+        { id: 'd2', type: 'compare', left: { label: '一', lines: ['1'] }, right: { label: '二', lines: ['2'] }, narration: '对比。' },
+        { id: 'd3', type: 'flow', steps: [{ label: '甲' }, { label: '乙' }], narration: '流程。' },
+        { id: 'd4', type: 'inventory', groups: [{ label: '代码', count: 9 }], narration: '盘点。' },
+        { id: 'd5', type: 'tree', entries: [{ path: 'src', files: 2 }], narration: '结构。' },
+        { id: 'o', type: 'outro', title: '完', narration: '收尾。' },
+      ]),
+    );
+    expect(issues.find((issue) => issue.code === 'layout-monotony')).toBeUndefined();
   });
 });

@@ -98,11 +98,34 @@ export type OutroSection = SectionCommon & {
   lines: string[];
 };
 
+/** concept：大字论断 + 支撑要点（0005 WP3）。 */
+export type ConceptSection = SectionCommon & {
+  kind: 'concept';
+  statement: string;
+  points: string[];
+};
+
+/** compare：左右两栏。 */
+export type CompareSection = SectionCommon & {
+  kind: 'compare';
+  left: { label: string; lines: string[] };
+  right: { label: string; lines: string[] };
+};
+
+/** flow：步骤条。 */
+export type FlowSection = SectionCommon & {
+  kind: 'flow';
+  steps: { label: string; note?: string }[];
+};
+
 export type PageSection =
   | HeroSection
   | StructureSection
   | InventorySection
   | FileSection
+  | ConceptSection
+  | CompareSection
+  | FlowSection
   | GallerySection
   | ClipSection
   | DocumentSection
@@ -288,6 +311,45 @@ export function collectViewModel(script: ScriptDocument): PageModel {
         });
         break;
       }
+      case 'concept': {
+        sections.push({
+          kind: 'concept',
+          id: scene.id,
+          title: scene.title ?? '论点',
+          narration: scene.narration,
+          statement: scene.statement ?? '',
+          points: scene.points ?? [],
+        });
+        break;
+      }
+      case 'compare': {
+        const side = (value: Scene['left']): { label: string; lines: string[] } => ({
+          label: value?.label ?? '',
+          lines: value?.lines ?? [],
+        });
+        sections.push({
+          kind: 'compare',
+          id: scene.id,
+          title: scene.title ?? '对比',
+          narration: scene.narration,
+          left: side(scene.left),
+          right: side(scene.right),
+        });
+        break;
+      }
+      case 'flow': {
+        sections.push({
+          kind: 'flow',
+          id: scene.id,
+          title: scene.title ?? '流程',
+          narration: scene.narration,
+          steps: (scene.steps ?? []).map((step) => ({
+            label: step.label,
+            ...(step.note === undefined ? {} : { note: step.note }),
+          })),
+        });
+        break;
+      }
       case 'outro': {
         sections.push({
           kind: 'outro',
@@ -306,15 +368,16 @@ export function collectViewModel(script: ScriptDocument): PageModel {
     }
   }
 
-  // v2 节拍要点平铺进区块：页面没有时刻概念，只把要点收成清单（密度跟着讲稿涨）。
+  // v2 节拍要点平铺进区块：页面没有时刻概念，把要点收成清单（密度跟着讲稿涨）。
+  // 追加而不是覆盖——concept 场景自己的 points 是区块内容，先于节拍要点保留。
   const pointsById = new Map<string, string[]>();
   for (const scene of script.scenes) {
     const points = scene.beats?.flatMap((beat) => beat.points ?? []) ?? [];
     if (points.length > 0) pointsById.set(scene.id, points);
   }
-  if (hero !== undefined && pointsById.has(hero.id)) hero.points = pointsById.get(hero.id);
+  if (hero !== undefined && pointsById.has(hero.id)) hero.points = [...(hero.points ?? []), ...(pointsById.get(hero.id) ?? [])];
   for (const section of sections) {
-    if (pointsById.has(section.id)) section.points = pointsById.get(section.id);
+    if (pointsById.has(section.id)) section.points = [...(section.points ?? []), ...(pointsById.get(section.id) ?? [])];
   }
 
   return {

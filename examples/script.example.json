@@ -96,6 +96,7 @@
       "title": "渲染入口",
       "file": "src/Root.tsx",
       "note": "TypeScript · 约 200 行",
+      "excerptStart": 1,
       "excerpt": [
         "export const Root: React.FC = () => (",
         "  <Composition",
@@ -103,6 +104,10 @@
         "    component={LectureVideo}",
         "    durationInFrames={9000}",
         "  />",
+        ");",
+        "",
+        "export const RootTable: React.FC = () => (",
+        "  <Folder />",
         ");"
       ],
       "narration": "Root 注册了全部合成入口，每一讲在这里挂载，时长写死九千帧。",
@@ -113,6 +118,73 @@
             "时长在计划里定，不在浏览器里算"
           ],
           "enter": "slide"
+        }
+      ]
+    },
+    {
+      "id": "idea",
+      "type": "concept",
+      "title": "一条主线",
+      "statement": "时长在计划里定，不在浏览器里算。",
+      "points": [
+        "durationInFrames 写死九千帧",
+        "渲染只负责逐帧执行"
+      ],
+      "narration": "这个项目有一条铁律：时长在计划里定，不在浏览器里算。每一讲挂载时写死九千帧，渲染只负责逐帧执行。",
+      "beats": [
+        {
+          "points": [
+            "计划定时长，浏览器不算"
+          ],
+          "enter": "reveal"
+        }
+      ]
+    },
+    {
+      "id": "halves",
+      "type": "compare",
+      "title": "两块内容",
+      "left": {
+        "label": "content（讲次）",
+        "lines": [
+          "七个讲次的讲义与素材",
+          "约 18 万字节，是主体"
+        ]
+      },
+      "right": {
+        "label": "src（渲染）",
+        "lines": [
+          "九个文件的渲染代码",
+          "约 4 万字节，管出片"
+        ]
+      },
+      "narration": "仓库分两块：content 放七个讲次的讲义，src 放渲染代码。内容是主体，代码是工具。",
+      "beats": [
+        {
+          "points": [
+            "内容七成，代码三成"
+          ],
+          "enter": "fade"
+        }
+      ]
+    },
+    {
+      "id": "pipeline",
+      "type": "flow",
+      "title": "一讲的产出流程",
+      "steps": [
+        { "label": "讲义", "note": "content 下的素材" },
+        { "label": "旁白", "note": "TTS 合成音频" },
+        { "label": "渲染", "note": "Remotion 逐帧" },
+        { "label": "样片", "note": "七讲已产出" }
+      ],
+      "narration": "每一讲四步产出：讲义进来说旁白，旁白配着画面渲，最后出样片。七讲走的都是同一条流水线。",
+      "beats": [
+        {
+          "points": [
+            "七讲同一条流水线"
+          ],
+          "enter": "reveal"
         }
       ]
     },

@@ -38,6 +38,9 @@ export const SCENE_TYPES = [
   'clip',
   'document',
   'outro',
+  'concept',
+  'compare',
+  'flow',
 ] as const;
 
 export type SceneType = (typeof SCENE_TYPES)[number];
@@ -61,6 +64,9 @@ export const SCENE_REQUIRED_FIELDS: Readonly<Record<SceneType, readonly string[]
   clip: ['source'],
   document: ['source'],
   outro: ['title'],
+  concept: ['statement'],
+  compare: ['left', 'right'],
+  flow: ['steps'],
 };
 
 /** 每种场景**允许**出现的字段。未列出的字段出现在该场景里就是错误（多半是笔误）。 */
@@ -68,11 +74,14 @@ export const SCENE_ALLOWED_FIELDS: Readonly<Record<SceneType, readonly string[]>
   cover: ['id', 'type', 'title', 'subtitle', 'narration', 'durationSec', 'beats'],
   tree: ['id', 'type', 'title', 'narration', 'durationSec', 'entries', 'beats'],
   inventory: ['id', 'type', 'title', 'narration', 'durationSec', 'groups', 'total', 'beats'],
-  file: ['id', 'type', 'title', 'narration', 'durationSec', 'file', 'note', 'excerpt', 'beats'],
+  file: ['id', 'type', 'title', 'narration', 'durationSec', 'file', 'note', 'excerpt', 'excerptStart', 'beats'],
   gallery: ['id', 'type', 'title', 'narration', 'durationSec', 'items', 'beats'],
   clip: ['id', 'type', 'title', 'narration', 'durationSec', 'source', 'clipRange', 'beats'],
   document: ['id', 'type', 'title', 'narration', 'durationSec', 'source', 'pages', 'beats'],
   outro: ['id', 'type', 'title', 'subtitle', 'narration', 'durationSec', 'lines', 'beats'],
+  concept: ['id', 'type', 'title', 'narration', 'durationSec', 'statement', 'points', 'beats'],
+  compare: ['id', 'type', 'title', 'narration', 'durationSec', 'left', 'right', 'beats'],
+  flow: ['id', 'type', 'title', 'narration', 'durationSec', 'steps', 'beats'],
 };
 
 /** tree 的一行：agent 自己数好写进来的目录摘要。 */
@@ -85,6 +94,18 @@ export type TreeEntry = {
   bytes?: number;
   /** 要强调（用强调色画）。 */
   highlight?: boolean;
+};
+
+/** compare 的一侧：标签 + 几行内容（0005 WP3）。 */
+export type CompareSide = {
+  label: string;
+  lines: string[];
+};
+
+/** flow 的一步（0005 WP3）。 */
+export type FlowStep = {
+  label: string;
+  note?: string;
 };
 
 /** inventory 的一组。`label` 是自由文本（「Markdown 笔记」「简历素材」都行）。 */
@@ -111,6 +132,15 @@ export type Beat = {
   /** 入场意图，缺省 reveal。四个够用，渲染器各自实现曲线。 */
   enter?: 'fade' | 'reveal' | 'grow' | 'slide';
 };
+
+/** Markdown 系扩展名：摘录走 Markdown 渲染而不是代码高亮（0005）。 */
+const MARKDOWN_EXTS: ReadonlySet<string> = new Set(['md', 'markdown', 'mdx']);
+
+/** 这个文件是不是 Markdown。渲染器与校验器都要做同一个判断，所以放在契约层。 */
+export function isMarkdownFile(file: string): boolean {
+  const ext = file.split('.').pop()?.toLowerCase() ?? '';
+  return MARKDOWN_EXTS.has(ext);
+}
 
 /** 节拍的入场意图枚举（校验与 schema 用）。 */
 export const BEAT_ENTERS = ['fade', 'reveal', 'grow', 'slide'] as const;
@@ -145,6 +175,8 @@ export type Scene = {
   note?: string;
   /** file：摘录的原文行（agent 从文件里挑的），没有素材图时画在画面上。 */
   excerpt?: string[];
+  /** file：摘录首行在源文件中的 1 基行号。写了画面就带行号槽与来源区间（L12–L18）。 */
+  excerptStart?: number;
   /** gallery：一组源文件路径（图片，或视频 —— 画面用它的封面）。 */
   items?: string[];
   /** clip / document：源文件路径，相对源目录。 */
@@ -155,6 +187,16 @@ export type Scene = {
   pages?: number[];
   /** outro：结尾的几行小结。 */
   lines?: string[];
+  /** concept：大字论断（画面主角是这句话本身）。 */
+  statement?: string;
+  /** concept：论断下的支撑要点。 */
+  points?: string[];
+  /** compare：左栏。 */
+  left?: CompareSide;
+  /** compare：右栏。 */
+  right?: CompareSide;
+  /** flow：步骤（2–6 步，按顺序画成步骤条）。 */
+  steps?: FlowStep[];
   /** 画面层节拍（v2，0004）：没有 beats 的场景按 v1 的静态版式渲染（兼容降级，不报错）。 */
   beats?: Beat[];
 };

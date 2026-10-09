@@ -42,7 +42,20 @@ beforeAll(() => {
   mkdirSync(join(root, 'docs'), { recursive: true });
   mkdirSync(workRoot, { recursive: true });
 
-  writeFileSync(join(root, 'src', 'main.ts'), 'export const main = () => 0;\n');
+  // 摘录真实性检查（0005）要求 excerpt 是原文：夹具文件内容必须包含讲稿里摘的行
+  writeFileSync(
+    join(root, 'src', 'main.ts'),
+    `${[
+      'export const main = () => {',
+      '  const plan = buildPlan(root);',
+      '  const page = renderPage(plan);',
+      '  writeFileSync(out, page);',
+      '  return 0;',
+      '}',
+      '',
+      'export default main;',
+    ].join('\n')}\n`,
+  );
   writeFileSync(join(root, 'assets', 'architecture.png'), TINY_PNG);
   writeFileSync(join(root, 'assets', 'ui.png'), TINY_PNG);
   // mp4 / pdf 在页面阶段只出卡片，内容从不读 —— 占位字节就够（存在性由校验器查）

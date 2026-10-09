@@ -5,7 +5,10 @@
  * 写稿的模型从它里面「选」，评审的模型对着它核对讲稿。
  *
  * 校验只做机器能判的：
+ * - 契约版本（v2 起 excerpts 是块级摘录，0005 WP2）；
  * - 引用的文件（`excerpts[].file`、`modules[].path`、`keyFiles`）真实存在；
+ * - **摘录真实性**：块级摘录的行要能在源文件里找到、`start` 要对得上（warning —— 与
+ *   讲稿摘录同一哲学：必须是原文，但不为疑似拼接拦死管线）；
  * - **计数抽查**：`scale.totalFiles` 这类程序能确定性重数的字段真数一遍 ——
  *   「数字亲手数过」从荣誉制变成机器可查（数不上来的跳过，不猜）。
  * 数字对不上是 warning 不是 blocker：抽查口径（比如要不要算锁文件）可能合理地不同，
@@ -14,8 +17,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-/** digest 契约版本。 */
-export const DIGEST_VERSION = 1 as const;
+/** digest 契约版本。v2：excerpts 升级为块级摘录（0005 WP2）——密度从富集里选，先得有整块。 */
+export const DIGEST_VERSION = 2 as const;
 
 /** 模块：digest 里的一块（通常对应一个目录）。 */
 export type DigestModule = {
@@ -32,8 +35,12 @@ export type DigestModule = {
 export type DigestExcerpt = {
   /** 相对源目录，必须存在。 */
   file: string;
-  /** 摘录的原文（模型从文件里挑的）。 */
-  text: string;
+  /** 摘录的原文行：**整块**（8–12 行），不是单句 —— 写稿模型从块里再取舍。 */
+  lines: string[];
+  /** 首行在源文件中的 1 基行号；写稿时透传给讲稿的 `excerptStart`。 */
+  start?: number;
+  /** 这块为什么值得讲（一句话；写稿挑块与评审核对都用）。 */
+  why?: string;
 };
 
 export type DigestDocument = {
@@ -110,19 +117,59 @@ export function countSourceFiles(root: string): number {
  */
 export function checkDigest(doc: DigestDocument, root: string): DigestIssue[] {
   const issues: DigestIssue[] = [];
+  if (doc.digest !== DIGEST_VERSION) {
+    issues.push({
+      code: 'digest-version',
+      severity: 'blocker',
+      message: `digest 版本是 ${String(doc.digest)}，当前契约要 ${String(DIGEST_VERSION)}（v2：excerpts 升级为块级摘录 lines + start；把 text 换成 lines、补 start 即可迁移）`,
+    });
+  }
+
   const exists = (relative: string): boolean => {
     const stats = statSync(resolve(root, relative), { throwIfNoEntry: false });
     return stats !== undefined;
   };
 
   for (const [index, excerpt] of doc.excerpts.entries()) {
+    const at = (field: string): string => `/excerpts/${String(index)}/${field}`;
     if (!exists(excerpt.file)) {
       issues.push({
         code: 'digest-path-missing',
         severity: 'blocker',
         message: `digest 摘录引用的文件不存在：${excerpt.file}`,
-        path: `/excerpts/${String(index)}/file`,
+        path: at('file'),
       });
+      continue;
+    }
+    // v2 块级摘录的真实性（与讲稿摘录同一哲学：必须是原文，行号要对得上）
+    const nonEmpty = (excerpt.lines ?? []).filter((line) => line.trim() !== '');
+    if (nonEmpty.length === 0) continue;
+    let content: string | undefined;
+    try {
+      content = readFileSync(resolve(root, excerpt.file), 'utf8');
+    } catch {
+      continue;
+    }
+    const haystack = content.replace(/\r\n/g, '\n');
+    const missing = nonEmpty.find((line) => !haystack.includes(line.trim()));
+    if (missing !== undefined) {
+      issues.push({
+        code: 'digest-excerpt-unverifiable',
+        severity: 'warning',
+        message: `digest 摘录行在 ${excerpt.file} 里找不到：「${missing.trim().slice(0, 40)}」`,
+        path: at('lines'),
+      });
+    }
+    if (excerpt.start !== undefined) {
+      const atLine = haystack.split('\n')[excerpt.start - 1];
+      if (atLine === undefined || atLine.trim() !== (nonEmpty[0] ?? '').trim()) {
+        issues.push({
+          code: 'digest-start-mismatch',
+          severity: 'warning',
+          message: `digest 摘录的 start ${String(excerpt.start)} 对不上：${excerpt.file} 那一行不是摘录的第一行`,
+          path: at('start'),
+        });
+      }
     }
   }
 

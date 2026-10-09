@@ -65,7 +65,7 @@ const OUTPUT_SCHEMA = {
     error: { type: 'string', description: '要求的步骤失败或环境不满足时的一句话说明' },
     ran: {
       type: 'array',
-      description: '这次调用实际跑了哪些步骤，按执行顺序（check / voice / render）',
+      description: '这次调用实际跑了哪些步骤，按执行顺序（check / page / voice / render）',
       items: { type: 'string' },
     },
     dependencies: {
@@ -123,7 +123,7 @@ const OUTPUT_SCHEMA = {
     },
     voiceName: { type: 'string', description: '实际使用的音色（从时长表读，不是配置里写的）' },
     videoPath: { type: 'string', description: '成片落点' },
-    pagePath: { type: 'string', description: '导览页落点（校验通过时自动产出的自包含 HTML 预览）' },
+    pagePath: { type: 'string', description: '导览页落点（评审后显式要求的自包含 HTML 产物）' },
     notes: {
       type: 'array',
       description: '给模型看的一句话说明（如「配置选了未实现的 provider」）',
@@ -192,7 +192,7 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
   tools.register({
     name: 'foldercast_cast',
     description:
-      'Validate the foldercast script.json (contract, referenced paths, subtitle splitting); when it passes, render a self-contained HTML preview page; and, only when explicitly asked, synthesise the voice-over (edge by default, or mimo) and render the mp4. Exploring the folder and writing the script are the agent\'s job, not this tool\'s. Invoke it only when the user explicitly asked for a foldercast walk-through video — not for plain directory browsing or Q&A.',
+      'Validate the foldercast script.json (contract, referenced paths, subtitle splitting) — validation only produces a verdict, no artifacts. Producing outputs (self-contained HTML page, voice-over via edge/mimo, mp4) is a separate explicit step for the agent to request after its review passes: page: true for the HTML, render: true for the film (voice: true adds narration). Exploring the folder and writing the script are the agent\'s job, not this tool\'s. Invoke it only when the user explicitly asked for a foldercast walk-through video — not for plain directory browsing or Q&A.',
     timeoutMs: 2_400_000,
     parameters: {
       type: 'object',
@@ -201,6 +201,11 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
         path: {
           type: 'string',
           description: 'Absolute path of the folder to cast.',
+        },
+        page: {
+          type: 'boolean',
+          description:
+            'Produce the self-contained HTML guide page (out/page.html). Off by default: outputs come after the agent review, so they are requested explicitly. HTML-only means passing just this flag. Requires an existing script.json.',
         },
         render: {
           type: 'boolean',
@@ -228,7 +233,7 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
       render: (_args: unknown, value: unknown) => [{ type: 'text', text: renderResult(value as CastLike) }],
     },
     async execute(
-      args: { path: string; render?: boolean; voice?: boolean; voiceName?: string; forceVoice?: boolean },
+      args: { path: string; page?: boolean; render?: boolean; voice?: boolean; voiceName?: string; forceVoice?: boolean },
       exec: { signal: AbortSignal },
     ) {
       // 每次调用时重新解包设置：volatile 字段是活的引用，设置页保存后立即生效、不用重挂载
@@ -236,6 +241,7 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
       const result = await cast({
         target: args.path,
         signal: exec.signal,
+        page: args.page === true,
         render: args.render === true,
         voice: args.voice === true,
         ...(args.voiceName === undefined ? {} : { voiceName: args.voiceName }),

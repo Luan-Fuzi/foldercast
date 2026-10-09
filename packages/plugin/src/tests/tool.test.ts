@@ -105,10 +105,11 @@ describe('注册的形状符合 DSH 的工具契约', () => {
     expect(tool?.description.split(' ').length).toBeGreaterThanOrEqual(5);
   });
 
-  it('参数只有目录路径与四个开关', () => {
+  it('参数只有目录路径与五个开关', () => {
     expect(tool?.parameters.required).toEqual(['path']);
     expect(Object.keys(tool?.parameters.properties ?? {}).sort()).toEqual([
       'forceVoice',
+      'page',
       'path',
       'render',
       'voice',
@@ -184,16 +185,25 @@ describe('execute：有讲稿时跑校验', () => {
     expect(hallucinated[0]?.sceneId).toBe('entry');
   });
 
-  it('讲稿通过时 ok：不渲染不配音，但顺手产出导览页', async () => {
+  it('讲稿通过时 ok：只校验不产出（产物等评审后显式要，0007）', async () => {
     writeScript('src/index.ts');
 
     const value = await tool?.execute({ path: source }, { signal: new AbortController().signal });
     expect(value?.ok).toBe(true);
-    expect(value?.ran).toEqual(['check', 'page']);
+    expect(value?.ran).toEqual(['check']);
     expect((value?.validation as { blocker: number }).blocker).toBe(0);
     expect((value?.stages as Record<string, unknown>).render).toBeUndefined();
+    expect(value?.pagePath).toBeUndefined();
     expect(existsSync(join(source, '.foldercast', 'out', 'video.mp4'))).toBe(false);
-    // 页面是秒级预览：校验通过就该有，render 输出里也报得出落点
+    expect(existsSync(join(source, '.foldercast', 'out', 'page.html'))).toBe(false);
+  });
+
+  it('传 page 时产出导览页（只要 HTML 就只传它）', async () => {
+    writeScript('src/index.ts');
+
+    const value = await tool?.execute({ path: source, page: true }, { signal: new AbortController().signal });
+    expect(value?.ok).toBe(true);
+    expect(value?.ran).toEqual(['check', 'page']);
     const pagePath = value?.pagePath as string | undefined;
     expect(pagePath).toContain(join('.foldercast', 'out', 'page.html'));
     expect(existsSync(pagePath ?? '')).toBe(true);

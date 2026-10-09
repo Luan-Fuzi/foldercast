@@ -69,9 +69,11 @@ dsh plugin --profile <profile> add dsh-foldercast
 ```
 
 装完在插件管理页看到「目录放映」，对话里说「把这个目录讲一遍」即触发。agent 按
-skill 走：自己探目录 → 写 `script.json` → 调 `foldercast_cast` 校验（通过时顺手产出
-自包含的 `page.html` 导览页当预览）→ 起独立 subagent 评审（结论写 `review.md`）→
-评审通过后**显式传 `render: true`** 出片（要旁白同时传 `voice: true`）。
+skill 走：自己探目录 → 写 digest 与 `script.json` → 调 `foldercast_cast` 校验（机器闸门，
+只给结论、不落产物）→ 起独立 subagent 评审（结论写 `review.md`）→ **评审通过后**传
+`page: true` 产出自包含的 `page.html` 导览页（它同时是视频画面的忠实预览），要成片再传
+`render: true`（要旁白同时传 `voice: true`）。产出顺序由 skill 驱动（0007）：默认先 HTML
+再视频；用户只要导览页就停在 HTML。
 
 **昂贵步骤默认不跑**：不出片就不传 `render`，只要静音片就不传 `voice`。
 渲染几分钟到几十分钟；配音走云端 TTS——默认 `edge`（免密钥），`mimo` 中文更自然但要
@@ -101,7 +103,7 @@ pnpm text   <文件>              # Office / PDF → Markdown 打到 stdout（ag
 ```
 
 **时长以实测为准**：配音跑过之后，画面时间轴来自 `ffprobe` 实测的音频时长（不是
-字数预估）。同一份讲稿渲染两次**逐帧一致**；换音色重跑，画面不变、只有音轨与片长变。
+字数预估）。同一份讲稿渲染两次**逐帧视觉一致**（差异上限为字形抗锯齿噪声，每帧 PSNR ≥ 45dB）；换音色重跑，画面不变、只有音轨与片长变。
 
 **缺浏览器时**渲染脚本不会替你下载，而是打印三种办法（装 Chrome /
 `npx remotion browser ensure` / `FOLDERCAST_BROWSER=<路径>`）并以退出码 3 结束。

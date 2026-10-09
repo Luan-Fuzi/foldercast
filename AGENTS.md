@@ -28,9 +28,10 @@
   **摘录行数下限**与节拍-旁白对齐，file 占比过高提醒 `layout-monotony`。
 - `<目录>/.foldercast/durations.json`：配音实测时长（`ffprobe`），程序产出、可重算；
   字数只用于字幕分配，不定时长。**节拍时刻对齐字幕**（第 i 拍随第 i 句旁白出现）。
-- 贵步骤不默认跑：`render` / `voice` 都要显式传参。退出码约定：2 参数/讲稿/环境
-  问题，3 缺浏览器，4 缺密钥。缺依赖降级、不阻塞（`detectDependencies` 的
-  `required: false` 模型）。
+- 产出步骤不默认跑（0007）：`page` / `render` / `voice` 都要显式传参，校验只给结论
+  不落产物——产物在评审之后，顺序由 skill 驱动（默认先 HTML 再视频，可 HTML-only）。
+  退出码约定：2 参数/讲稿/环境问题，3 缺浏览器，4 缺密钥。缺依赖降级、不阻塞
+  （`detectDependencies` 的 `required: false` 模型）。
 - 密钥只走 `VoiceEnv.secret(ref)`（来源优先级与引用名见
   [0002](docs/decisions/0002-tts-providers.md)）；值不进日志、报告与任何 JSON 产物。
 

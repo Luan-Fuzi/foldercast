@@ -5,8 +5,8 @@
  *
  * - 工具不替模型探目录、不替模型写稿 —— 那是 agent 自己的事（它有 bash 与眼睛）。
  *   这里只做 agent 干不了的事：跑确定性程序（校验、TTS 合成、逐帧渲染）。
- * - 渲染与配音都不默认跑：渲染要浏览器、动辄几分钟；配音要跑 TTS。
- *   两者都要显式要求（`render: true` / `voice: true`），否则只做校验。
+ * - 产出类步骤（页面 / 渲染 / 配音）都不默认跑：产出在评审之后，由编排层显式要求
+ *   （`page: true` / `render: true` / `voice: true`），否则只做校验。顺序由 skill 决定。
  * - 编排层是模型，不是这个工具。
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -88,6 +88,11 @@ const TIMEOUT_MS: Readonly<Record<'check' | 'page' | 'render' | 'voice', number>
 export type CastOptions = {
   target: string;
   signal?: AbortSignal;
+  /**
+   * 产出导览页（`out/page.html`）。**默认不产**（0007）：产出类步骤一律在评审通过后、
+   * 由编排层显式要求——校验只给结论，不落产物。要 HTML-only 就只传它。
+   */
+  page?: boolean;
   /** 出片。**默认不出**：渲染要浏览器、本机几分钟到几十分钟，必须是显式要求。 */
   render?: boolean;
   /** 配音。**默认不配**：要跑云端 TTS 与 ffmpeg。 */
@@ -277,11 +282,13 @@ export async function cast(options: CastOptions): Promise<CastResult> {
     }
   }
 
-  // ── 页面（校验通过就自动跑：秒级预览，不阻塞后面的贵步骤） ──────
-  // 页面是讲稿的另一个出口（docs/decisions/0001 的「一份创作、多个出口」）：出片前
-  // 先有一页能看的 HTML。失败不致命——记进 stages 照常往下走，配音与渲染不依赖它。
+  // ── 页面（显式要求才跑，0007：产出在评审之后，不挂在校验上） ──────
+  // 页面是讲稿的另一个出口（docs/decisions/0001 的「一份创作、多个出口」）。顺序由
+  // skill（编排层）决定：评审通过后传 `page: true`，要视频再传 `render: true`——
+  // 一次调用都传时按 check → page → voice → render 跑。失败不致命——记进 stages
+  // 照常往下走，配音与渲染不依赖它。
   let pagePath: string | undefined;
-  if (existsSync(scriptPath) && (validation === undefined || validation.blocker === 0)) {
+  if (options.page === true && existsSync(scriptPath) && (validation === undefined || validation.blocker === 0)) {
     const pageRun = await runStage('page', {
       args: [
         target,

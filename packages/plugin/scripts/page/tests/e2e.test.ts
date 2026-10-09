@@ -87,7 +87,7 @@ describe('默认渲染', () => {
     const report = JSON.parse(result.stdout) as { ok: boolean; outputPath: string; style: string; sections: number; references: number; imagesInlined: number };
     expect(report.ok).toBe(true);
     expect(report.style).toBe('素稿');
-    expect(report.sections).toBe(9);
+    expect(report.sections).toBe(12);
     expect(report.references).toBe(5);
     expect(report.imagesInlined).toBeGreaterThan(0);
     expect(report.outputPath).toBe(join(workRoot, 'out', 'page.html'));

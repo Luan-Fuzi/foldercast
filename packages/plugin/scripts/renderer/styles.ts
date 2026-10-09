@@ -17,8 +17,14 @@ export type Tokens = {
   muted: string;
   line: string;
   accent: string;
+  /** 强调色上叠的字（page 预设同名字段的视频侧对应物）。 */
+  accentInk: string;
   panel: string;
   codeBg: string;
+  /** 条形图轨道底色。 */
+  track: string;
+  /** 代码面板里的正文色。 */
+  codeInk: string;
   fontTitle: string;
   fontBody: string;
   fontMono: string;
@@ -41,24 +47,27 @@ export type Tokens = {
   transition: 'cut' | 'fade' | 'wipe';
 };
 
-/** 唯一的一套 token（16:9 深色汇报风）。画布尺寸在 plan 里按讲稿的 `video` 改写。 */
+/** 唯一的一套 token（16:9 浅色编辑风，色板搬 page 素稿预设）。画布尺寸在 plan 里按讲稿的 `video` 改写。 */
 export const TOKENS: Tokens = {
   width: 1920,
   height: 1080,
   safeMargin: 80,
-  bg: '#0F1420',
-  ink: '#F2F4F8',
-  muted: '#8A93A6',
-  line: '#2A3245',
-  accent: '#4D9EFF',
-  panel: '#182031',
-  codeBg: '#0B0F18',
+  bg: '#FAF8F4',
+  ink: '#24221E',
+  muted: '#6F6A61',
+  line: '#E4DFD5',
+  accent: '#B4472A',
+  accentInk: '#FFFFFF',
+  panel: '#FFFFFF',
+  codeBg: '#F3EFE7',
+  track: '#EFEBE2',
+  codeInk: '#2A2620',
   fontTitle: '"PingFang SC", "Helvetica Neue", Helvetica, "Microsoft YaHei", sans-serif',
   fontBody: '"PingFang SC", "Helvetica Neue", Helvetica, "Microsoft YaHei", sans-serif',
   fontMono: '"SF Mono", Menlo, Consolas, monospace',
   titleWeight: 600,
-  radius: 12,
-  shadow: 1,
+  radius: 10,
+  shadow: 0,
   grain: 0,
   titleSize: 92,
   headingSize: 44,
@@ -99,7 +108,7 @@ const SHADOW_CSS: Record<number, string> = {
 
 const RULE_WIDTH: Record<number, number> = { 0: 0, 1: 1, 2: 3 };
 
-/** token → CSS 变量表。组件只认这几个变量名。 */
+/** token → CSS 变量表。组件与场景卡（scenecard）只认这几个变量名。 */
 export function cssVariables(tokens: Tokens): Record<string, string> {
   return {
     '--bg': tokens.bg,
@@ -107,9 +116,13 @@ export function cssVariables(tokens: Tokens): Record<string, string> {
     '--muted': tokens.muted,
     '--line': tokens.line,
     '--accent': tokens.accent,
+    '--accent-ink': tokens.accentInk,
     '--panel': tokens.panel,
     '--code-bg': tokens.codeBg,
+    '--code-ink': tokens.codeInk,
+    '--track': tokens.track,
     '--font-title': tokens.fontTitle,
+    '--font-display': tokens.fontTitle,
     '--font-body': tokens.fontBody,
     '--font-mono': tokens.fontMono,
     '--radius': `${tokens.radius}px`,

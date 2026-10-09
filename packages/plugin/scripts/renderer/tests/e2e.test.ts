@@ -158,7 +158,7 @@ describe('CLI 端到端', () => {
 
 describe.skipIf(browser.kind === 'missing')('出片', () => {
   it(
-    '同一份讲稿渲染两次，输出字节一致（逐帧一致的判据）',
+    '同一份讲稿渲染两次，画面逐帧视觉一致（一致性判据）',
     { timeout: 900_000 },
     () => {
       const first = join(workRoot, 'out', 'first.mp4');
@@ -169,9 +169,32 @@ describe.skipIf(browser.kind === 'missing')('出片', () => {
       const runB = run([source, '--out', second]);
       expect(runB.status).toBe(0);
 
-      // 先确认两次都不是空文件，再比字节 —— 否则「两个空文件相同」也会绿
+      // 先确认两次都不是空文件，再比画面 —— 否则「两个空文件相同」也会绿
       expect(readFileSync(first).length).toBeGreaterThan(20_000);
-      expect(sha256(first)).toBe(sha256(second));
+      // 判据（0006 起改）：字节相等直接过；不相等时要求**每一帧** PSNR ≥ 45dB。
+      // 原判据是整片 sha256 相等——浅色视觉基下实测不可达：Chrome 字形光栅化的亚像素
+      // 噪声过 JPEG 量化后字节必差（实测噪声下限 78dB；深色主题时被量化抹平，历史绿）。
+      // 真·画面回归（错帧/字幕错位/图形缺失）会远低于 45dB。
+      if (sha256(first) !== sha256(second)) {
+        if (hasFfprobe) {
+          const stats = join(workRoot, 'out', 'psnr.log');
+          execFileSync(
+            'ffmpeg',
+            ['-v', 'error', '-i', first, '-i', second, '-lavfi', `psnr=stats_file=${stats}`, '-f', 'null', '-'],
+            { encoding: 'utf8' },
+          );
+          let floor = Number.POSITIVE_INFINITY;
+          for (const line of readFileSync(stats, 'utf8').split('\n')) {
+            const match = /psnr_avg:([0-9.]+|inf)/.exec(line);
+            if (match === null) continue;
+            floor = match[1] === 'inf' ? floor : Math.min(floor, Number(match[1]));
+          }
+          expect(floor, `逐帧 PSNR 下限（45dB=视觉一致；实测噪声在 78dB 以上）`).toBeGreaterThanOrEqual(45);
+        } else {
+          // 没有 ffmpeg 时退回字节判据：本地总有 ffmpeg，这条只影响极简环境
+          expect(sha256(first)).toBe(sha256(second));
+        }
+      }
 
       // 用 ffprobe 核对容器：规格来自 plan，编码是 h264，没有音轨（这条夹具没配音）
       if (!hasFfprobe) return;

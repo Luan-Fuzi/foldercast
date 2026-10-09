@@ -8,8 +8,9 @@ describe('token', () => {
   it('CSS 变量覆盖组件用到的全部变量名', () => {
     const css = cssVariables(TOKENS);
     for (const name of [
-      '--bg', '--ink', '--muted', '--line', '--accent', '--panel', '--code-bg',
-      '--font-title', '--font-body', '--font-mono', '--radius', '--shadow', '--space', '--rule-w',
+      '--bg', '--ink', '--muted', '--line', '--accent', '--accent-ink', '--panel', '--code-bg',
+      '--code-ink', '--track', '--font-title', '--font-display', '--font-body', '--font-mono',
+      '--radius', '--shadow', '--space', '--rule-w',
     ]) {
       expect(css[name], name).toBeTruthy();
     }

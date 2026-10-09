@@ -82,15 +82,35 @@ function fakeProvider(name: string): TtsProvider {
   };
 }
 
-/** 渲染成 mp4，然后用 ffmpeg 抽成无损帧、返回每帧的 sha256（丢掉音轨）。 */
-function renderAndHashFrames(outPath: string): string[] {
+/** 渲染成 mp4（丢掉音轨不比较——这里只验画面）。 */
+function render(outPath: string): void {
   execFileSync('node', [RENDER_MAIN, root, '--out', outPath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  // `-f framemd5` 给的是每一帧解码后的校验和：只看画面，音轨用 `-an` 丢掉
+}
+
+/** 帧数（用 framemd5 数行数，比 ffprobe 的 nb_frames 稳）。 */
+function frameCountOf(outPath: string): number {
   const md5 = execFileSync('ffmpeg', ['-v', 'error', '-i', outPath, '-an', '-f', 'framemd5', '-'], { encoding: 'utf8' });
-  return md5
-    .split('\n')
-    .filter((line) => line !== '' && !line.startsWith('#'))
-    .map((line) => line.split(',').at(-1)?.trim() ?? '');
+  return md5.split('\n').filter((line) => line !== '' && !line.startsWith('#')).length;
+}
+
+/**
+ * 两份成片的**逐帧视觉一致**：每一帧的 PSNR 都不低于阈值。
+ *
+ * 原判据是 `framemd5` 逐帧字节相等；浅色视觉基（0006）下实测不可达——Chrome 的字形
+ * 光栅化跨进程有亚像素噪声，过 JPEG 量化后字节必差（实测噪声下限 78dB，深色主题时
+ * 被量化抹平所以历史上一直绿）。**真**的画面回归（错帧 / 字幕错位 / 图形缺失）会
+ * 远低于 45dB，阈值留足余量。
+ */
+function perFramePsnrFloor(first: string, second: string): number {
+  const stats = join(root, 'psnr.log');
+  execFileSync('ffmpeg', ['-v', 'error', '-i', first, '-i', second, '-lavfi', `psnr=stats_file=${stats}`, '-f', 'null', '-'], { encoding: 'utf8' });
+  let floor = Number.POSITIVE_INFINITY;
+  for (const line of readFileSync(stats, 'utf8').split('\n')) {
+    const match = /psnr_avg:([0-9.]+|inf)/.exec(line);
+    if (match === null) continue;
+    floor = match[1] === 'inf' ? floor : Math.min(floor, Number(match[1]));
+  }
+  return floor;
 }
 
 beforeAll(() => {
@@ -156,7 +176,8 @@ describe.skipIf(!hasFfmpeg)('配音 → 出片', () => {
         scenes: { id: string; duration: number }[];
       };
       const first = join(root, 'a.mp4');
-      const framesA = renderAndHashFrames(first);
+      render(first);
+      const framesOfFirst = frameCountOf(first);
 
       // 第二遍：B 音色。时长只由文本决定，所以两遍的时长必须一模一样
       await synthesize({
@@ -172,11 +193,12 @@ describe.skipIf(!hasFfmpeg)('配音 → 出片', () => {
       expect(afterDoc.scenes.map((scene) => scene.duration)).toEqual(beforeDoc.scenes.map((scene) => scene.duration));
 
       const second = join(root, 'b.mp4');
-      const framesB = renderAndHashFrames(second);
+      render(second);
 
-      expect(framesA.length).toBeGreaterThan(50);
-      expect(framesB.length).toBe(framesA.length);
-      expect(framesB).toEqual(framesA);
+      expect(framesOfFirst).toBeGreaterThan(50);
+      expect(frameCountOf(second)).toBe(framesOfFirst);
+      // 画面逐帧视觉一致（PSNR 下限，见 perFramePsnrFloor 的注释）
+      expect(perFramePsnrFloor(first, second)).toBeGreaterThanOrEqual(45);
 
       // 音轨确实换了（否则上面那条只是「渲染器是确定性的」）
       const bytesA = readFileSync(first);

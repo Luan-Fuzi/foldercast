@@ -87,7 +87,7 @@ describe('自包含（三条硬约束）', () => {
     expect(html).toContain('2026-10-07T08:09:10.000Z');
   });
 
-  it('每类区块都在：hero、条形图、盘点、代码块、图集、卡片、小结、目录', () => {
+  it('每类区块都在：hero、条形图、盘点、代码块、图集、卡片、小结、目录、论点、对比、流程', () => {
     expect(html).toContain('class="hero"');
     expect(html).toContain('class="bars"');
     expect(html).toContain('共 14 个');
@@ -96,6 +96,20 @@ describe('自包含（三条硬约束）', () => {
     expect(html).toContain('翻第 2、4 页');
     expect(html).toContain('12–18.5 秒');
     expect(html).toContain('class="toc"');
+    expect(html).toContain('class="concept-statement"');
+    expect(html).toContain('class="compare-side"');
+    expect(html).toContain('class="flow-step"');
+  });
+
+  it('concept 的要点只画一遍（区块内容与节拍要点共用同一个字段）', () => {
+    const script = fullScript('/tmp/fixture');
+    const concept = script.scenes.find((scene) => scene.id === 'principle');
+    if (concept?.type !== 'concept') throw new Error('夹具缺 concept 场景');
+    // 概念自己的要点 + 节拍追加的要点都得在，而且各出现一次
+    const expected = [...(concept.points ?? []), ...(concept.beats ?? []).flatMap((beat) => beat.points ?? [])];
+    expect(expected).toHaveLength(3);
+    const page = renderFixture(script);
+    for (const point of expected) expect(page.split(point)).toHaveLength(2);
   });
 
   it('narration 全部作为引文出现（字幕文本不丢）', () => {
@@ -181,7 +195,7 @@ describe('风格预设', () => {
     }
   });
 
-  it('夜幕与渲染器成片保持同一套颜色（两边一起动）', () => {
+  it('素稿与渲染器成片保持同一套颜色（两边一起动）', () => {
     expect(samePaletteAsVideo()).toBe(true);
   });
 });

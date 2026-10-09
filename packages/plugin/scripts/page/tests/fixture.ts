@@ -1,5 +1,5 @@
 /**
- * 测试共用的讲稿夹具：覆盖全部八种场景，且**过得了契约校验**（端到端用例直接拿它跑
+ * 测试共用的讲稿夹具：覆盖全部 11 种场景，且**过得了契约校验**（端到端用例直接拿它跑
  * 真入口，字段形状错了验的就不是页面而是校验器）。
  *
  * 引用的文件路径由调用方负责落盘（端到端用例会真的造出它们）。
@@ -48,6 +48,35 @@ export function fullScript(root: string): ScriptDocument {
         ],
       },
       {
+        id: 'principle',
+        type: 'concept',
+        title: '一条判据',
+        statement: '程序只做 agent 干不了的事。',
+        points: ['模型自己有 bash 和眼睛', '程序只管校验、配音与渲染'],
+        narration: '整条管线只有一条判据：程序只做模型干不了的事。',
+        beats: [{ points: ['模型有眼睛，程序有契约'], enter: 'reveal' }],
+      },
+      {
+        id: 'engines',
+        type: 'compare',
+        title: '两个引擎',
+        left: { label: 'edge（默认）', lines: ['免密钥，联网即用', '三平台行为一致'] },
+        right: { label: 'mimo（高配）', lines: ['要一个密钥', '中文更自然'] },
+        narration: '两个云端引擎：默认的免密钥，高配的要一个密钥。',
+      },
+      {
+        id: 'pipeline',
+        type: 'flow',
+        title: '管线',
+        steps: [
+          { label: '模型', note: '探目录、写讲稿' },
+          { label: '程序', note: '校验、转素材' },
+          { label: '出片', note: '配音、逐帧渲染' },
+        ],
+        narration: '管线三段：模型写稿，程序校验，最后出片。',
+        beats: [{ points: ['写稿 → 校验 → 出片'], enter: 'slide' }],
+      },
+      {
         id: 'entry',
         type: 'file',
         title: '渲染入口',
@@ -55,7 +84,7 @@ export function fullScript(root: string): ScriptDocument {
         note: 'TypeScript · 约 40 行',
         excerpt: ['export const main = () => {', '  const plan = buildPlan(root);', '  const page = renderPage(plan);', '  writeFileSync(out, page);', '  return 0;', '}'],
         narration: '入口只有四十行上下。它把构建计划、页面渲染与写盘这三步串成一条线，没有全局状态。',
-        beats: [{ points: ['buildPlan → renderPage → 写盘', '纯函数串联，无全局状态'], enter: 'slide' }],
+        beats: [{ points: ['buildPlan → renderPage → 写盘', '纯函数串联，无全局状态', '入口返回退出码'], enter: 'slide' }],
       },
       {
         id: 'shot',

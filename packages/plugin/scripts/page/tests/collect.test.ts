@@ -98,7 +98,7 @@ describe('边界情况', () => {
     script.scenes.push({ id: 'weird', type: 'hologram', narration: '…' } as unknown as Scene);
     const model = collectViewModel(script);
     expect(model.skipped).toEqual([{ id: 'weird', type: 'hologram' }]);
-    expect(model.sections.filter((section) => section.kind !== 'hero')).toHaveLength(8);
+    expect(model.sections.filter((section) => section.kind !== 'hero')).toHaveLength(11);
   });
 
   it('第二个 cover 不再当页头，画进正文', () => {

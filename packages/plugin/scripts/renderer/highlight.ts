@@ -80,7 +80,7 @@ export async function highlightExcerpts(script: ScriptDocument): Promise<Record<
       }
       out[scene.id] = await codeToHtml(scene.excerpt.join('\n'), {
         lang: langOf(scene.file ?? ''),
-        theme: 'github-dark',
+        theme: 'github-light',
         transformers: [{ pre: stripPreChrome }],
       });
     } catch {

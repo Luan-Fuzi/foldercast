@@ -42,15 +42,3 @@ export function captionStyle(tokens: Tokens, text: string, bandHeight: number): 
     boxSizing: 'border-box',
   };
 }
-
-/** 画面顶部的一条进度：当前场景在整片里的位置。到片尾刚好走满。 */
-export function progressStyle(tokens: Tokens, progress: number): CSSProperties {
-  return {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    height: 4,
-    width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`,
-    backgroundColor: 'var(--accent)',
-  };
-}

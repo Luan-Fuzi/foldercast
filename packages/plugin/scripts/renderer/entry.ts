@@ -1,20 +1,21 @@
+/// <reference lib="dom" />
 /**
- * Remotion 的入口。**它是唯一认识 Remotion 的文件**，场景组件只认 `Plan` 这个纯数据结构
- * （`plan.ts`），这样「讲稿会渲染成什么」可以在没有浏览器、没有 React 的情况下断言。
+ * Remotion 的入口。**它是唯一认识 Remotion 的文件**，画面本体是场景卡 HTML
+ * （`scenecard/`，0006）：这里只做三件事——注入卡片 CSS、按场景挂 `Sequence`、
+ * 每帧把节拍变量交给 `CardFrame`。讲稿在 CLI 里读（`load.ts`）经 `inputProps` 进来，
+ * 所以这里没有静态 import 的讲稿。
  *
- * 讲稿是在 CLI 里读的（`load.ts`），通过 `inputProps` 进来，所以这个入口里没有任何
- * 静态 import 的讲稿 —— 加一个目录不需要改这里的代码（ROADMAP 已识别的坑 1）。
- *
- * 时长也用 `calculateMetadata` 写死成 `plan.composition.durationInFrames`：帧数在 CLI 里
- * 就算好了，浏览器只负责画。这样「同一份讲稿两次渲染逐帧一致」不依赖浏览器里的任何计算。
+ * 时长用 `calculateMetadata` 写死成 `plan.composition.durationInFrames`：帧数在 CLI 里
+ * 就算好了，浏览器只负责画。「同一份讲稿两次渲染逐帧一致」不依赖浏览器里的任何计算。
  */
-import { createElement as h } from 'react';
-import { AbsoluteFill, Audio, Composition, Sequence, registerRoot } from 'remotion';
+import { createElement as h, useMemo } from 'react';
+import { AbsoluteFill, Audio, Composition, Sequence, continueRender, delayRender, registerRoot } from 'remotion';
 import type { Plan, PlanScene } from './plan.ts';
 import { TOKENS } from './styles.ts';
+import { buildCards } from './cards.ts';
+import { CARD_CSS } from '../scenecard/render.ts';
 import { captionStyle } from './scenes/captions.ts';
-import { useTransition } from './scenes/common.ts';
-import { SceneView } from './scenes/index.ts';
+import { CardFrame } from './scenes/cardframe.ts';
 
 export type FoldercastProps = {
   plan: Plan;
@@ -33,33 +34,43 @@ const DEFAULT_WIDTH = 1920;
 const DEFAULT_HEIGHT = 1080;
 const DEFAULT_FPS = 30;
 
-const Frame = ({ scene, plan, base }: { scene: PlanScene; plan: Plan; base: string }) => {
-  // 转场（`motion.transition`）包住场景内容。**样式从原来的 AbsoluteFill 搬到这层**，
-  // 好让转场只作用于内容、不作用于字幕条 —— 布局与搬运前逐项相同，只是多了一层可动画的容器。
-  const style: Record<string, unknown> = {
-    position: 'absolute',
-    inset: 0,
-    display: 'flex',
-    fontFamily: 'var(--font-body)',
-    color: 'var(--ink)',
-    ...useTransition(plan.tokens),
-  };
-  if (scene.type === 'cover' || scene.type === 'outro') {
-    style['justifyContent'] = 'center';
+/**
+ * 图片预载（0006）：卡片里的 `<img>` 是 innerHTML 注入的，Remotion 的 `<Img>` 组件
+ * （自带逐张 delayRender）罩不到。**不在每张卡上挂 handle**——实测每场景挂
+ * delayRender/continueRender 会让截图时机漂移，逐帧一致性间歇性挂掉；改成**整片开工前
+ * 一次性预载全部图片**（单个 handle、只解析一次），之后每帧的 `<img>` 全是内存缓存
+ * 命中，同步可用。素材都是 `data:` URI（`embed.ts`），预载不依赖网络。
+ * 在渲染期调用（不是 useEffect）：handle 必须在第一次截图前登记。
+ */
+function preloadImages(htmls: readonly string[]): void {
+  const srcs = new Set<string>();
+  for (const html of htmls) {
+    for (const match of html.matchAll(/src="(data:image\/[^"]+)"/g)) srcs.add(match[1] ?? '');
   }
-  if (scene.type === 'gallery') {
-    style['flexDirection'] = 'column';
-    style['alignItems'] = 'center';
-    style['justifyContent'] = 'center';
+  if (srcs.size === 0) return;
+  const handle = delayRender(`preload ${String(srcs.size)} card images`);
+  let rest = srcs.size;
+  for (const src of srcs) {
+    const img = document.createElement('img');
+    const done = (): void => {
+      rest -= 1;
+      if (rest === 0) continueRender(handle);
+    };
+    img.addEventListener('load', done, { once: true });
+    img.addEventListener('error', done, { once: true });
+    img.src = src;
   }
+}
 
-  return h(
-    AbsoluteFill,
-    null,
-    h('div', { style }, h(SceneView, { scene, plan })),
-    h(CaptionBar, { scene, plan }),
-  );
-};
+const Frame = ({
+  scene,
+  plan,
+  html,
+}: {
+  scene: PlanScene;
+  plan: Plan;
+  html: string;
+}) => h(AbsoluteFill, null, h(CardFrame, { scene, plan, html }), h(CaptionBar, { scene, plan }));
 
 /** 字幕条：**由渲染层画，不走 ffmpeg**（本机 ffmpeg 没有 libass，见 ADR 0003）。 */
 const CaptionBar = ({ scene, plan }: { scene: PlanScene; plan: Plan }) => {
@@ -99,16 +110,26 @@ export const FoldercastVideo = ({ plan, base, audio }: FoldercastProps) => {
     style['backgroundImage'] = 'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 0)';
     style['backgroundSize'] = '4px 4px';
   }
+  // 场景卡 HTML 纯函数现算：同一份 plan 永远得到同一组卡（逐帧一致不受影响）。
+  // 图片预载也只在这一步发生一次（渲染期登记 handle，首帧截图前完成解码）。
+  const cards = useMemo(() => buildCards(plan), [plan]);
+  useMemo(() => {
+    preloadImages(Object.values(cards));
+    return null;
+  }, [cards]);
 
   // 每个场景挂在它自己的 `Sequence` 上。
   //
-  // **`premountFor` 从整片长度换成 1 秒**：给足整片长度时实测同一段帧序列会画出重复的
-  // 帧（第 100、101、102 帧字节完全相同），说明「提前挂载」在按帧范围渲染时会打乱
-  // `useCurrentFrame()` 的取值。1 秒足够让下一场的图片在切换前开始解码，又不至于让
-  // 多个场景同时处于「渲染中」的状态。
+  // **`premountFor: 0`（0006 起禁用提前挂载）**：场景卡是大块 innerHTML 注入，下一场
+  // 提前挂载会扰动长驻渲染页的光栅状态——实测同一夹具连渲四次出三种字节（差异是
+  // 个别帧上亚像素级的抗锯齿漂移），关掉 premount 后 4/4 字节一致；旧 React 场景
+  // 组件对此不敏感，所以这个问题是 0006 换卡片注入后才出现的。premount 原本的
+  // 收益（下一场的图片提前解码）由 `CardFrame` 里对卡片 `<img>` 的显式 delayRender
+  // 承担，不再需要预挂载。
   return h(
     AbsoluteFill,
     { style },
+    h('style', { dangerouslySetInnerHTML: { __html: CARD_CSS } }),
     // 整条音轨从头播到尾：它的长度等于场景时长之和，与画面一一对应（配音阶段保证）
     audio === undefined ? null : h(Audio, { src: audio, volume: 1 }),
     ...plan.scenes.map((scene, index) =>
@@ -120,7 +141,7 @@ export const FoldercastVideo = ({ plan, base, audio }: FoldercastProps) => {
           durationInFrames: scene.durationInFrames,
           premountFor: Math.min(30, plan.composition.fps),
         },
-        h(Frame, { scene, plan, base }),
+        h(Frame, { scene, plan, html: cards[scene.id] ?? '' }),
       ),
     ),
   );

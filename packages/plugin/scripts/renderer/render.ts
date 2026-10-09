@@ -8,8 +8,13 @@
  *
  * **默认单并发**（`DEFAULT_CONCURRENCY`）：这是「逐帧一致」的必要条件，不是保守。实测同一份
  * 讲稿连渲三次，默认并发下三次的帧 sha256 互不相同（差异集中在片头 100 多帧），
- * `concurrency: 1` 之后两次渲染的 mp4 **字节完全相同**。多页面并行时 Chrome 的字形缓存与
- * 排版状态不一致，画面就跟着漂。想要快可以显式 `--concurrency N`，代价是放弃可复现。
+ * `concurrency: 1` 之后画面稳定。多页面并行时 Chrome 的字形缓存与排版状态不一致，
+ * 画面就跟着漂。想要快可以显式 `--concurrency N`，代价是放弃可复现。
+ *
+ * 一致性判据（0006 起）：**每帧 PSNR ≥ 45dB（视觉一致）**，字节相等算快速通道。浅色
+ * 视觉基下 Chrome 的字形光栅化有亚像素噪声，过 JPEG 量化后字节必差（实测噪声下限
+ * 78dB、约一成帧数受影响；深色主题时同样噪声被量化抹平，旧判据才得以字节相等）。
+ * 真画面回归会远低于 45dB。
  */
 import type { BrowserLog } from '@remotion/renderer';
 import { renderMedia, renderStill, selectComposition } from '@remotion/renderer';

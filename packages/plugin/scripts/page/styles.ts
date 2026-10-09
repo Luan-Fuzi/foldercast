@@ -5,7 +5,7 @@
  * |--------|------------------------------------------------------------|
  * | 素稿   | 缺省。浅色纸面、系统无衬线，接近旧 M6 静态页的克制观感      |
  * | 杂志   | 暖纸色 + 衬线大标题，编辑部专题页的排版密度                  |
- * | 夜幕   | 深底，与渲染器成片同一套颜色（`renderer/styles.ts` 的 token）|
+ * | 夜幕   | 深底技术风（页面独立选项，不与成片配对）                    |
  *
  * 组织方式：布局 CSS（`render.ts` 里的 BASE_CSS）只写一份、只引用变量；一套预设就是一组
  * CSS custom properties（颜色、字体层级、间距、圆角），外加少量该预设独有的补充规则
@@ -92,8 +92,9 @@ const MAGAZINE: PageStyle = {
 };
 
 /**
- * 夜幕：深底技术风。颜色直接搬渲染器的成片 token（`renderer/styles.ts`）——
- * 页面与视频是同一份讲稿的两个出口，用同一套颜色能一眼认出「这是同一部作品」。
+ * 夜幕：深底技术风。视频成片改成浅色编辑风（renderer/styles.ts 搬素稿色板）后，
+ * 这套深色只是页面的第三选项，不再声明与成片同色；与成片配对的是素稿
+ * （`samePaletteAsVideo` 查的就是它）。
  */
 const NIGHT: PageStyle = {
   name: '夜幕',
@@ -145,12 +146,12 @@ export function styleByName(name: string): PageStyle | undefined {
 }
 
 /**
- * 夜幕预设是否仍与渲染器成片 token 同色（漂移说明有人只改了一边）。
+ * 素稿预设是否仍与渲染器成片 token 同色（漂移说明有人只改了一边）。
  * 页面与视频是同一份讲稿的两个出口，这套颜色该一起动。
  */
 export function samePaletteAsVideo(): boolean {
-  const night = PAGE_STYLES['夜幕'];
-  if (night === undefined) return false;
+  const draft = PAGE_STYLES['素稿'];
+  if (draft === undefined) return false;
   const pairs: [string, string][] = [
     ['--bg', TOKENS.bg],
     ['--ink', TOKENS.ink],
@@ -160,5 +161,5 @@ export function samePaletteAsVideo(): boolean {
     ['--panel', TOKENS.panel],
     ['--code-bg', TOKENS.codeBg],
   ];
-  return pairs.every(([key, value]) => night.vars[key] === value);
+  return pairs.every(([key, value]) => draft.vars[key] === value);
 }

@@ -105,13 +105,15 @@ describe('注册的形状符合 DSH 的工具契约', () => {
     expect(tool?.description.split(' ').length).toBeGreaterThanOrEqual(5);
   });
 
-  it('参数只有目录路径与五个开关', () => {
+  it('参数包括路径、显式输出、评审版本与草稿开关', () => {
     expect(tool?.parameters.required).toEqual(['path']);
     expect(Object.keys(tool?.parameters.properties ?? {}).sort()).toEqual([
+      'draft',
       'forceVoice',
       'page',
       'path',
       'render',
+      'reviewRevision',
       'voice',
       'voiceName',
     ]);
@@ -198,15 +200,33 @@ describe('execute：有讲稿时跑校验', () => {
     expect(existsSync(join(source, '.foldercast', 'out', 'page.html'))).toBe(false);
   });
 
-  it('传 page 时产出导览页（只要 HTML 就只传它）', async () => {
+  it('未评审时正式产出被阻止，草稿可生成且记录为草稿', async () => {
     writeScript('src/index.ts');
-
     const value = await tool?.execute({ path: source, page: true }, { signal: new AbortController().signal });
+    expect(value?.ok).toBe(false);
+    expect(String(value?.error)).toContain('评审回执');
+    expect(value?.ran).toEqual(['check']);
+    const draft = await tool?.execute({ path: source, page: true, draft: true }, { signal: new AbortController().signal });
+    expect(draft?.ok).toBe(true);
+    expect(draft?.artifacts).toContainEqual({ kind: 'page', state: 'current', mode: 'draft' });
+  });
+
+  it('评审绑定当前版本后产出；改证据后旧回执失效', async () => {
+    writeScript('src/index.ts');
+    const check = await tool?.execute({ path: source }, { signal: new AbortController().signal });
+    writeFileSync(join(source, '.foldercast', 'review.md'), `第 1 轮：通过\nrevision: ${String(check?.revision)}\n证据：src/index.ts L1。`);
+    const value = await tool?.execute({ path: source, reviewRevision: check?.revision, page: true }, { signal: new AbortController().signal });
     expect(value?.ok).toBe(true);
     expect(value?.ran).toEqual(['check', 'page']);
     const pagePath = value?.pagePath as string | undefined;
     expect(pagePath).toContain(join('.foldercast', 'out', 'page.html'));
     expect(existsSync(pagePath ?? '')).toBe(true);
+    expect(value?.reviewAccepted).toBe(true);
+    expect(value?.artifacts).toContainEqual({ kind: 'page', state: 'current', mode: 'approved' });
+    writeFileSync(join(source, 'src/index.ts'), 'export const value = 2;\n');
+    const stale = await tool?.execute({ path: source, page: true }, { signal: new AbortController().signal });
+    expect(stale?.ok).toBe(false);
+    expect(String(stale?.error)).toContain('评审回执');
   });
 
   it('render 输出能读的几句话，且不空', async () => {
@@ -225,15 +245,11 @@ describe('execute：有讲稿时跑校验', () => {
     expect((value?.stages as Record<string, unknown>).render).toBeUndefined();
   });
 
-  it('传 voice 但缺配音命令时，说明缺什么、别的话照常说', async () => {
+  it('配音在版本未通过评审时不启动（测试不调用真实 TTS）', async () => {
     writeScript('src/index.ts');
     const value = await tool?.execute({ path: source, voice: true }, { signal: new AbortController().signal });
-    // 本机有 ffmpeg 且能联网时会真的配音（默认 edge，云端合成，夹具只有三句），两条路径都算过
-    if (value?.ok !== true) {
-      expect(String(value?.error)).toMatch(/ffmpeg|ffprobe|edge/);
-      return;
-    }
-    expect((value?.stages as Record<string, unknown>).voice).toBeDefined();
-    expect(value?.voiceName).toBeTruthy();
+    expect(value?.ok).toBe(false);
+    expect(String(value?.error)).toContain('评审回执');
+    expect((value?.stages as Record<string, unknown>).voice).toBeUndefined();
   });
 });

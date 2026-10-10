@@ -21,7 +21,7 @@ export default defineConfig({
     // 表现是「单跑必过、全量跑偶发失败」——实测就撞过一次（渲染用例在整套里红了，
     // 单独跑绿）。素材与渲染这两个阶段本来就是重活，串行反而更容易判断结果。
     pool: 'forks',
-    // Vitest 4 起 `poolOptions.forks.singleFork` 挪到了顶层
-    singleFork: true,
+    // 用当前 Vitest 支持的配置明确禁止用例文件并行。
+    fileParallelism: false,
   },
 });

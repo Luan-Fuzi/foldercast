@@ -6,7 +6,7 @@
  *
  * 三条判据：
  *
- * 1. 已存在的音频**不重新合成**（TTS 有配额与费用），`--force` 才重合成；
+ * 1. 请求与音频内容都匹配才复用；请求变化或 `--force` 时重配；
  * 2. 时长来自**实测**（这里是假 provider 写的真实音频，真的用 ffprobe 量）；
  * 3. `durations.json` 自洽：`duration = audioSec + pause`，字幕块之和等于 `duration`，
  *    音轨长度等于各场景之和。
@@ -19,6 +19,8 @@ import { join } from 'node:path';
 import type { DurationsDocument, TtsProvider, VoiceEnv } from '../../contracts/durations.ts';
 import { makeVoiceEnv } from '../env.ts';
 import { audioFileName, subtitlesFor, synthesize } from '../synth.ts';
+import { loadDurations } from '../../renderer/load.ts';
+import type { ScriptDocument } from '../../contracts/script.ts';
 
 const hasFfmpeg = (() => {
   try {
@@ -105,16 +107,18 @@ describe.skipIf(!hasFfmpeg)('字幕块分配', () => {
 
 describe('音频文件名', () => {
   it('用场景 id，保留 Unicode，不撞名', () => {
-    expect(audioFileName('cover')).toBe('audio/cover.wav');
-    expect(audioFileName('封面')).toBe('audio/封面.wav');
-    expect(audioFileName('小结')).toBe('audio/小结.wav');
+    expect(audioFileName('cover')).toMatch(/^audio\/cover--[a-f0-9]{16}\.wav$/);
+    expect(audioFileName('封面')).toMatch(/^audio\/封面--[a-f0-9]{16}\.wav$/);
+    expect(audioFileName('小结')).not.toBe(audioFileName('封面'));
+    expect(audioFileName('a/b')).not.toBe(audioFileName('a_b'));
+    expect(audioFileName('Cover')).not.toBe(audioFileName('cover'));
   });
 
   it('路径分隔符不会跑出 audio 目录', () => {
-    expect(audioFileName('a/b')).toBe('audio/a_b.wav');
+    expect(audioFileName('a/b')).toMatch(/^audio\/a_b--/);
     // `..` 会被换成 `_`：场景 id 不能拼出 audio 目录之外的名字
-    expect(audioFileName('..')).toBe('audio/_.wav');
-    expect(audioFileName('a/../../etc/passwd')).toBe('audio/a_.._.._etc_passwd.wav');
+    expect(audioFileName('..')).toMatch(/^audio\/_--/);
+    expect(audioFileName('a/../../etc/passwd')).toMatch(/^audio\/a_\.\._\.\._etc_passwd--/);
   });
 });
 
@@ -175,16 +179,20 @@ describe.skipIf(!hasFfmpeg)('合成调度', () => {
       },
     };
     const report = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: naming });
-    expect(report.cached).toBe(2);
+    expect(report.synthesized).toBe(2);
     expect(report.voice).toBe('自动挑的音色');
     const document = JSON.parse(readFileSync(report.durationsPath, 'utf8')) as DurationsDocument;
     expect(document.voice).toBe('自动挑的音色');
+    const cached = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: naming });
+    expect(cached.cached).toBe(2);
+    expect(cached.voice).toBe('自动挑的音色');
   });
 
-  it('provider 说不出音色时退回上一次产物里记的那个', async () => {
+  it('当前默认请求不被旧产物的音色改变，音色变了就重配', async () => {
     const forgetful: TtsProvider = { ...fake, resolveVoice: async () => undefined };
     const report = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: forgetful });
-    expect(report.voice).toBe('自动挑的音色');
+    expect(report.voice).toBeUndefined();
+    expect(report.synthesized).toBe(2);
   });
 
   it('上一轮是别的 provider 时，不把它的音色名拿来用（say 时代的 durations.json 曾漏给 edge）', async () => {
@@ -206,6 +214,63 @@ describe.skipIf(!hasFfmpeg)('合成调度', () => {
     const report = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake, force: true });
     expect(report.synthesized).toBe(2);
     expect(report.cached).toBe(0);
+  });
+
+  it('改一场旁白只重配那一场；改画面与留白不重配音频', async () => {
+    writeFixture(['第一段新旁白。', '第二段新旁白。']);
+    await synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake });
+    const path = join(workRoot, 'script.json');
+    const doc = JSON.parse(readFileSync(path, 'utf8')) as ScriptDocument;
+    doc.scenes[0]!.narration = '第一段修改过的旁白。';
+    writeFileSync(path, JSON.stringify(doc));
+    expect(() => loadDurations(workRoot, undefined, doc)).toThrow(/过期/);
+    const changed = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake });
+    expect(changed.scenes.map((scene) => scene.cached)).toEqual([false, true]);
+    doc.scenes[0]!.title = '改画面标题';
+    writeFileSync(path, JSON.stringify(doc));
+    const visualOnly = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake, pauseSec: 0.8 });
+    expect(visualOnly.cached).toBe(2);
+    expect(loadDurations(workRoot, undefined, doc)?.pause).toBe(0.8);
+  });
+
+  it('换引擎、音色或风格自动重配；音频被修改也不复用', async () => {
+    const run = (options: Partial<Parameters<typeof synthesize>[0]> = {}) => synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake, ...options });
+    expect((await run({ voice: 'A' })).synthesized).toBe(2);
+    expect((await run({ voice: 'A' })).cached).toBe(2);
+    expect((await run({ voice: 'B' })).synthesized).toBe(2);
+    expect((await run({ voice: 'B', style: '自然' })).synthesized).toBe(2);
+    expect((await run({ provider: { ...fake, name: 'other' }, voice: 'B', style: '自然' })).synthesized).toBe(2);
+    const reset = await run();
+    const audio = join(workRoot, reset.scenes[0]!.audio);
+    writeFileSync(audio, Buffer.concat([readFileSync(audio), Buffer.from('changed')]));
+    const doc = JSON.parse(readFileSync(join(workRoot, 'script.json'), 'utf8')) as ScriptDocument;
+    expect(() => loadDurations(workRoot, undefined, doc)).toThrow(/音频被改动/);
+    expect((await run()).scenes.map((scene) => scene.cached)).toEqual([false, true]);
+  });
+
+  it('失败后可续跑已完成且输入匹配的场景；无版本记录的旧音频重配', async () => {
+    const failure: TtsProvider = { ...fake, async synth(request, env) {
+      if (request.text.includes('第二')) throw new Error('模拟第二场失败');
+      return fake.synth(request, env);
+    } };
+    await expect(synthesize({ target: root, workRoot, env: offlineEnv(), provider: failure, voice: 'retry' })).rejects.toThrow(/模拟/);
+    const resumed = await synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake, voice: 'retry' });
+    expect(resumed.scenes.map((scene) => scene.cached)).toEqual([true, false]);
+    rmSync(join(workRoot, 'audio/cache.json'));
+    expect((await synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake, voice: 'retry' })).synthesized).toBe(2);
+  });
+
+  it('显式音色覆盖讲稿音色可渲染；之后改讲稿配音设置会拒绝旧时长表', async () => {
+    const path = join(workRoot, 'script.json');
+    const doc = JSON.parse(readFileSync(path, 'utf8')) as ScriptDocument;
+    doc.voice = { voice: 'script-voice', style: '清晰' };
+    writeFileSync(path, JSON.stringify(doc));
+    await synthesize({ target: root, workRoot, env: offlineEnv(), provider: fake, voice: 'override' });
+    expect(loadDurations(workRoot, undefined, doc)?.voice).toBe('override');
+    doc.voice.style = '热情';
+    expect(() => loadDurations(workRoot, undefined, doc)).toThrow(/过期/);
+    delete doc.voice;
+    writeFileSync(path, JSON.stringify(doc));
   });
 
   it('--limit 只做前几个场景，其余留给预估', async () => {

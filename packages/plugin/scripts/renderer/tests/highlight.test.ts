@@ -63,4 +63,13 @@ describe('highlightExcerpts', () => {
     );
     expect(out).toEqual({});
   });
+
+  it('Markdown 的原始 HTML 只作文本，链接与图片不注入执行或网络资源', async () => {
+    const out = await highlightExcerpts(script([{ id: 'md', type: 'file', file: 'README.md', narration: '说明。',
+      excerpt: ['<script>alert(1)</script>', '<img src="https://example.com/image" onerror="alert(1)">',
+        '', '[说明](javascript:alert(1))', '![图片](https://example.com/image.png)'] }]));
+    expect(out.md).toContain('&lt;script&gt;');
+    expect(out.md).not.toMatch(/<(?:script|img|a)\b/);
+    expect(out.md).toContain('说明');
+  });
 });

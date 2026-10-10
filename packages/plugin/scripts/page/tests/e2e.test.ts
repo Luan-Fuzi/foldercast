@@ -7,7 +7,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { hasCommand } from '../../assets/run.ts';
@@ -58,9 +58,9 @@ beforeAll(() => {
   );
   writeFileSync(join(root, 'assets', 'architecture.png'), TINY_PNG);
   writeFileSync(join(root, 'assets', 'ui.png'), TINY_PNG);
-  // mp4 / pdf 在页面阶段只出卡片，内容从不读 —— 占位字节就够（存在性由校验器查）
-  writeFileSync(join(root, 'assets', 'demo.mp4'), 'placeholder, page stage never reads it');
-  writeFileSync(join(root, 'docs', 'spec.pdf'), 'placeholder, page stage never reads it');
+  // 无效 mp4 / pdf 用来验证素材转换失败后的降级与页脚说明
+  writeFileSync(join(root, 'assets', 'demo.mp4'), 'invalid fixture content');
+  writeFileSync(join(root, 'docs', 'spec.pdf'), 'invalid fixture content');
 
   writeFileSync(join(workRoot, 'script.json'), `${JSON.stringify(fullScript(root), null, 2)}\n`);
 });
@@ -105,13 +105,13 @@ describe('默认渲染', () => {
     expect(html).toMatch(/data:image\/(?:jpeg|png);base64,/);
   });
 
-  it('页脚交代来源与引用清单；视频/文档引用只出卡片', () => {
+  it('页脚交代来源与引用清单；转换失败的素材有明确降级说明', () => {
     expect(html).toContain('本页由讲稿');
     expect(html).toContain('.foldercast/script.json');
     expect(html).toContain('引用的文件（5）');
     expect(html).toContain('assets/demo.mp4');
-    expect(html).toContain('本阶段不转封面');
-    expect(html).toContain('翻第 2、4 页');
+    expect(html).toContain('没有可用封面');
+    expect(html).toContain('没有可用页图');
   });
 });
 
@@ -137,6 +137,25 @@ describe.skipIf(scaler === 'none')('真实缩放链路（需要 sips 或 ffmpeg�
 });
 
 describe('CLI 边界', () => {
+  it.skipIf(!hasCommand('dsoffice'))('真实 PDF 经共享素材准备后，选定页图出现在 HTML 中', { timeout: 120_000 }, () => {
+    const source = mkdtempSync(join(tmpdir(), 'foldercast-page-pdf-'));
+    try {
+      mkdirSync(join(source, '.foldercast'));
+      copyFileSync(resolve(import.meta.dirname, '../../assets/tests/fixtures/office/report.pdf'), join(source, 'report.pdf'));
+      writeFileSync(join(source, '.foldercast', 'script.json'), JSON.stringify({ foldercast: 2, source: { root: source },
+        scenes: [{ id: 'doc', type: 'document', source: 'report.pdf', pages: [1], narration: '报告第一页。' }] }));
+      const result = runPage([source, '--json']);
+      expect(result.status, result.stderr).toBe(0);
+      const report = JSON.parse(result.stdout) as { imagesInlined: number; outputPath: string; mode: string };
+      expect(report.mode).toBe('draft');
+      expect(report.imagesInlined).toBe(1);
+      const html = readFileSync(report.outputPath, 'utf8');
+      expect(html).toContain('pages-row');
+      expect(html).toMatch(/<img src="data:image\/(?:jpeg|png);base64,/);
+      expect(html).not.toContain('没有可用页图');
+    } finally { rmSync(source, { recursive: true, force: true }); }
+  });
+
   it('--style 杂志 生效；--out 指到别处也落盘', () => {
     const custom = join(root, 'custom', 'intro.html');
     const result = runPage([root, '--style', '杂志', '--out', custom, '--json']);

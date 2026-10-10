@@ -12,14 +12,14 @@
  *
  * 1. **时长以实测为准**（C3）。合成完立刻 `ffprobe`，用实测值写 `durations.json`；
  *    字数只用来**分配字幕块**，不用来定时长。
- * 2. **断点续跑**：音频已存在且不是 `--force` 就跳过合成（TTS 有配额与费用）。
+ * 2. **断点续跑**：合成请求与音频字节都匹配且不是 `--force` 才复用（TTS 有配额与费用）。
  *    这与 provider 无关，所以放在调度层（rd 文档第四节第 4 条）。
  * 3. **场景时长 = 实测 + 留白**，两者都记进 `durations.json`（`audioSec` / `duration`）。
  *    留白算在场景里，于是音轨与画面只有一条时间轴。
  * 4. **`provider` / `voice` 记实际用的**，不是配置里写的 —— 配置可能没写音色而实际
  *    用了 provider 的默认音色，报告必须如实。
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   DURATIONS_VERSION,
@@ -33,8 +33,10 @@ import {
 import { allocateByWidth } from '../contracts/spans.ts';
 import { splitSubtitles } from '../contracts/subtitles.ts';
 import type { ScriptDocument, VoiceSpec } from '../contracts/script.ts';
-import { buildTrack, probeDurationSec, readJsonIfExists } from './audio.ts';
+import { buildTrack, probeDurationSec } from './audio.ts';
 import { edgeProvider } from './providers/edge.ts';
+import { hashFile, hashValue } from '../contracts/revisions.ts';
+import { canReuseAudio, loadAudioCache, saveAudioCache, synthesisHash } from './cache.ts';
 
 /** 每个场景末尾的留白（秒）。**算进场景时长**，所以画面与配音不会因此错开。 */
 export const DEFAULT_PAUSE_SEC = 0.45;
@@ -87,15 +89,15 @@ export type SynthOptions = {
   /** 进度回调。 */
   onProgress?: (event: { sceneId: string; index: number; total: number; cached: boolean; seconds: number }) => void;
   /**
-   * 已知的实际音色（上一次跑出来的）。**全部命中缓存时靠它**：provider 可能用默认音色，
-   * 而挑的动作发生在合成里，跳过合成之后就没地方知道了 —— 报告与 `durations.json`
-   * 都要记「实际用的」，不能因为这次没合成就不写。
+   * 调用方显式指定的已知音色。默认音色由当前 provider 解析，不从旧产物隐式继承。
    */
   voiceOverride?: string;
 };
 
 export type SynthReport = {
   ok: boolean;
+  revision?: string;
+  mode?: 'draft' | 'approved';
   target: string;
   workRoot: string;
   durationsPath: string;
@@ -136,7 +138,8 @@ export function audioFileName(sceneId: string): string {
     // eslint-disable-next-line no-control-regex -- 控制字符不能进文件名
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .replace(/^\.+$/, '_');
-  return `audio/${safe === '' ? 'scene' : safe}.wav`;
+  // 后缀保留原始 id 的身份，避免 a/b 与 a_b、大小写或截断后撞名。
+  return `audio/${[...(safe === '' ? 'scene' : safe)].slice(0, 40).join('')}--${hashValue(sceneId).slice(0, 16)}.wav`;
 }
 
 export class SynthError extends Error {
@@ -183,13 +186,8 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
   }
 
   const style = options.style ?? spec.style;
-  // 上一轮的产物：provider 说不出音色时的兜底（见 `voiceOverride`）。
-  // **只有 provider 一致时才复用它的音色**：音色名是 provider 内的字符串（契约注释写明
-  // 不做跨 provider 统一），say 时代的 durations.json 曾把 "Eddy (中文…)" 漏给 edge，
-  // 云端端点认不出这种名字，崩在一层很深的库里。
-  const previous = readJsonIfExists<DurationsDocument>(join(workRoot, 'durations.json'));
-  const previousVoice = previous?.provider === provider.name ? previous?.voice : undefined;
-  const requestedVoice = options.voice ?? spec.voice ?? options.voiceOverride ?? previousVoice;
+  // 默认音色由当前 provider 解析；不能用旧产物改变本次请求的含义。
+  const requestedVoice = options.voice ?? spec.voice ?? options.voiceOverride;
   // **在合成之前**解析实际音色：报告要记「实际用的」，而全部命中缓存时合成根本不会跑
   const resolvedVoice =
     provider.resolveVoice === undefined
@@ -214,6 +212,7 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
   const warnings: string[] = [];
   let cached = 0;
   let synthesized = 0;
+  const cache = loadAudioCache(workRoot);
 
   for (const [index, scene] of scenes.entries()) {
     if (scene.narration.trim() === '') {
@@ -221,9 +220,10 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
     }
     const relative = audioFileName(scene.id);
     const absolute = resolve(workRoot, relative);
-    const alreadyThere = existsSync(absolute) && statSync(absolute).size > 0;
+    const inputHash = synthesisHash({ text: scene.narration, provider: provider.name, voice, style, format: AUDIO_FORMAT });
+    const reusable = options.force !== true && canReuseAudio(cache, absolute, inputHash);
 
-    if (alreadyThere && options.force !== true) {
+    if (reusable) {
       cached += 1;
     } else {
       const result = await provider.synth(
@@ -241,18 +241,21 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
     }
 
     const seconds = probeDuration(absolute);
+    const audioHash = hashFile(absolute);
+    cache[absolute] = { inputHash, audioHash };
+    saveAudioCache(workRoot, cache);
     const duration = Math.round((seconds + pauseSec) * 1000) / 1000;
     const subs = subtitlesFor(scene.narration, duration);
-    durations.push({ id: scene.id, audio: relative, audioSec: seconds, duration, subs });
+    durations.push({ id: scene.id, audio: relative, audioSec: seconds, duration, subs, inputHash, audioHash });
     rows.push({
       id: scene.id,
       audio: relative,
       audioSec: seconds,
       duration,
       parts: subs.length,
-      cached: alreadyThere && options.force !== true,
+      cached: reusable,
     });
-    options.onProgress?.({ sceneId: scene.id, index: index + 1, total: scenes.length, cached: alreadyThere, seconds });
+    options.onProgress?.({ sceneId: scene.id, index: index + 1, total: scenes.length, cached: reusable, seconds });
   }
 
   const totalSec = durations.reduce((sum, scene) => sum + scene.duration, 0);
@@ -293,6 +296,10 @@ export async function synthesize(options: SynthOptions): Promise<SynthReport> {
     track: trackRelative ?? '',
     pause: pauseSec,
     scenes: durations,
+    narrationHash: hashValue(script.scenes.map(({ id, narration }) => ({ id, narration }))),
+    synthesisVoice: voice ?? null,
+    voiceSpecHash: hashValue(script.voice ?? {}),
+    ...(trackRelative === undefined ? {} : { trackHash: hashFile(resolve(workRoot, trackRelative)) }),
   };
 
   const durationsPath = join(workRoot, 'durations.json');

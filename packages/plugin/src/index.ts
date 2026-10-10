@@ -81,6 +81,11 @@ const OUTPUT_SCHEMA = {
       type: 'object',
       additionalProperties: false,
       properties: {
+        page: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { ok: { type: 'boolean' }, ms: { type: 'number' }, exitCode: { type: 'integer' }, error: { type: 'string' }, detail: { type: 'string' } },
+        },
         check: {
           type: 'object',
           additionalProperties: false,
@@ -124,6 +129,12 @@ const OUTPUT_SCHEMA = {
     voiceName: { type: 'string', description: '实际使用的音色（从时长表读，不是配置里写的）' },
     videoPath: { type: 'string', description: '成片落点' },
     pagePath: { type: 'string', description: '导览页落点（评审后显式要求的自包含 HTML 产物）' },
+    revision: { type: 'string', description: '当前讲稿、digest 与引用材料的内容版本；评审通过后传 reviewRevision 绑定此版本' },
+    reviewAccepted: { type: 'boolean' },
+    artifacts: {
+      type: 'array', items: { type: 'object', additionalProperties: false,
+        properties: { kind: { type: 'string' }, state: { type: 'string' }, mode: { type: 'string' } } },
+    },
     notes: {
       type: 'array',
       description: '给模型看的一句话说明（如「配置选了未实现的 provider」）',
@@ -146,6 +157,8 @@ type CastLike = {
   videoPath?: string;
   pagePath?: string;
   notes?: string[];
+  revision?: string;
+  reviewAccepted?: boolean;
 };
 
 /**
@@ -182,6 +195,8 @@ function renderResult(value: CastLike): string {
   if (value.voiceName !== undefined) lines.push(`配音音色：${value.voiceName}`);
   if (value.videoPath !== undefined) lines.push(`成片落点：${value.videoPath}`);
   if (value.pagePath !== undefined) lines.push(`导览页落点：${value.pagePath}`);
+  if (value.revision !== undefined) lines.push(`当前版本：${value.revision}`);
+  if (value.reviewAccepted === true) lines.push('评审回执已绑定当前版本（程序只核对版本，不判断评审内容）。');
 
   return lines.join('\n');
 }
@@ -192,7 +207,7 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
   tools.register({
     name: 'foldercast_cast',
     description:
-      'Validate the foldercast script.json (contract, referenced paths, subtitle splitting) — validation only produces a verdict, no artifacts. Producing outputs (self-contained HTML page, voice-over via edge/mimo, mp4) is a separate explicit step for the agent to request after its review passes: page: true for the HTML, render: true for the film (voice: true adds narration). Exploring the folder and writing the script are the agent\'s job, not this tool\'s. Invoke it only when the user explicitly asked for a foldercast walk-through video — not for plain directory browsing or Q&A.',
+      'Validate the foldercast script.json and return its revision. After independent review passes and review.md is written, pass reviewRevision to bind the verdict to that revision. Explicit page/voice/render outputs require a matching receipt; draft: true produces a work draft. Exploring, authoring and judging content remain the agent\'s job. Use for explicitly requested foldercast videos or HTML guides, not ordinary directory Q&A.',
     timeoutMs: 2_400_000,
     parameters: {
       type: 'object',
@@ -202,6 +217,8 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
           type: 'string',
           description: 'Absolute path of the folder to cast.',
         },
+        reviewRevision: { type: 'string', description: 'Declare the independent review passed for this revision (returned by validation). Requires review.md. Records review.json; does not judge the report content.' },
+        draft: { type: 'boolean', description: 'Produce a work draft without a matching review receipt. Artifacts are recorded as draft, not approved.' },
         page: {
           type: 'boolean',
           description:
@@ -223,7 +240,7 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
         },
         forceVoice: {
           type: 'boolean',
-          description: 'Re-synthesise audio that already exists.',
+          description: 'Re-synthesise even matching audio. Changed narration or synthesis settings automatically invalidate cached audio.',
         },
       },
       required: ['path'],
@@ -233,7 +250,7 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
       render: (_args: unknown, value: unknown) => [{ type: 'text', text: renderResult(value as CastLike) }],
     },
     async execute(
-      args: { path: string; page?: boolean; render?: boolean; voice?: boolean; voiceName?: string; forceVoice?: boolean },
+      args: { path: string; page?: boolean; render?: boolean; voice?: boolean; voiceName?: string; forceVoice?: boolean; reviewRevision?: string; draft?: boolean },
       exec: { signal: AbortSignal },
     ) {
       // 每次调用时重新解包设置：volatile 字段是活的引用，设置页保存后立即生效、不用重挂载
@@ -244,6 +261,8 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
         page: args.page === true,
         render: args.render === true,
         voice: args.voice === true,
+        draft: args.draft === true,
+        ...(args.reviewRevision === undefined ? {} : { reviewRevision: args.reviewRevision }),
         ...(args.voiceName === undefined ? {} : { voiceName: args.voiceName }),
         ...(args.forceVoice === undefined ? {} : { forceVoice: args.forceVoice }),
         ...(Object.keys(settings).length === 0 ? {} : { settings }),
@@ -269,6 +288,9 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
       if (result.pagePath !== undefined) value.pagePath = result.pagePath;
       if (result.validation !== undefined) value.validation = result.validation;
       if (result.notes !== undefined) value.notes = result.notes;
+      if (result.revision !== undefined) value.revision = result.revision;
+      if (result.reviewAccepted !== undefined) value.reviewAccepted = result.reviewAccepted;
+      if (result.artifacts !== undefined) value.artifacts = result.artifacts;
 
       return value;
     },

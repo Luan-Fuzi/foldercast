@@ -10,13 +10,17 @@
  *
  * 退出码：0 成功；2 参数、讲稿或环境有问题；4 缺密钥（引导里写清三种配置办法）。
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { EXIT_CREDENTIAL_MISSING, type TtsProvider } from '../contracts/durations.ts';
 import { makeVoiceEnv } from './env.ts';
 import { edgeProvider } from './providers/edge.ts';
 import { mimoProvider } from './providers/mimo.ts';
 import { audioFileName, SynthError, synthesize, type SynthReport } from './synth.ts';
+import { beginOutput, finishOutput, type OutputContext } from '../contracts/revisions.ts';
+import { canReuseAudio, loadAudioCache, synthesisHash } from './cache.ts';
+import { loadScript } from '../renderer/load.ts';
+import { checkScript } from '../renderer/check.ts';
 
 /**
  * provider 注册表：加 provider 就是往这里放一行。CLI 参数与设置页都用 `name` 在这里查。
@@ -41,6 +45,7 @@ const USAGE = `给讲稿配旁白，产出逐场景音频、实测时长与 dura
   --no-track          不拼整条音轨（只出逐场景音频与 durations.json）
   --limit <n>         只做前 n 个场景（试音色用）
   --check             只报哪些音频会重合成，不真的调 TTS
+  --approved          正式产出：要求当前输入的评审回执；缺省生成工作草稿
   --json              以 JSON 输出报告（给 agent 与 CI 用）
   -h, --help          显示这段说明
 
@@ -58,6 +63,7 @@ type Options = {
   limit?: number;
   check: boolean;
   json: boolean;
+  approved?: boolean;
 };
 
 function parseArgs(argv: string[]): Options | { error: string } {
@@ -81,6 +87,9 @@ function parseArgs(argv: string[]): Options | { error: string } {
         break;
       case '--json':
         options.json = true;
+        break;
+      case '--approved':
+        options.approved = true;
         break;
       case '--provider':
       case '--voice':
@@ -159,11 +168,17 @@ async function main(): Promise<number> {
       console.error(`找不到讲稿：${scriptPath}`);
       return 2;
     }
-    const script = JSON.parse(readFileSync(scriptPath, 'utf8')) as { scenes: { id: string; narration: string }[] };
-    const rows = script.scenes.map((scene) => {
+    const script = loadScript(workRoot, scriptPath).value;
+    const wanted = parsed.voice ?? script.voice?.voice;
+    const style = parsed.style ?? script.voice?.style;
+    const voice = await provider.resolveVoice?.({ voice: wanted, style }, env) ?? wanted;
+    const cache = loadAudioCache(workRoot);
+    const scenes = parsed.limit === undefined ? script.scenes : script.scenes.slice(0, parsed.limit);
+    const rows = scenes.map((scene) => {
       const audio = resolve(workRoot, audioFileName(scene.id));
-      const exists = existsSync(audio);
-      return { id: scene.id, chars: [...scene.narration].length, audio: exists ? '已存在（会跳过）' : '待合成' };
+      const key = synthesisHash({ text: scene.narration, provider: provider.name, voice, style, format: 'wav' });
+      const reused = !parsed.force && canReuseAudio(cache, audio, key);
+      return { id: scene.id, chars: [...scene.narration].length, audio: reused ? '版本匹配（会复用）' : '待合成' };
     });
     if (parsed.json) {
       console.log(JSON.stringify({ provider: provider.name, description: provider.describe(), scenes: rows }, null, 2));
@@ -176,9 +191,18 @@ async function main(): Promise<number> {
 
   let report: SynthReport;
   try {
+    const script = loadScript(workRoot, parsed.script);
+    const check = await checkScript(script.value, target);
+    if (check.blocker > 0) throw new SynthError(`讲稿有 ${String(check.blocker)} 个必须修的问题。先运行 pnpm render <目录> --check。`, 2);
+    const context: OutputContext = beginOutput(target, {
+      scriptPath: script.path, expectedScript: script.value, approved: parsed.approved,
+      settings: { provider: provider.name, voice: parsed.voice ?? script.value.voice?.voice,
+        style: parsed.style ?? script.value.voice?.style, pause: parsed.pause ?? 0.45, limit: parsed.limit, track: parsed.track },
+    });
     report = await synthesize({
       target,
       workRoot,
+      provider,
       ...(parsed.script === undefined ? {} : { scriptPath: parsed.script }),
       ...(parsed.voice === undefined ? {} : { voice: parsed.voice }),
       ...(parsed.style === undefined ? {} : { style: parsed.style }),
@@ -193,13 +217,22 @@ async function main(): Promise<number> {
         }
       },
     });
+    context.options.voice = report.voice;
+    finishOutput(context, 'voice', [report.durationsPath,
+      ...report.scenes.map((scene) => resolve(workRoot, scene.audio)),
+      ...(report.trackPath === undefined ? [] : [report.trackPath]),
+    ]);
+    report.revision = context.revision;
+    report.mode = context.mode;
   } catch (error) {
     if (error instanceof SynthError) {
       if (parsed.json) console.log(JSON.stringify({ ok: false, error: error.message }, null, 2));
       else console.error(error.message);
       return error.exitCode;
     }
-    throw error;
+    if (parsed.json) console.log(JSON.stringify({ ok: false, error: (error as Error).message }, null, 2));
+    else console.error((error as Error).message);
+    return 2;
   }
 
   if (!parsed.json && process.stderr.isTTY) process.stderr.write('\r');
@@ -215,7 +248,7 @@ function printReport(report: SynthReport, json: boolean): void {
   const lines = [
     report.target,
     `  provider  ${report.provider}${report.voice === undefined ? '' : ` · ${report.voice}`}`,
-    `  场景      ${report.scenes.length} 个 · 合成 ${report.synthesized} · 跳过（已存在）${report.cached}`,
+    `  场景      ${report.scenes.length} 个 · 合成 ${report.synthesized} · 复用（版本匹配）${report.cached}`,
     `  总时长    ${report.totalSec} 秒`,
     `  时长表    ${report.durationsPath}`,
   ];

@@ -158,6 +158,8 @@ export const CARD_CSS = `
 .pages-row { display: flex; gap: 12px; margin-top: 12px; overflow: hidden; }
 .pages-row figure { margin: 0; min-width: 0; }
 .pages-row img { height: 260px; width: auto; border-radius: calc(var(--radius) / 2); border: 1px solid var(--line); display: block; }
+.card--page .pages-row { flex-wrap: wrap; overflow: visible; }
+.card--page .pages-row img { max-width: 100%; height: auto; max-height: 520px; }
 .pages-row figcaption { margin-top: 4px; font-size: 11px; color: var(--muted); text-align: center; }
 
 /* ── 封面（video）与小结 ─────────────────────────────── */
@@ -263,7 +265,7 @@ function renderFile(card: Extract<SceneCard, { kind: 'file' }>, opts: CardRender
     if (page) {
       excerptHtml = `    <details class="excerpt"${card.excerpt.length <= EXCERPT_OPEN_LINES ? ' open' : ''}>
       <summary>摘录（${String(card.excerpt.length)} 行）</summary>
-      <pre><code>${escapeHtml(card.excerpt.join('\n'))}</code></pre>
+      ${card.highlightHtml ?? `<pre><code>${escapeHtml(card.excerpt.join('\n'))}</code></pre>`}
     </details>`;
     } else {
       const gutter =
@@ -331,14 +333,14 @@ function renderGallery(card: Extract<SceneCard, { kind: 'gallery' }>): string {
 }
 
 function renderClip(card: Extract<SceneCard, { kind: 'clip' }>, opts: CardRenderOpts): string {
-  if (opts.mode === 'video' && card.posterSrc !== undefined) {
+  if (card.posterSrc !== undefined) {
     return `  <div class="card">
     <p class="card-path mono">${escapeHtml(card.source)}</p>
     <p class="card-note">视频${card.rangeLabel === undefined ? '' : ` · 片段 ${escapeHtml(card.rangeLabel)}`}</p>
     <figure class="clip-poster"><img src="${escapeHtml(card.posterSrc)}" alt="${escapeHtml(card.source)}"></figure>
   </div>`;
   }
-  const note = `视频${card.rangeLabel === undefined ? '' : ` · 片段 ${escapeHtml(card.rangeLabel)}`} · 本阶段不转封面，页面上不出画面`;
+  const note = `视频${card.rangeLabel === undefined ? '' : ` · 片段 ${escapeHtml(card.rangeLabel)}`} · 没有可用封面${opts.mode === 'page' ? '，原因见页脚' : ''}`;
   return `  <div class="card">
     <p class="card-path mono">${escapeHtml(card.source)}</p>
     <p class="card-note">${note}</p>
@@ -346,7 +348,7 @@ function renderClip(card: Extract<SceneCard, { kind: 'clip' }>, opts: CardRender
 }
 
 function renderDocument(card: Extract<SceneCard, { kind: 'document' }>, opts: CardRenderOpts): string {
-  if (opts.mode === 'video' && (card.pages ?? []).length > 0) {
+  if ((card.pages ?? []).length > 0) {
     const figures = (card.pages ?? [])
       .map((page) => `    <figure><img src="${escapeHtml(page.src)}" alt="${escapeHtml(card.source)}"></figure>`)
       .join('\n');
@@ -358,7 +360,7 @@ function renderDocument(card: Extract<SceneCard, { kind: 'document' }>, opts: Ca
   }
   return `  <div class="card">
     <p class="card-path mono">${escapeHtml(card.source)}</p>
-    <p class="card-note">${escapeHtml(card.pagesLabel)} · 本阶段不转页图，页面上不出画面</p>
+    <p class="card-note">${escapeHtml(card.pagesLabel)} · 没有可用页图${opts.mode === 'page' ? '，原因见页脚' : ''}</p>
   </div>`;
 }
 

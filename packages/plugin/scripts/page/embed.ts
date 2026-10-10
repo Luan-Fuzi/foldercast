@@ -10,7 +10,7 @@
  * 复用渲染器的 `embedImage`（`renderer/embed-node.ts`）：同一套缩图命令、同一个
  * 魔数嗅探，页面与视频不各养一份。
  *
- * 非图片引用（office / pdf / 视频 / 文本）不进这里：本阶段只出卡片，不做转换。
+ * 这里消费图片路径；Office / PDF / 视频由 assets 先准备成页图或封面。
  */
 import { relative, resolve } from 'node:path';
 import { prepKindOf } from '../contracts/prep.ts';
@@ -141,4 +141,30 @@ export function embedPageImages(
   }
 
   return { images, notes, inlined, linked, inlineBytes };
+}
+
+/** buildPlan 的素材解析注入口：每件准备好的画面只内联一次，并共享单页预算。 */
+export function createPageEmbedder(options: EmbedPageOptions): {
+  embed: typeof embedImage;
+  report: PageEmbedReport;
+} {
+  const report: PageEmbedReport = { images: new Map(), notes: [], inlined: 0, linked: 0, inlineBytes: 0 };
+  const embed: typeof embedImage = (input) => {
+    let image = report.images.get(input.path);
+    if (image === undefined) {
+      const next = embedPageImages([input.path], {
+        ...options,
+        sourceDir: input.workRoot,
+        totalBudgetBytes: Math.max(0, (options.totalBudgetBytes ?? DEFAULT_TOTAL_BUDGET) - report.inlineBytes),
+      });
+      for (const [path, value] of next.images) report.images.set(path, value);
+      report.notes.push(...next.notes);
+      report.inlined += next.inlined;
+      report.linked += next.linked;
+      report.inlineBytes += next.inlineBytes;
+      image = report.images.get(input.path);
+    }
+    return image === undefined ? undefined : { src: image.src, bytes: image.bytes ?? 0, scaled: false };
+  };
+  return { embed, report };
 }

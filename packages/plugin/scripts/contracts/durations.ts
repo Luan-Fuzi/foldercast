@@ -33,6 +33,9 @@ export type SceneDuration = {
   duration: number;
   /** 字幕块与它们的时长，合计等于 `duration`。切分与校验、渲染共用 `contracts/subtitles.ts`。 */
   subs: Sub[];
+  /** 当前合成请求与音频字节，用于核对缓存与渲染输入。旧产物缺席时需重新配音。 */
+  inputHash?: string;
+  audioHash?: string;
 };
 
 export type DurationsDocument = {
@@ -49,6 +52,13 @@ export type DurationsDocument = {
   /** 每个场景末尾的留白（秒）。 */
   pause: number;
   scenes: SceneDuration[];
+  /** 场景顺序、id 与旁白的版本；画面文案变化不使音频失效。 */
+  narrationHash?: string;
+  trackHash?: string;
+  /** 实际请求的音色（null 表示未指定）；与仅作报告的实际音色分开。 */
+  synthesisVoice?: string | null;
+  /** 合成时讲稿中的配音设置；允许 CLI 覆盖音色，又能发现之后的讲稿设置变化。 */
+  voiceSpecHash?: string;
 };
 
 /* ------------------------------------------------------------------ provider */

@@ -13,9 +13,11 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, parse, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBrowser } from '../scripts/renderer/browser.ts';
+import { findPackageRoot } from '../scripts/contracts/package.ts';
+export { findPackageRoot };
 
 /** 本文件所在目录：开发时是 `<包根>/src`，发布版编译后在 `<包根>/lib/src`。 */
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
@@ -28,19 +30,6 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
  * 而且**只在装上去之后才暴露**，仓库内测试用的是源码布局，永远是对的（M4 装进 desktop
  * profile 时踩到）。校验器的 schema 定位（`scripts/validate/schema.ts`）用同一套上溯法。
  */
-export function findPackageRoot(start: string): string | undefined {
-  let current = resolve(start);
-  const { root } = parse(current);
-
-  for (;;) {
-    if (existsSync(join(current, 'package.json'))) return current;
-    if (current === root) return undefined;
-    const parent = dirname(current);
-    if (parent === current) return undefined;
-    current = parent;
-  }
-}
-
 /** 包根：脚本、随包 schema、依赖的 bin 都相对它定位。 */
 export const PACKAGE_ROOT = findPackageRoot(MODULE_DIR) ?? resolve(MODULE_DIR, '..');
 

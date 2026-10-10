@@ -26,6 +26,7 @@ import { buildPlan, type Plan } from './plan.ts';
 import { highlightExcerpts } from './highlight.ts';
 import { renderStillFrame, renderVideo } from './render.ts';
 import { collectReferences, prepare, type PrepReport } from '../assets/prep.ts';
+import { beginOutput, captureRevision, finishOutput, type OutputContext } from '../contracts/revisions.ts';
 
 const RENDERER_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -46,6 +47,7 @@ const USAGE = `把目录的讲稿渲染成 mp4（默认静音；配音产物存�
   --audio <文件>    旁白音轨（配音产物）。不给就用 durations.json 记的那条
   --durations <文件> 配音时长表。默认 <工作根>/durations.json（有就用实测时长）
   --check           校验讲稿并算计划报时长，不打包、不渲染（不需要浏览器）
+  --approved        正式产出：要求当前输入的评审回执；缺省生成工作草稿
   --json            以 JSON 输出结果（给 agent 与 CI 用）
   -h, --help        显示这段说明
 
@@ -64,6 +66,7 @@ type Options = {
   noEmbed: boolean;
   audio?: string;
   durations?: string;
+  approved?: boolean;
 };
 
 function parseArgs(argv: string[]): Options | { error: string } {
@@ -80,6 +83,17 @@ function parseArgs(argv: string[]): Options | { error: string } {
       case '--check':
         options.check = true;
         break;
+      case '--approved':
+        options.approved = true;
+        break;
+      case '--audio':
+      case '--durations': {
+        const value = argv[++i];
+        if (value === undefined) return { error: `${arg} 后面缺一个值` };
+        if (arg === '--audio') options.audio = value;
+        else options.durations = value;
+        break;
+      }
       case '--json':
         options.json = true;
         break;
@@ -142,6 +156,8 @@ export type RenderReport = {
   ok: boolean;
   target: string;
   scriptPath: string;
+  revision?: string;
+  mode?: 'draft' | 'approved';
   outputPath?: string;
   stillPath?: string;
   width: number;
@@ -215,6 +231,31 @@ async function main(): Promise<number> {
     return 2;
   }
 
+  let context: OutputContext | undefined;
+  let revision: string;
+  let durations;
+  try {
+    revision = captureRevision(target, script.path).revision;
+    // 校验不消费配音缓存：改旁白后仍可先校验、复评，再重配音。
+    durations = parsed.check ? undefined : loadDurations(workRoot, parsed.durations, script.value);
+    if (!parsed.check) {
+      const audioDependency = parsed.audio ?? (durations?.track ? resolve(workRoot, durations.track) : undefined);
+      context = beginOutput(target, {
+        scriptPath: script.path, expectedScript: script.value, approved: parsed.approved,
+        outputPaths: [resolve(parsed.out ?? join(workRoot, 'out', parsed.still === undefined ? 'video.mp4' : 'still.png'))],
+        settings: { width: script.value.video?.width, height: script.value.video?.height, fps: script.value.video?.fps,
+          still: parsed.still, frames: parsed.frames, concurrency: parsed.concurrency ?? 1, noEmbed: parsed.noEmbed },
+        dependencies: [
+          ...(durations === undefined ? [] : [resolve(parsed.durations ?? join(workRoot, 'durations.json'))]),
+          ...(audioDependency === undefined ? [] : [resolve(audioDependency)]),
+        ],
+      });
+    }
+  } catch (error) {
+    console.error((error as Error).message);
+    return 2;
+  }
+
   // ── 素材按需转换（--check 不碰转换，保持快） ────────────
   let prep: PrepReport | undefined;
   if (!parsed.check) {
@@ -223,8 +264,6 @@ async function main(): Promise<number> {
       prep = await prepare(target, workRoot, refs);
     }
   }
-
-  const durations = loadDurations(workRoot, parsed.durations);
 
   let plan: Plan;
   try {
@@ -239,6 +278,10 @@ async function main(): Promise<number> {
   } catch (error) {
     console.error(`算不出渲染计划：${(error as Error).message}`);
     return 2;
+  }
+
+  if (context !== undefined) {
+    Object.assign(context.options, { width: plan.composition.width, height: plan.composition.height, fps: plan.composition.fps });
   }
 
   // excerpt 高亮在 Node 侧预算一次（shiki 异步且重，不进浏览器渲染循环）。
@@ -264,6 +307,8 @@ async function main(): Promise<number> {
     ok: true,
     target,
     scriptPath: script.path,
+    revision,
+    ...(context === undefined ? {} : { mode: context.mode }),
     width: plan.composition.width,
     height: plan.composition.height,
     fps: plan.composition.fps,
@@ -371,6 +416,7 @@ async function main(): Promise<number> {
       report.outputPath = result.outputPath;
       report.renderMs = result.ms;
     }
+    if (context !== undefined) finishOutput(context, parsed.still === undefined ? (parsed.frames === undefined ? 'video' : 'fragment') : 'still', [outputPath]);
   } catch (error) {
     report.ok = false;
     const message = (error as Error).message;

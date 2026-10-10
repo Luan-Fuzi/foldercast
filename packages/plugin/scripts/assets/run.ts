@@ -8,8 +8,10 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findPackageRoot } from '../contracts/package.ts';
 
-const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+const PACKAGE_ROOT = findPackageRoot(MODULE_DIR) ?? resolve(MODULE_DIR, '../..');
 
 export type CommandOutcome =
   | { ok: true; stdout: string }

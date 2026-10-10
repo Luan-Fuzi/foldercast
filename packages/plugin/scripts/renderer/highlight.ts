@@ -13,10 +13,11 @@
  * 来的）；用 transformer 把它剥成透明，底色归 `scenes/common.ts` 的 `panel`。高亮失败
  * 不致命：调用方查不到场景 id 就落回等宽纯文本的旧版式。
  */
-import { marked } from 'marked';
+import { marked, Renderer } from 'marked';
 import { codeToHtml } from 'shiki';
 import { isMarkdownFile } from '../contracts/script.ts';
 import type { ScriptDocument } from '../contracts/script.ts';
+import { escapeHtml } from '../scenecard/card.ts';
 
 /** 扩展名 → shiki 语言名。认不出的给 `text`；Markdown 系不进这张表（走 marked）。 */
 const LANG_BY_EXT: Record<string, string> = {
@@ -61,7 +62,12 @@ function stripPreChrome(node: { properties: Record<string, unknown> }): void {
 
 /** Markdown 摘录 → 带作用域类的 HTML。样式在 `scenes/index.ts` 的 `FC_MD_CSS`。 */
 function renderMarkdown(lines: string[]): string {
-  const body = marked.parse(lines.join('\n'), { async: false });
+  // 摘录是内容，不是可执行页面。两个出口都禁用原始 HTML 与未准备的图片资源。
+  const renderer = new Renderer();
+  renderer.html = ({ text }) => escapeHtml(text);
+  renderer.image = ({ text }) => escapeHtml(text);
+  renderer.link = ({ tokens }) => renderer.parser.parseInline(tokens);
+  const body = marked.parse(lines.join('\n'), { async: false, renderer });
   return `<div class="fc-md">${body}</div>`;
 }
 

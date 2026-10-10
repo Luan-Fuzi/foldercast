@@ -1,7 +1,7 @@
 /**
  * 场景卡：**同一份讲稿在页面与视频里的共同视觉单位**（0006）。
  *
- * page 的 `collect.ts` 与渲染器的 `cards.ts` 各自把讲稿/计划映射成这里的形状，
+ * `from-plan.ts` 将共享计划映射成这里的形状，页面与视频均消费这份数据，
  * `render.ts` 只吃这一种结构出 HTML——一份标记 + 一份 CSS 服务两个出口，
  * 「page 同步」从此不存在，只有「卡片改了，两边一起变」。
  *
@@ -43,7 +43,7 @@ export type FileCard = CardCommon & {
   excerpt: string[];
   /** 摘录首行的 1 基行号；写了画面带行号槽与来源区间。 */
   excerptStart?: number;
-  /** Node 侧预算好的高亮/Markdown HTML（shiki / marked）。page 不传，落纯文本。 */
+  /** Node 侧预算好的高亮/Markdown HTML（shiki / marked）。页面与视频共用；缺失时落纯文本。 */
   highlightHtml?: string;
   /** 是 Markdown 渲染出来的 highlightHtml（行号槽不适用）。 */
   highlightIsMarkdown?: boolean;

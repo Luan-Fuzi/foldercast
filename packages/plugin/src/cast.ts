@@ -12,6 +12,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import type { FoldercastSettings } from './config.ts';
+import { acceptReview, artifactStates, captureRevision, requireReview, type ArtifactState } from '../scripts/contracts/revisions.ts';
 import {
   detectDependencies,
   durationsPathFor,
@@ -73,6 +74,9 @@ export type CastResult = {
   pagePath?: string;
   /** 给模型看的一句话说明（比如「配置选了未实现的 provider」）。 */
   notes?: string[];
+  revision?: string;
+  reviewAccepted?: boolean;
+  artifacts?: ArtifactState[];
 };
 
 /** 各步骤的预算。渲染最久：本机实测 13–15 帧/秒，预算按更慢的机器留足余量。 */
@@ -106,6 +110,10 @@ export type CastOptions = {
    * 优先级：**工具调用显式给的 > 讲稿里的 > 这里**。
    */
   settings?: FoldercastSettings;
+  /** 独立评审通过后，绑定校验返回的版本。报告正文仍由评审模型写。 */
+  reviewRevision?: string;
+  /** 允许生成未获本轮评审放行的工作草稿。 */
+  draft?: boolean;
 };
 
 type ValidationReportIssue = {
@@ -119,6 +127,7 @@ type ValidationReportIssue = {
 
 /** 渲染脚本的报告（`--check` 与真渲染同一形状，校验摘要在 `check` 字段里）。 */
 type ReportShape = {
+  revision?: string;
   check?: { blocker?: number; warning?: number; issues?: ValidationReportIssue[] };
   blocker?: number;
   warning?: number;
@@ -246,12 +255,18 @@ export async function cast(options: CastOptions): Promise<CastResult> {
   const stages: CastResult['stages'] = {};
   const ran: string[] = [];
   const notes: string[] = [];
+  let revision: string | undefined;
+  let reviewAccepted: boolean | undefined;
+  let pagePath: string | undefined;
 
   const finish = (extra: Partial<CastResult> = {}): CastResult => ({
-    ok: true,
+    ok: Object.values(stages).every((stage) => stage.ok),
     ...base,
     ran,
     stages,
+    ...(revision === undefined ? {} : { revision }),
+    ...(reviewAccepted === undefined ? {} : { reviewAccepted }),
+    ...(pagePath === undefined ? {} : { pagePath }),
     ...(notes.length === 0 ? {} : { notes }),
     ...extra,
   });
@@ -280,33 +295,50 @@ export async function cast(options: CastOptions): Promise<CastResult> {
         error: `讲稿有 ${String(validation.blocker)} 个必须修的问题（见 validation.issues）。`,
       };
     }
+    if (!checkRun.ok) return { ...finish(), ok: false, error: check.error ?? '讲稿校验未成功，不能产出。' };
   }
+
+  const producing = options.page === true || options.voice === true || options.render === true;
+  if ((producing || options.reviewRevision !== undefined) && !existsSync(scriptPath)) {
+    return { ...finish(), ok: false, error: `还没有讲稿：${scriptPath}。先写稿再产出。` };
+  }
+  try {
+    if (existsSync(scriptPath)) revision = captureRevision(target).revision;
+    if (options.reviewRevision !== undefined) {
+      acceptReview(target, options.reviewRevision);
+      reviewAccepted = true;
+    }
+    if (producing && options.draft !== true && revision !== undefined) requireReview(target, revision);
+  } catch (error) {
+    return { ...finish(validation === undefined ? {} : { validation }), ok: false,
+      ...(revision === undefined ? {} : { revision }), error: (error as Error).message };
+  }
+  const outputModeArgs = options.draft === true ? [] : ['--approved'];
 
   // ── 页面（显式要求才跑，0007：产出在评审之后，不挂在校验上） ──────
   // 页面是讲稿的另一个出口（docs/decisions/0001 的「一份创作、多个出口」）。顺序由
   // skill（编排层）决定：评审通过后传 `page: true`，要视频再传 `render: true`——
   // 一次调用都传时按 check → page → voice → render 跑。失败不致命——记进 stages
   // 照常往下走，配音与渲染不依赖它。
-  let pagePath: string | undefined;
   if (options.page === true && existsSync(scriptPath) && (validation === undefined || validation.blocker === 0)) {
     const pageRun = await runStage('page', {
       args: [
         target,
         '--json',
+        ...outputModeArgs,
         ...(options.settings?.pageStyle === undefined ? [] : ['--style', options.settings.pageStyle]),
       ],
       json: true,
       timeoutMs: TIMEOUT_MS.page,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
-    if (pageRun.cancelled !== true) {
-      stages.page = reportOf(pageRun);
-      ran.push('page');
-      if (pageRun.ok) {
-        pagePath = pagePathFor(target);
-      } else {
-        notes.push(`页面没生成（不影响配音与出片）：${summaryOf(pageRun) ?? '见 stages.page'}`);
-      }
+    if (pageRun.cancelled === true) return { ...finish(), ok: false, error: '页面生成已取消。' };
+    stages.page = reportOf(pageRun);
+    ran.push('page');
+    if (pageRun.ok) {
+      pagePath = pagePathFor(target);
+    } else {
+      notes.push(`页面没生成（不影响配音与出片）：${summaryOf(pageRun) ?? '见 stages.page'}`);
     }
   }
 
@@ -332,6 +364,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
       args: [
         target,
         '--json',
+        ...outputModeArgs,
         ...(options.settings?.provider === undefined ? [] : ['--provider', options.settings.provider]),
         ...(wanted === undefined ? [] : ['--voice', wanted]),
         ...(style === undefined ? [] : ['--style', style]),
@@ -368,6 +401,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
       args: [
         target,
         '--json',
+        ...outputModeArgs,
         ...(options.settings?.concurrency === undefined ? [] : ['--concurrency', String(options.settings.concurrency)]),
       ],
       json: true,
@@ -392,9 +426,12 @@ export async function cast(options: CastOptions): Promise<CastResult> {
   return finish({
     ...voiceFacts,
     ...(validation === undefined ? {} : { validation }),
-    videoPath: videoPathFor(target),
+    ...(options.render === true && stages.render?.ok === true ? { videoPath: videoPathFor(target) } : {}),
     ...(pagePath === undefined ? {} : { pagePath }),
     ...(notes.length === 0 ? {} : { notes }),
+    ...(revision === undefined ? {} : { revision, artifacts: artifactStates(target) }),
+    ...(reviewAccepted === undefined ? {} : { reviewAccepted }),
+    ...(stages.page?.ok === false ? { error: stages.page.error ?? '页面生成失败。' } : {}),
   });
 }
 

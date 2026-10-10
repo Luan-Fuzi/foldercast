@@ -132,15 +132,15 @@ function renderHero(hero: NonNullable<PageModel['hero']>, inHeader: boolean): st
 function toCard(section: Exclude<PageSection, { kind: 'hero' }>, images: ReadonlyMap<string, PageImage>): SceneCard {
   if (section.kind === 'file') {
     const image = images.get(section.file);
-    return { ...section, ...(image === undefined ? {} : { shotSrc: image.src }) };
+    return { ...section, ...(section.shotSrc !== undefined || image === undefined ? {} : { shotSrc: image.src }) };
   }
   if (section.kind === 'gallery') {
     return {
       ...section,
       items: section.items.map((item) => {
         const image = images.get(item.path);
-        const fallbackNote = item.isImage ? '图片未能内联（原因见页脚）' : '本阶段不做转换，页面上不出画面';
-        return { ...item, fallbackNote, ...(image === undefined ? {} : { src: image.src }) };
+        const fallbackNote = item.fallbackNote ?? '没有可用画面（原因见页脚）';
+        return { ...item, fallbackNote, ...(item.src !== undefined || image === undefined ? {} : { src: image.src }) };
       }),
     };
   }

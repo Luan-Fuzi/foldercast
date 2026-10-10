@@ -17,10 +17,14 @@ import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { checkScript } from '../renderer/check.ts';
 import { loadScript, LoadError, sourceDirOf, workRootOf } from '../renderer/load.ts';
-import { collectViewModel, countSections } from './collect.ts';
-import { embedPageImages } from './embed.ts';
+import { collectPlanModel, countSections } from './collect.ts';
+import { createPageEmbedder } from './embed.ts';
+import { collectReferences, prepare } from '../assets/prep.ts';
+import { buildPlan } from '../renderer/plan.ts';
+import { highlightExcerpts } from '../renderer/highlight.ts';
 import { renderPage } from './render.ts';
 import { DEFAULT_STYLE_NAME, STYLE_NAMES, styleByName } from './styles.ts';
+import { beginOutput, finishOutput, hashFile, type OutputContext } from '../contracts/revisions.ts';
 
 const USAGE = `把目录的讲稿渲染成一个自包含的静态 HTML 页（零 JavaScript、零外部资源）。
 
@@ -31,6 +35,7 @@ const USAGE = `把目录的讲稿渲染成一个自包含的静态 HTML 页（�
   --style <名>   风格预设：${STYLE_NAMES.join(' / ')}。缺省 ${DEFAULT_STYLE_NAME}
   --out <文件>   输出文件。默认 <目录>/.foldercast/out/page.html
   --script <文件> 讲稿路径。默认 <目录>/.foldercast/script.json
+  --approved     正式产出：要求当前输入的评审回执；缺省生成工作草稿
   --json         以 JSON 输出报告（给 agent 与 CI 用）
   -h, --help     显示这段说明
 
@@ -42,6 +47,7 @@ type Options = {
   out?: string;
   script?: string;
   json: boolean;
+  approved?: boolean;
 };
 
 function parseArgs(argv: readonly string[]): Options | { error: string } {
@@ -57,6 +63,9 @@ function parseArgs(argv: readonly string[]): Options | { error: string } {
         return { error: 'help' };
       case '--json':
         options.json = true;
+        break;
+      case '--approved':
+        options.approved = true;
         break;
       case '--style':
       case '--out':
@@ -102,6 +111,8 @@ export type PageReport = {
   references: number;
   /** 页脚说明（图片没内联的原因等）。 */
   notes: string[];
+  revision: string;
+  mode: 'draft' | 'approved';
 };
 
 async function main(): Promise<number> {
@@ -150,11 +161,24 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const model = collectViewModel(script.value);
   const outputPath = resolve(parsed.out ?? join(workRoot, 'out', 'page.html'));
+  let context: OutputContext;
+  try {
+    context = beginOutput(target, { scriptPath: script.path, expectedScript: script.value,
+      approved: parsed.approved, outputPaths: [outputPath], settings: { style: styleName } });
+  } catch (error) {
+    console.error((error as Error).message);
+    return 2;
+  }
 
-  // ── 图片内联：讲稿引用的图片缩到页面尺寸后进 data URI，超预算退相对路径 ──
-  const embedded = embedPageImages(model.references, { sourceDir, outDir: dirname(outputPath) });
+  // 与视频相同的素材准备和计划；页面在解析素材地址时执行自己的内联预算。
+  const prep = await prepare(target, workRoot, collectReferences(script.value));
+  const pageEmbedder = createPageEmbedder({ sourceDir, outDir: dirname(outputPath) });
+  const plan = buildPlan({ script: script.value, prep: prep.prepared, workRoot, embed: pageEmbedder.embed });
+  plan.highlight = await highlightExcerpts(script.value);
+  const model = collectPlanModel(script.value, plan);
+  const embedded = pageEmbedder.report;
+  embedded.notes.push(...plan.warnings);
 
   // 讲稿路径的展示写法：能相对被讲解目录写就相对写，页脚更可读。
   // 分隔符统一成正斜杠：这是 HTML 里的展示文本，不是文件系统路径（Windows 上
@@ -173,6 +197,13 @@ async function main(): Promise<number> {
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, html, 'utf8');
   const bytes = statSync(outputPath).size;
+  // 相对路径引用的准备产物也属于交付依赖，修改或删除后页面不再是当前结果。
+  context.dependencies = [...embedded.images.values()].filter((image) => !image.inlined).map((image) => {
+    const path = resolve(dirname(outputPath), image.src);
+    return { path, hash: hashFile(path) };
+  });
+  try { finishOutput(context, 'page', [outputPath]); }
+  catch (error) { console.error((error as Error).message); return 2; }
 
   const report: PageReport = {
     ok: true,
@@ -188,6 +219,8 @@ async function main(): Promise<number> {
     inlineBytes: embedded.inlineBytes,
     references: model.references.length,
     notes: embedded.notes,
+    revision: context.revision,
+    mode: context.mode,
   };
 
   if (parsed.json) {
@@ -202,7 +235,7 @@ async function main(): Promise<number> {
     `  图片    内联 ${String(report.imagesInlined)} 张（${String(Math.round(report.inlineBytes / 1024))} KB）· 相对路径 ${String(report.imagesLinked)} 张`,
   ];
   for (const note of report.notes) lines.push(`  注意    ${note}`);
-  lines.push('  用浏览器打开即可；页面没有 JavaScript，也没有外部资源。');
+  lines.push('  用浏览器打开即可；未内联图片需连同引用文件一起转发。');
   console.log(lines.join('\n'));
   return 0;
 }

@@ -9,15 +9,23 @@
  * 所以这里分两层测：纯函数两种布局都过一遍，再**从编译产物加载一次**（存在 `lib/` 时），
  * 确保发布版里算出来的包根也是对的。CI 先构建再跑测试，这一条在 CI 上必定执行。
  */
-import { describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { afterAll, describe, expect, it } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync as makeTempDirectory, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { PACKAGE_ROOT, findPackageRoot, resolveStageEntry, scriptsInstalled } from '../runtime.js';
+import { resolveCommand } from '../../scripts/assets/run.ts';
 
 /** 本文件在 `<包根>/src/tests/`。 */
 const REAL_PACKAGE_ROOT = resolve(import.meta.dirname, '../..');
+const temporaryRoots: string[] = [];
+function mkdtempSync(prefix: string): string {
+  const path = makeTempDirectory(prefix);
+  temporaryRoots.push(path);
+  return path;
+}
+afterAll(() => { for (const path of temporaryRoots) rmSync(path, { recursive: true, force: true }); });
 
 function makePackage(layout: 'source' | 'built'): string {
   const root = mkdtempSync(join(tmpdir(), 'foldercast-pkg-'));
@@ -111,5 +119,7 @@ describe.skipIf(!existsSync(BUILT_RUNTIME))('编译产物', () => {
     expect(built.scriptsInstalled()).toEqual({ ok: true, missing: [] });
     expect(existsSync(built.stageEntryPath('render'))).toBe(true);
     expect(existsSync(built.stageEntryPath('voice'))).toBe(true);
+    const assets = await import(pathToFileURL(resolve(REAL_PACKAGE_ROOT, 'lib/scripts/assets/run.js')).href) as { resolveCommand: typeof resolveCommand };
+    expect(assets.resolveCommand('dsoffice')).toBe(resolveCommand('dsoffice'));
   });
 });

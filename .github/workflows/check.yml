@@ -112,16 +112,12 @@ jobs:
       # → 渲染 → 抽帧比对）。三类 runner 都预装 Chrome（browser.ts 认它们的安装路径），
       # 不需要下载浏览器；macOS 上没有 ffmpeg 时配音 e2e 整组 skipIf，渲染 e2e 照跑。
       #
-      # --retry 1：字节一致性用例在**共享 runner** 上会偶发不可复现——用例文件自己的
-      # 注释写明了这个失败模式（CPU 被抢时软件光栅不再逐位一致；本机空载几十次全过）。
-      # 重跑一次是它文档里的适用条件（机器空着的时候再跑），不是放宽判据。
+      # --retry 1：共享 runner 的渲染用例允许重试一次。
       #
-      # macOS 腿单独跳过「渲染两次比字节」这一条：共享 macos runner 上它**系统性**地
-      # 不可复现（初跑 + retry 两轮、四个 mp4 两两不同；同一提交在 windows 腿与本机
-      # 空载 mac 上都过）。判据不删——windows / ubuntu 两条腿与本地空载机器继续覆盖；
+      # macOS 腿不装 ffmpeg，一致性用例会退回字节比较；共享 macos runner 上字节
+      # 系统性地不一致。因此跳过该用例，windows / ubuntu 与本地继续逐帧视觉比较；
       # e2e 文件里其余用例（静帧、--frames、--json、CLI 契约）在 macos 腿照常真跑。
-      # 撤掉这个 gate 的条件：macos runner 换规格，或判据改成对共享 runner 的噪声稳健
-      # （工单见分支报告）。
+      # 安装 ffmpeg 并隔离真实 TTS 后，可以撤掉这个 gate。
       - name: 重活测试（渲染与配音 e2e）
         env:
           runner_os: ${{ runner.os }}
@@ -131,7 +127,7 @@ jobs:
             packages/plugin/scripts/voice/tests/e2e.test.ts
           )
           if [ "$runner_os" = "macOS" ]; then
-            args+=(--testNamePattern '^(?!.*输出字节一致).*$')
+            args+=(--testNamePattern '^(?!.*一致性判据).*$')
           fi
           pnpm exec vitest run --retry 1 "${args[@]}"
 

@@ -180,8 +180,9 @@ describe.skipIf(browser.kind === 'missing')('出片', () => {
           const stats = join(workRoot, 'out', 'psnr.log');
           execFileSync(
             'ffmpeg',
-            ['-v', 'error', '-i', first, '-i', second, '-lavfi', `psnr=stats_file=${stats}`, '-f', 'null', '-'],
-            { encoding: 'utf8' },
+            // 相对文件名避免 Windows 路径被当成 filter 语法。
+            ['-v', 'error', '-i', first, '-i', second, '-lavfi', 'psnr=stats_file=psnr.log', '-f', 'null', '-'],
+            { encoding: 'utf8', cwd: join(workRoot, 'out') },
           );
           let floor = Number.POSITIVE_INFINITY;
           for (const line of readFileSync(stats, 'utf8').split('\n')) {

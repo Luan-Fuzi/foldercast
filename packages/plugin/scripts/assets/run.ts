@@ -5,13 +5,26 @@
  * 找到命令、跑起来、把失败变成**可操作**的信息 —— 说清缺什么、怎么装，而不是抛裸错误。
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findPackageRoot } from '../contracts/package.ts';
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = findPackageRoot(MODULE_DIR) ?? resolve(MODULE_DIR, '../..');
+const require = createRequire(import.meta.url);
+
+function officeCli(): string | undefined {
+  try {
+    const manifest = require.resolve('@deepseek-ai/libreoffice-kit/package.json');
+    const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as { bin?: { dsoffice?: string } };
+    const bin = pkg.bin?.dsoffice;
+    if (bin === undefined) return undefined;
+    const path = resolve(dirname(manifest), bin);
+    return existsSync(path) ? path : undefined;
+  } catch { return undefined; } // 可选依赖缺失时继续从 PATH 查找。
+}
 
 export type CommandOutcome =
   | { ok: true; stdout: string }
@@ -26,10 +39,14 @@ export type RunOptions = {
 /**
  * 解析可执行文件位置。
  *
- * 优先用本包 `node_modules/.bin/` 里的（`dsoffice` 来自 `@deepseek-ai/libreoffice-kit`，
- * 是 optionalDependency，可能没装上），否则交给 PATH 找。
+ * dsoffice 优先使用可选依赖声明的 JS 入口，由 Node 执行；其他命令优先从本包
+ * `node_modules/.bin/` 查找，否则交给 PATH 找。
  */
 export function resolveCommand(command: string): string {
+  if (command === 'dsoffice') {
+    const cli = officeCli();
+    if (cli !== undefined) return cli;
+  }
   const local = join(PACKAGE_ROOT, 'node_modules/.bin', command);
   return existsSync(local) ? local : command;
 }
@@ -44,7 +61,10 @@ export function hasCommand(command: string): boolean {
 }
 
 export function runCommand(command: string, args: readonly string[], options: RunOptions = {}): CommandOutcome {
-  const result = spawnSync(resolveCommand(command), [...args], {
+  const resolved = resolveCommand(command);
+  // 直接运行 npm 包的 JS 入口，避免 Windows 把 .bin 中的 shell shim 当作可执行文件。
+  const nodeCli = command === 'dsoffice' && resolved.endsWith('.js');
+  const result = spawnSync(nodeCli ? process.execPath : resolved, nodeCli ? [resolved, ...args] : [...args], {
     encoding: 'utf8',
     timeout: options.timeoutMs ?? 300_000,
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),

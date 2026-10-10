@@ -103,7 +103,8 @@ function frameCountOf(outPath: string): number {
  */
 function perFramePsnrFloor(first: string, second: string): number {
   const stats = join(root, 'psnr.log');
-  execFileSync('ffmpeg', ['-v', 'error', '-i', first, '-i', second, '-lavfi', `psnr=stats_file=${stats}`, '-f', 'null', '-'], { encoding: 'utf8' });
+  // 相对文件名避免 Windows 盘符与反斜杠进入 ffmpeg 的 filter 表达式。
+  execFileSync('ffmpeg', ['-v', 'error', '-i', first, '-i', second, '-lavfi', 'psnr=stats_file=psnr.log', '-f', 'null', '-'], { encoding: 'utf8', cwd: root });
   let floor = Number.POSITIVE_INFINITY;
   for (const line of readFileSync(stats, 'utf8').split('\n')) {
     const match = /psnr_avg:([0-9.]+|inf)/.exec(line);

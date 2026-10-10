@@ -132,7 +132,7 @@ export function beginOutput(target: string, options: {
   const digest = readJson<DigestDocument>(join(target, '.foldercast', 'digest.json'));
   for (const output of options.outputPaths ?? []) {
     const within = (parent: string): boolean => {
-      const path = relative(resolve(parent), resolve(output));
+      const path = relative(resolve(parent), resolve(output)).replaceAll('\\', '/');
       return path === '' || (path !== '..' && !path.startsWith('../') && !isAbsolute(path));
     };
     const touchesSource = script !== undefined && [...referencedPaths(script, digest)].some((path) => {

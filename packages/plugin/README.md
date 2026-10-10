@@ -16,7 +16,14 @@
 
 ## 安装
 
-从 GitHub Release 安装已构建的 0.3.0 包：
+从 GitHub Release 安装已构建的 0.3.0 包。私有仓库需要先用有访问权限的 GitHub 账号登录 `gh`，下载后安装本地包：
+
+```bash
+gh release download v0.3.0 --repo Luan-Fuzi/foldercast --pattern dsh-foldercast-0.3.0.tgz --dir ./foldercast-release
+dsh plugin --profile <profile> add "$(pwd)/foldercast-release/dsh-foldercast-0.3.0.tgz"
+```
+
+仓库公开后，也可以直接用下载地址安装：
 
 ```bash
 dsh plugin --profile <profile> add https://github.com/Luan-Fuzi/foldercast/releases/download/v0.3.0/dsh-foldercast-0.3.0.tgz

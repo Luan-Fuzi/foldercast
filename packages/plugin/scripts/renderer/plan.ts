@@ -24,6 +24,7 @@ import {
 } from './estimate.ts';
 import { EMBED_WIDTH, type EmbedFn } from './embed.ts';
 import { cssVariables, tokensFor, type Tokens } from './styles.ts';
+import { renderStyleFor } from '../contracts/visual.ts';
 
 export type { Tokens };
 
@@ -259,6 +260,8 @@ function basename(path: string): string {
 }
 
 export type BuildPlanInput = {
+  /** CLI 或插件设置指定的美术预设；缺省读取讲稿。 */
+  style?: import('../contracts/visual.ts').VisualStyleInputName;
   script: ScriptDocument;
   /** prep 的结果（源路径 → 产物）。没有就只出文字场景，引用图片的场景落到占位。 */
   prep?: Map<string, Prepared>;
@@ -286,7 +289,7 @@ export function buildPlan(input: BuildPlanInput): Plan {
   const warnings: string[] = [];
   const prep = input.prep ?? new Map<string, Prepared>();
 
-  const tokens = tokensFor(script.video);
+  const tokens = tokensFor(script.video, input.style ?? renderStyleFor(script.visual));
   const fps = script.video?.fps ?? DEFAULT_VIDEO.fps;
   const label = script.source.label ?? basename(script.source.root);
 

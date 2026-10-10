@@ -1,7 +1,7 @@
 /**
  * 摘录画面预算的单元测试（0005 WP1）：纯 Node 侧，不起浏览器。
  *
- * 判据：代码走 shiki 深色高亮且**不带内联底色**（白条问题的根）；Markdown 走
+ * 判据：代码走 shiki 高亮且**不带内联底色**（白条问题的根）；Markdown 走
  * marked 渲染出 HTML 标签而不是源码；同一输入产出同一 HTML（逐帧一致的素材层前提）。
  */
 import { describe, expect, it } from 'vitest';
@@ -26,14 +26,25 @@ describe('isMarkdownFile', () => {
 });
 
 describe('highlightExcerpts', () => {
-  it('代码摘录：shiki 高亮，剥掉内联底色（深色主题由面板呈现）', async () => {
+  it('代码高亮随深浅底切换主题，两个主题都保留透明面板底色', async () => {
+    const input = script([{ id: 'code', type: 'file', file: 'sample.ts',
+      excerpt: ['export const title = "风格";'], narration: '说明。' }]);
+    const light = (await highlightExcerpts(input)).code ?? '';
+    const dark = (await highlightExcerpts(input, true)).code ?? '';
+    expect(light).toContain('github-light');
+    expect(dark).toContain('github-dark');
+    expect(dark).not.toEqual(light);
+    expect(dark).not.toContain('background-color');
+  });
+
+  it('代码摘录：shiki 高亮，剥掉内联底色（底色由面板呈现）', async () => {
     const out = await highlightExcerpts(
       script([{ id: 'code', type: 'file', file: 'src/index.ts', excerpt: ['export const value = 1;', 'export const other = 2;'], narration: 'x' }]),
     );
     const html = out['code'] ?? '';
     expect(html).toContain('class="shiki');
     expect(html).not.toContain('background-color');
-    expect(html).toMatch(/color:#/); // token 颜色还在（github-dark 的主题色）
+    expect(html).toMatch(/color:#/); // token 颜色还在
   });
 
   it('Markdown 摘录：渲染成 HTML 标签，粗体不再显示星号', async () => {

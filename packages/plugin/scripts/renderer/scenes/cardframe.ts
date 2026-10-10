@@ -10,7 +10,7 @@
  * - 卡片里的 `<img>` 不在这里等图：整片开工前由入口的 `preloadImages` 一次性解码
  *   （见 entry.ts——逐场景挂 delayRender 会让截图时机漂移，那个方案实测否决）。
  */
-import { createElement as h, type CSSProperties } from 'react';
+import { createElement as h, type CSSProperties, type ReactElement } from 'react';
 import { Easing, interpolate, useCurrentFrame } from 'remotion';
 import type { Plan, PlanScene } from '../plan.ts';
 import { useAppear, useTransition } from './common.ts';
@@ -43,7 +43,7 @@ function totalProgress(plan: Plan, scene: PlanScene, frame: number): number {
   return (before + Math.min(frame, scene.durationInFrames)) / total;
 }
 
-export const CardFrame = ({ scene, plan, html }: { scene: PlanScene; plan: Plan; html: string }) => {
+export const CardFrame = ({ scene, plan, html }: { scene: PlanScene; plan: Plan; html: string }): ReactElement => {
   const frame = useCurrentFrame();
 
   // 节拍变量：第 i 拍从它的 startFrame（对齐字幕时刻，plan 里算好）起 14 帧内浮现。

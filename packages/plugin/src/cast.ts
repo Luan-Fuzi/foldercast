@@ -12,6 +12,8 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import type { FoldercastSettings } from './config.ts';
+import { renderStyleFor, visualPreferencesFor, type VisualPreferences, type VisualSpec } from '../scripts/contracts/visual.ts';
+import type { CreativePreferences } from '../scripts/contracts/creative.ts';
 import { acceptReview, artifactStates, captureRevision, requireReview, type ArtifactState } from '../scripts/contracts/revisions.ts';
 import {
   detectDependencies,
@@ -48,6 +50,10 @@ export type ValidationIssue = {
 };
 
 export type CastResult = {
+  /** 创作前的沟通和内容预算参考，不直接改变讲稿或渲染时轴。 */
+  creativePreferences: CreativePreferences;
+  /** 设置页的创作默认值；讲稿内的 visual 是本次选用值。 */
+  visualPreferences: VisualPreferences;
   /** 环境与目标可用、要求的阶段都成功。 */
   ok: boolean;
   target: string;
@@ -219,6 +225,10 @@ export async function cast(options: CastOptions): Promise<CastResult> {
   const installed = scriptsInstalled();
 
   const base = {
+    creativePreferences: { dialogue: '按需询问', depth: '自动判断',
+      ...options.settings?.creative } as CreativePreferences,
+    visualPreferences: visualPreferencesFor(options.settings?.visualStyle, options.settings?.visualPrompt,
+      { name: options.settings?.customVisualName, baseStyle: options.settings?.customVisualBaseStyle }),
     target,
     label,
     workRoot,
@@ -314,6 +324,11 @@ export async function cast(options: CastOptions): Promise<CastResult> {
       ...(revision === undefined ? {} : { revision }), error: (error as Error).message };
   }
   const outputModeArgs = options.draft === true ? [] : ['--approved'];
+  const scriptVisual = readJson<{ visual?: VisualSpec }>(scriptPath)?.visual;
+  const settingsStyle = renderStyleFor({ style: options.settings?.visualStyle,
+    baseStyle: options.settings?.customVisualBaseStyle });
+  const visualStyle = renderStyleFor(scriptVisual, settingsStyle);
+  const pageStyle = options.settings?.pageStyle ?? visualStyle;
 
   // ── 页面（显式要求才跑，0007：产出在评审之后，不挂在校验上） ──────
   // 页面是讲稿的另一个出口（docs/decisions/0001 的「一份创作、多个出口」）。顺序由
@@ -326,7 +341,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
         target,
         '--json',
         ...outputModeArgs,
-        ...(options.settings?.pageStyle === undefined ? [] : ['--style', options.settings.pageStyle]),
+        ...(pageStyle === undefined ? [] : ['--style', pageStyle]),
       ],
       json: true,
       timeoutMs: TIMEOUT_MS.page,
@@ -402,6 +417,7 @@ export async function cast(options: CastOptions): Promise<CastResult> {
         target,
         '--json',
         ...outputModeArgs,
+        ...(visualStyle === undefined ? [] : ['--style', visualStyle]),
         ...(options.settings?.concurrency === undefined ? [] : ['--concurrency', String(options.settings.concurrency)]),
       ],
       json: true,

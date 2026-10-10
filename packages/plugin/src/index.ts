@@ -1,7 +1,7 @@
 /**
  * dsh-foldercast 的插件入口。
  *
- * 三件事：注册一个工具、注册一个 skill、声明一个（空的）`Config` schema。
+ * 三件事：注册一个工具、注册一个 skill、声明 `Config` 设置 schema。
  *
  * **三条硬约束**：
  * 1. `apply()` 里不做任何可能失败的重活（不探测环境、不读配置、不起进程）——插件绝不能
@@ -16,6 +16,8 @@
 import { cast } from './cast.ts';
 import { Config, resolveSettings, type FoldercastSettings, type RawConfig } from './config.ts';
 import { SKILL_CONTENT, SKILL_DESCRIPTION, SKILL_NAME, SKILL_WHEN_TO_USE } from './skill.ts';
+import type { CreativePreferences } from '../scripts/contracts/creative.ts';
+import { CUSTOM_VISUAL_STYLE, VISUAL_STYLE_NAMES, type VisualPreferences } from '../scripts/contracts/visual.ts';
 
 /**
  * 插件用到的宿主上下文。**只是结构描述，不是框架类型**：`tools` 由工具注册表提供
@@ -58,6 +60,18 @@ const OUTPUT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    visualPreferences: { type: 'object', additionalProperties: false,
+      description: '当前设置页的风格名称、创作指导与用户描述；写稿前读取，再把本次选择写入 script.visual',
+      properties: { style: { type: 'string', enum: [...VISUAL_STYLE_NAMES, CUSTOM_VISUAL_STYLE] },
+        name: { type: 'string', description: '用户自定义的风格名称' },
+        baseStyle: { type: 'string', enum: [...VISUAL_STYLE_NAMES], description: '自定义风格的基础视觉预设' },
+        stylePrompt: { type: 'string', description: '风格创作指导；自定义模式包含用户名称和效果描述，仅供模型理解' },
+        prompt: { type: 'string', description: '用户补充的美术提示词' } } },
+    creativePreferences: { type: 'object', additionalProperties: false,
+      description: '创作前的沟通、受众、重点、深度和内容预算参考；用户当前要求优先，不直接控制渲染时轴',
+      properties: { dialogue: { type: 'string' }, depth: { type: 'string' },
+        audience: { type: 'string' }, focus: { type: 'string' }, prompt: { type: 'string' },
+        videoMinutes: { type: 'number' }, pageMinutes: { type: 'number' } } },
     ok: { type: 'boolean' },
     target: { type: 'string', description: '被讲解目录的绝对路径' },
     label: { type: 'string' },
@@ -144,6 +158,8 @@ const OUTPUT_SCHEMA = {
 };
 
 type CastLike = {
+  creativePreferences?: CreativePreferences;
+  visualPreferences?: VisualPreferences;
   ok: boolean;
   target: string;
   label: string;
@@ -167,6 +183,22 @@ type CastLike = {
  */
 function renderResult(value: CastLike): string {
   const lines: string[] = [];
+  const creative = value.creativePreferences;
+  if (creative !== undefined) {
+    lines.push(`创作沟通参考：${creative.dialogue ?? '按需询问'}；讲述深度参考：${creative.depth ?? '自动判断'}`);
+    if (creative.audience !== undefined) lines.push(`默认受众：${creative.audience}`);
+    if (creative.focus !== undefined) lines.push(`讲述重点参考：${creative.focus}`);
+    if (creative.videoMinutes !== undefined) lines.push(`视频目标时长参考：${creative.videoMinutes} 分钟`);
+    if (creative.pageMinutes !== undefined) lines.push(`导览页目标阅读时间参考：${creative.pageMinutes} 分钟（非实际阅读计时）`);
+    if (creative.prompt !== undefined) lines.push(`创作沟通提示词：${creative.prompt}`);
+  }
+  if (value.visualPreferences !== undefined) {
+    lines.push(`创作默认美术风格：${value.visualPreferences.style}`);
+    if (value.visualPreferences.name !== undefined) lines.push(`自定义风格名称：${value.visualPreferences.name}`);
+    if (value.visualPreferences.baseStyle !== undefined) lines.push(`基础视觉预设：${value.visualPreferences.baseStyle}（控制实际配色与字体，创作按自定义效果指导）`);
+    lines.push(`风格创作指导：${value.visualPreferences.stylePrompt}`);
+    if (value.visualPreferences.prompt !== undefined) lines.push(`自定义美术提示词：${value.visualPreferences.prompt}`);
+  }
 
   if (!value.ok) lines.push(`没成功：${value.error ?? '见 stages'}`);
 
@@ -207,7 +239,7 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
   tools.register({
     name: 'foldercast_cast',
     description:
-      'Validate the foldercast script.json and return its revision. After independent review passes and review.md is written, pass reviewRevision to bind the verdict to that revision. Explicit page/voice/render outputs require a matching receipt; draft: true produces a work draft. Exploring, authoring and judging content remain the agent\'s job. Use for explicitly requested foldercast videos or HTML guides, not ordinary directory Q&A.',
+      'Read current creativePreferences and visualPreferences before authoring, validate the foldercast script.json if present, and return its revision. Creative preferences guide dialogue and content planning; they do not enforce duration. After independent review passes and review.md is written, pass reviewRevision to bind the verdict to that revision. Explicit page/voice/render outputs require a matching receipt; draft: true produces a work draft. Exploring, authoring and judging content remain the agent\'s job. Use for explicitly requested foldercast videos or HTML guides, not ordinary directory Q&A.',
     timeoutMs: 2_400_000,
     parameters: {
       type: 'object',
@@ -274,6 +306,8 @@ function registerTool(ctx: Context, config: RawConfig | undefined): void {
         .map((dependency) => ({ name: dependency.name, hint: dependency.hint }));
 
       const value: Record<string, unknown> = {
+        visualPreferences: result.visualPreferences,
+        creativePreferences: result.creativePreferences,
         ok: result.ok,
         target: result.target,
         label: result.label,

@@ -26,23 +26,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import type { SynthRequest, SynthResult, TtsProvider, VoiceEnv } from '../../contracts/durations.ts';
+import { DEFAULT_EDGE_VOICE, EDGE_VOICES } from '../../contracts/voices.ts';
 
 /** 不指定音色时的默认：中文女声，知识讲解语境里最稳的一个。 */
-export const DEFAULT_VOICE = 'zh-CN-XiaoxiaoNeural';
-
-/**
- * 预置中文音色（官方音色表里 zh-CN 的一小部分，全部 Neural）。
- * `listVoices` 是同步接口，不能联网拉全表 —— 全表两百多个音色对「讲目录」也没有意义。
- */
-export const EDGE_VOICES = [
-  'zh-CN-XiaoxiaoNeural', // 女声，亲切自然（默认）
-  'zh-CN-XiaoyiNeural', // 女声，活泼
-  'zh-CN-YunjianNeural', // 男声，沉稳，适合讲解
-  'zh-CN-YunxiNeural', // 男声，阳光
-  'zh-CN-YunyangNeural', // 男声，新闻播报
-  'zh-CN-liaoning-XiaobeiNeural', // 东北口音
-  'zh-CN-shaanxi-XiaoniNeural', // 陕西口音
-] as const;
+export { EDGE_VOICES } from '../../contracts/voices.ts';
+export const DEFAULT_VOICE = DEFAULT_EDGE_VOICE;
 
 /**
  * 一次合成的硬超时（毫秒）。正常一段旁白几秒出完；挂到两分钟以上基本是连接黑洞，

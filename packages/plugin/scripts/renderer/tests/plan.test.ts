@@ -23,6 +23,23 @@ function preparedOf(source: string, products: Prepared['products'], kind: Prepar
   return [source, { kind, source, products }];
 }
 
+it('美术预设从讲稿读取，显式 CLI 选择可覆盖；提示词不直接改变渲染计划', () => {
+  const script = scriptOf([{ id: 'cover', type: 'cover', title: '说明', narration: '说明。' }],
+    { visual: { style: '夜幕', prompt: '多用流程' } });
+  const plan = buildPlan({ script });
+  expect(plan.tokens.bg).toBe('#0F1420');
+  expect(buildPlan({ script, style: '杂志' }).tokens.fontTitle).toContain('Songti');
+  expect(buildPlan({ script: { ...script, visual: { style: '夜幕', prompt: '更多对比' } } })).toEqual(plan);
+});
+
+it('自定义效果保留在讲稿，基础预设控制画面，显式渲染覆盖仍有效', () => {
+  const script = scriptOf([{ id: 'cover', type: 'cover', title: '说明', narration: '说明。' }],
+    { visual: { style: '自定义风格', name: '水墨风格', baseStyle: '科技风格', prompt: '留白，节奏舒缓。' } });
+  expect(buildPlan({ script }).tokens.bg).toBe('#0F1420');
+  expect(buildPlan({ script, style: '编辑设计风格' }).tokens.fontTitle).toContain('Songti');
+  expect(script.visual?.name).toBe('水墨风格');
+});
+
 describe('场景映射（自足式讲稿）', () => {
   it('tree 的行来自讲稿 entries，原样保留 path/files/bytes/highlight', () => {
     const plan = buildPlan({

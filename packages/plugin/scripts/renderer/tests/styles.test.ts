@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { cssVariables, labelColor, TOKENS, tokensFor } from '../styles.ts';
+import { styleByName, VISUAL_STYLE_NAMES } from '../../contracts/visual.ts';
 
 describe('token', () => {
   it('CSS 变量覆盖组件用到的全部变量名', () => {
@@ -25,6 +26,28 @@ describe('token', () => {
 
   it('没写 video 时原样返回', () => {
     expect(tokensFor(undefined)).toEqual(TOKENS);
+  });
+
+  it('每套视频预设使用对应页面色板与字体，编辑设计采用衬线标题', () => {
+    for (const name of VISUAL_STYLE_NAMES) {
+      const tokens = tokensFor(undefined, name);
+      const vars = styleByName(name)!.vars;
+      expect(tokens.bg).toBe(vars['--bg']);
+      expect(tokens.ink).toBe(vars['--ink']);
+      expect(tokens.accent).toBe(vars['--accent']);
+      expect(tokens.fontTitle).toBe(vars['--font-display']);
+      expect(tokens.fontBody).toBe(vars['--font-body']);
+      expect(tokens.fontMono).toBe(vars['--font-mono']);
+    }
+    expect(tokensFor(undefined, '杂志').fontTitle).toContain('Songti');
+    expect(tokensFor({ width: 960, height: 540 }, '夜幕').safeMargin).toBe(TOKENS.safeMargin / 2);
+  });
+
+  it('旧名称与设计名称生成相同的渲染参数', () => {
+    for (const [legacy, canonical] of [['素稿', '瑞士风格'], ['杂志', '编辑设计风格'], ['夜幕', '科技风格']] as const) {
+      expect(tokensFor(undefined, legacy)).toEqual(tokensFor(undefined, canonical));
+      expect(styleByName(legacy)).toBe(styleByName(canonical));
+    }
   });
 });
 

@@ -1,5 +1,5 @@
 /**
- * excerpt 的画面预算（Node 侧，0005 WP1）：**代码走 shiki 深色高亮，Markdown 走真正的
+ * excerpt 的画面预算（Node 侧，0005 WP1）：**代码走 shiki 高亮，Markdown 走真正的
  * Markdown 渲染**。摘录是画面主体，散文按源码显示（`**` 星号原样出现）是这个场景
  * 曾经最丑的地方 —— shiki 是语法高亮器不是 Markdown 渲染器，所以 Markdown 系文件
  * 单独走 `marked`（同步、零配置、输出确定）。
@@ -9,8 +9,8 @@
  * `inputProps`，浏览器只做展示。同一份摘录 + 同一版本依赖 → 同一段 HTML，逐帧一致
  * 不受影响。
  *
- * 深色主题（`github-dark`）的 `<pre>` 自带底色内联样式，与视频面板色相抵（白条就是这样
- * 来的）；用 transformer 把它剥成透明，底色归 `scenes/common.ts` 的 `panel`。高亮失败
+ * 高亮主题随预设的深浅底切换；主题的 `<pre>` 自带底色内联样式，用 transformer
+ * 把它剥成透明，底色归场景面板。高亮失败
  * 不致命：调用方查不到场景 id 就落回等宽纯文本的旧版式。
  */
 import { marked, Renderer } from 'marked';
@@ -75,7 +75,7 @@ function renderMarkdown(lines: string[]): string {
  * 给所有 file 场景的 excerpt 预算画面 HTML（代码高亮 / Markdown 渲染）。返回场景 id → HTML。
  * 单个场景失败跳过（画面落回纯文本），不让一次失败毁掉整次渲染。
  */
-export async function highlightExcerpts(script: ScriptDocument): Promise<Record<string, string>> {
+export async function highlightExcerpts(script: ScriptDocument, dark = false): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (const scene of script.scenes) {
     if (scene.type !== 'file' || scene.excerpt === undefined || scene.excerpt.length === 0) continue;
@@ -86,7 +86,7 @@ export async function highlightExcerpts(script: ScriptDocument): Promise<Record<
       }
       out[scene.id] = await codeToHtml(scene.excerpt.join('\n'), {
         lang: langOf(scene.file ?? ''),
-        theme: 'github-light',
+        theme: dark ? 'github-dark' : 'github-light',
         transformers: [{ pre: stripPreChrome }],
       });
     } catch {

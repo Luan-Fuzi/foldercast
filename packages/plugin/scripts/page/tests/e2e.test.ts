@@ -86,7 +86,7 @@ describe('默认渲染', () => {
     expect(result.status).toBe(0);
     const report = JSON.parse(result.stdout) as { ok: boolean; outputPath: string; style: string; sections: number; references: number; imagesInlined: number };
     expect(report.ok).toBe(true);
-    expect(report.style).toBe('素稿');
+    expect(report.style).toBe('瑞士风格');
     expect(report.sections).toBe(12);
     expect(report.references).toBe(5);
     expect(report.imagesInlined).toBeGreaterThan(0);
@@ -156,22 +156,41 @@ describe('CLI 边界', () => {
     } finally { rmSync(source, { recursive: true, force: true }); }
   });
 
-  it('--style 杂志 生效；--out 指到别处也落盘', () => {
+  it('旧 --style 杂志 生效，报告用设计名称；--out 指到别处也落盘', () => {
     const custom = join(root, 'custom', 'intro.html');
     const result = runPage([root, '--style', '杂志', '--out', custom, '--json']);
     expect(result.status).toBe(0);
     const report = JSON.parse(result.stdout) as { style: string; outputPath: string };
-    expect(report.style).toBe('杂志');
+    expect(report.style).toBe('编辑设计风格');
     expect(report.outputPath).toBe(custom);
     const html = readFileSync(custom, 'utf8');
     expect(html).toContain('Songti SC');
+  });
+
+  it('自定义效果讲稿按基础预设出页面，不改写名称和效果描述', () => {
+    const customRoot = mkdtempSync(join(tmpdir(), 'foldercast-custom-style-'));
+    try {
+      mkdirSync(join(customRoot, '.foldercast'));
+      const script = { foldercast: 2, source: { root: customRoot },
+        visual: { style: '自定义风格', name: '水墨风格', baseStyle: '科技风格', prompt: '留白，节奏舒缓。' },
+        scenes: [{ id: 'cover', type: 'cover', title: '说明', narration: '说明。' }] };
+      const scriptPath = join(customRoot, '.foldercast', 'script.json');
+      const original = JSON.stringify(script);
+      writeFileSync(scriptPath, original);
+      const result = runPage([customRoot, '--json']);
+      expect(result.status, result.stderr).toBe(0);
+      const report = JSON.parse(result.stdout) as { style: string; outputPath: string };
+      expect(report.style).toBe('科技风格');
+      expect(readFileSync(report.outputPath, 'utf8')).toMatch(/--bg:\s*#0F1420/);
+      expect(readFileSync(scriptPath, 'utf8')).toBe(original);
+    } finally { rmSync(customRoot, { recursive: true, force: true }); }
   });
 
   it('不认识的风格 → 退出码 2，报错列出可用名单', () => {
     const result = runPage([root, '--style', '不存在']);
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('不认识的风格');
-    expect(result.stderr).toContain('素稿 / 杂志 / 夜幕');
+    expect(result.stderr).toContain('瑞士风格 / 编辑设计风格 / 科技风格');
   });
 
   it('讲稿引用了不存在的文件 → 退出码 2（契约校验拦住，不生成页面）', () => {

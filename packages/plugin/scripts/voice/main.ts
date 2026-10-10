@@ -139,7 +139,7 @@ async function main(): Promise<number> {
 
   const target = resolve(parsed.target === '' ? process.cwd() : parsed.target);
   const workRoot = join(target, '.foldercast');
-  const env = makeVoiceEnv();
+  const env = makeVoiceEnv({ projectRoot: target });
   const provider = PROVIDERS[parsed.provider ?? 'edge'];
   if (provider === undefined) {
     const hint = `不认识的配音引擎「${parsed.provider ?? ''}」。可用：${Object.keys(PROVIDERS).join('、')}。`;

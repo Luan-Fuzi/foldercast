@@ -105,7 +105,7 @@ export function execCommand(command: string, args: readonly string[]): Promise<E
   });
 }
 
-export type MakeEnvOptions = {
+export type MakeEnvOptions = SecretSources & {
   /** 覆盖取密钥（测试用）。 */
   secret?: VoiceEnv['secret'];
   /** 覆盖命令执行（测试用）。 */
@@ -117,7 +117,7 @@ export type MakeEnvOptions = {
 /** 组装 `VoiceEnv`。CLI 用它；测试传 `secret` / `exec` / `has` 就能完全离线。 */
 export function makeVoiceEnv(options: MakeEnvOptions = {}): VoiceEnv {
   return {
-    secret: options.secret ?? makeSecretReader(),
+    secret: options.secret ?? makeSecretReader(options),
     has: options.has ?? hasCommand,
     exec: options.exec ?? execCommand,
   };

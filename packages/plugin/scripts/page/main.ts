@@ -25,6 +25,7 @@ import { highlightExcerpts } from '../renderer/highlight.ts';
 import { renderPage } from './render.ts';
 import { DEFAULT_STYLE_NAME, STYLE_NAMES, styleByName } from './styles.ts';
 import { beginOutput, finishOutput, hashFile, type OutputContext } from '../contracts/revisions.ts';
+import { renderStyleFor, type VisualStyleName } from '../contracts/visual.ts';
 
 const USAGE = `把目录的讲稿渲染成一个自包含的静态 HTML 页（零 JavaScript、零外部资源）。
 
@@ -32,7 +33,7 @@ const USAGE = `把目录的讲稿渲染成一个自包含的静态 HTML 页（�
   pnpm page <目录> [选项]
 
 选项：
-  --style <名>   风格预设：${STYLE_NAMES.join(' / ')}。缺省 ${DEFAULT_STYLE_NAME}
+  --style <名>   风格预设：${STYLE_NAMES.join(' / ')}。缺省读讲稿 visual.style，无则 ${DEFAULT_STYLE_NAME}
   --out <文件>   输出文件。默认 <目录>/.foldercast/out/page.html
   --script <文件> 讲稿路径。默认 <目录>/.foldercast/script.json
   --approved     正式产出：要求当前输入的评审回执；缺省生成工作草稿
@@ -154,12 +155,13 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const styleName = parsed.style ?? DEFAULT_STYLE_NAME;
-  const style = styleByName(styleName);
+  const requestedStyle = parsed.style ?? renderStyleFor(script.value.visual);
+  const style = styleByName(requestedStyle);
   if (style === undefined) {
-    console.error(`不认识的风格：${styleName}。可用：${STYLE_NAMES.join(' / ')}`);
+    console.error(`不认识的风格：${requestedStyle}。可用：${STYLE_NAMES.join(' / ')}`);
     return 2;
   }
+  const styleName = style.name;
 
   const outputPath = resolve(parsed.out ?? join(workRoot, 'out', 'page.html'));
   let context: OutputContext;
@@ -174,8 +176,9 @@ async function main(): Promise<number> {
   // 与视频相同的素材准备和计划；页面在解析素材地址时执行自己的内联预算。
   const prep = await prepare(target, workRoot, collectReferences(script.value));
   const pageEmbedder = createPageEmbedder({ sourceDir, outDir: dirname(outputPath) });
-  const plan = buildPlan({ script: script.value, prep: prep.prepared, workRoot, embed: pageEmbedder.embed });
-  plan.highlight = await highlightExcerpts(script.value);
+  const plan = buildPlan({ script: script.value, style: style.name as VisualStyleName,
+    prep: prep.prepared, workRoot, embed: pageEmbedder.embed });
+  plan.highlight = await highlightExcerpts(script.value, styleName === '科技风格');
   const model = collectPlanModel(script.value, plan);
   const embedded = pageEmbedder.report;
   embedded.notes.push(...plan.warnings);

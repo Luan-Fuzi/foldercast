@@ -143,6 +143,49 @@ describe('注册的形状符合 DSH 的工具契约', () => {
 });
 
 describe('execute：没有讲稿时只报环境与目录', () => {
+  it('自定义效果与名称进入创作指导，基础预设不覆盖它们', async () => {
+    const fake = fakeContext();
+    apply(fake.ctx as never, { visual: { style: '自定义风格', customName: '水墨风格',
+      customBaseStyle: '科技风格', prompt: '留白、简洁流程，节奏舒缓。' } });
+    const value = await fake.tool().execute({ path: source }, { signal: new AbortController().signal });
+    expect(value.visualPreferences).toMatchObject({ style: '自定义风格', name: '水墨风格', baseStyle: '科技风格',
+      prompt: '留白、简洁流程，节奏舒缓。', stylePrompt: expect.stringContaining('水墨风格') });
+    const text = fake.tool().output.render({}, value).map((block) => block.text).join('\n');
+    expect(text).toContain('留白、简洁流程，节奏舒缓。');
+    expect((value.visualPreferences as { stylePrompt: string }).stylePrompt).not.toContain('Tech-inspired Design');
+    expect(value.ran).toEqual([]);
+  });
+  it('写稿前返回可调整的创作指导，分钟值不触发产出', async () => {
+    const fake = fakeContext();
+    let minutes = 5;
+    apply(fake.ctx as never, { creative: { dialogue: '先沟通目标', depth: '标准讲解',
+      audience: '初次接触项目的开发者', focus: '核心流程', prompt: '先推荐范围再问重点。',
+      videoMinutes: { get: () => minutes }, pageMinutes: 2.5 } });
+    const value = await fake.tool().execute({ path: source }, { signal: new AbortController().signal });
+    expect(value.creativePreferences).toEqual({ dialogue: '先沟通目标', depth: '标准讲解',
+      audience: '初次接触项目的开发者', focus: '核心流程', prompt: '先推荐范围再问重点。',
+      videoMinutes: 5, pageMinutes: 2.5 });
+    expect(fake.tool().output.render({}, value)[0]?.text).toContain('5 分钟');
+    expect(fake.tool().output.render({}, value)[0]?.text).toContain('非实际阅读计时');
+    expect(value.ran).toEqual([]);
+    minutes = 3.5;
+    const next = await fake.tool().execute({ path: source }, { signal: new AbortController().signal });
+    expect((next.creativePreferences as { videoMinutes: number }).videoMinutes).toBe(3.5);
+  });
+
+  it('写稿前读取美术设置；volatile 设置变化后下一次调用返回新值', async () => {
+    const fake = fakeContext();
+    let prompt = '少代码，多流程。';
+    apply(fake.ctx as never, { visual: { style: '杂志', prompt: { get: () => prompt } } });
+    const value = await fake.tool().execute({ path: source }, { signal: new AbortController().signal });
+    expect(value.visualPreferences).toMatchObject({ style: '编辑设计风格', prompt,
+      stylePrompt: expect.stringContaining('编辑设计风格（Editorial Design）') });
+    expect(fake.tool().output.render({}, value)[0]?.text).toContain(prompt);
+    prompt = '先结论后解释。';
+    const next = await fake.tool().execute({ path: source }, { signal: new AbortController().signal });
+    expect(next.visualPreferences).toMatchObject({ style: '编辑设计风格', prompt });
+    expect(next.ran).toEqual([]);
+  });
   it('目录存在、没有讲稿：ok，没有校验可跑、不渲染不配音', async () => {
     const value = await tool?.execute({ path: source }, { signal: new AbortController().signal });
 
@@ -150,6 +193,12 @@ describe('execute：没有讲稿时只报环境与目录', () => {
     expect(value?.target).toBe(source);
     expect(value?.label).toBe(source.split('/').pop());
     expect(value?.ran).toEqual([]);
+    expect(value?.creativePreferences).toEqual({ dialogue: '按需询问', depth: '自动判断' });
+    expect(value?.visualPreferences).toMatchObject({ style: '瑞士风格',
+      stylePrompt: expect.stringContaining('Swiss Style / International Typographic Style') });
+    const displayed = tool?.output.render({}, value).map((block) => block.text).join('\n');
+    expect(displayed).toContain('瑞士风格');
+    expect(displayed).not.toContain('素稿');
     expect((value?.stages as Record<string, unknown>).render).toBeUndefined();
     expect((value?.stages as Record<string, unknown>).voice).toBeUndefined();
 

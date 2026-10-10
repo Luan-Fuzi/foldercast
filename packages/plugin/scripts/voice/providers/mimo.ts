@@ -18,12 +18,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { KEY_REFS, type SynthRequest, type SynthResult, type TtsProvider, type VoiceEnv } from '../../contracts/durations.ts';
+import { MIMO_VOICES } from '../../contracts/voices.ts';
 
 const ENDPOINT = 'https://api.xiaomimimo.com/v1/chat/completions';
 const MODEL = 'mimo-v2.5-tts';
 
 /** 预置音色（官方文档列出的九个）。 */
-export const MIMO_VOICES = ['mimo_default', '冰糖', '茉莉', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean'] as const;
+export { MIMO_VOICES } from '../../contracts/voices.ts';
 
 /** 默认风格指令：写稿阶段可以覆盖（`voice.style`）。 */
 export const DEFAULT_STYLE = '请用自然、清晰、适合知识讲解视频的旁白语气朗读。';

@@ -1,11 +1,6 @@
-/**
- * 画面样式。**一套硬编码 token，没有预设、没有覆盖** —— 收缩时把四套预设 × 31 token
- * 的系统删掉了：没看到真实成片之前，暴露「可换风格」只是在给判断增加面。
- * 要改观感，改这里的常量。
- *
- * 组件里不出现颜色字面量，都走 token 与 CSS 变量 —— 所以改这一处就能换整套观感。
- */
+/** 视频样式：全部预设与 HTML 共用色板、字体和卡片变量。 */
 import type { VideoSpec } from '../contracts/script.ts';
+import { DEFAULT_STYLE_NAME, styleByName, type VisualStyleInputName } from '../contracts/visual.ts';
 
 /** 渲染器真正用到的 token，扁平且封闭：多一个字段就要在组件里有用。 */
 export type Tokens = {
@@ -47,26 +42,25 @@ export type Tokens = {
   transition: 'cut' | 'fade' | 'wipe';
 };
 
-/** 唯一的一套 token（16:9 浅色编辑风，色板搬 page 素稿预设）。画布尺寸在 plan 里按讲稿的 `video` 改写。 */
+/** 将共用预设投影成视频字段，默认风格也使用同一个入口。 */
+function presetTokens(style: VisualStyleInputName) {
+  const vars = styleByName(style)!.vars;
+  return {
+    bg: vars['--bg']!, ink: vars['--ink']!, muted: vars['--muted']!, line: vars['--line']!,
+    accent: vars['--accent']!, accentInk: vars['--accent-ink']!, panel: vars['--panel']!,
+    codeBg: vars['--code-bg']!, codeInk: vars['--code-ink']!, track: vars['--track']!,
+    fontTitle: vars['--font-display']!, fontBody: vars['--font-body']!, fontMono: vars['--font-mono']!,
+    radius: Number.parseFloat(vars['--radius']!), space: Number(vars['--space']),
+  };
+}
+
+/** 默认 token（16:9 瑞士风格预设）。画布尺寸在 plan 里按讲稿的 `video` 改写。 */
 export const TOKENS: Tokens = {
   width: 1920,
   height: 1080,
   safeMargin: 80,
-  bg: '#FAF8F4',
-  ink: '#24221E',
-  muted: '#6F6A61',
-  line: '#E4DFD5',
-  accent: '#B4472A',
-  accentInk: '#FFFFFF',
-  panel: '#FFFFFF',
-  codeBg: '#F3EFE7',
-  track: '#EFEBE2',
-  codeInk: '#2A2620',
-  fontTitle: '"PingFang SC", "Helvetica Neue", Helvetica, "Microsoft YaHei", sans-serif',
-  fontBody: '"PingFang SC", "Helvetica Neue", Helvetica, "Microsoft YaHei", sans-serif',
-  fontMono: '"SF Mono", Menlo, Consolas, monospace',
+  ...presetTokens(DEFAULT_STYLE_NAME),
   titleWeight: 600,
-  radius: 10,
   shadow: 0,
   grain: 0,
   titleSize: 92,
@@ -74,7 +68,6 @@ export const TOKENS: Tokens = {
   bodySize: 30,
   captionSize: 40,
   density: 'normal',
-  space: 1,
   rule: 0,
   numbering: 'none',
   header: 'title',
@@ -85,8 +78,8 @@ export const TOKENS: Tokens = {
 };
 
 /** 讲稿写了 `video` 尺寸时跟着改：安全边距按画布比例算。 */
-export function tokensFor(video: VideoSpec | undefined): Tokens {
-  const tokens = { ...TOKENS };
+export function tokensFor(video: VideoSpec | undefined, style: VisualStyleInputName = DEFAULT_STYLE_NAME): Tokens {
+  const tokens = { ...TOKENS, ...presetTokens(style) };
   if (video?.width !== undefined) tokens.width = video.width;
   if (video?.height !== undefined) tokens.height = video.height;
   if (video?.width !== undefined || video?.height !== undefined) {

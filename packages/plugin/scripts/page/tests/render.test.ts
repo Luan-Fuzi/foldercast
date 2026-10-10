@@ -164,11 +164,11 @@ describe('折叠与目录', () => {
 
 describe('风格预设', () => {
   it('预设名单与缺省稳定（config 枚举要以它为准）', () => {
-    expect(STYLE_NAMES).toEqual(['素稿', '杂志', '夜幕']);
-    expect(DEFAULT_STYLE_NAME).toBe('素稿');
-    expect(PAGE_STYLES['素稿']).toBeDefined();
-    expect(PAGE_STYLES['杂志']).toBeDefined();
-    expect(PAGE_STYLES['夜幕']).toBeDefined();
+    expect(STYLE_NAMES).toEqual(['瑞士风格', '编辑设计风格', '科技风格']);
+    expect(DEFAULT_STYLE_NAME).toBe('瑞士风格');
+    expect(PAGE_STYLES['瑞士风格']).toBeDefined();
+    expect(PAGE_STYLES['编辑设计风格']).toBeDefined();
+    expect(PAGE_STYLES['科技风格']).toBeDefined();
   });
 
   it('每套预设都定义了 BASE_CSS 用到的全部变量', () => {
@@ -189,13 +189,13 @@ describe('风格预设', () => {
       for (const variable of CSS_VARS) {
         expect(html.includes(`${variable}:`), `${name} 没写出 ${variable}`).toBe(true);
       }
-      // 杂志独有的补充规则真的进了页面（extraCss 不是摆设）
-      if (name === '杂志') expect(html).toContain('text-align: center');
-      if (name === '夜幕') expect(html).toContain('rgba(18, 25, 41, 0.55)');
+      // 编辑设计独有的补充规则真的进了页面（extraCss 不是摆设）
+      if (name === '编辑设计风格') expect(html).toContain('text-align: center');
+      if (name === '科技风格') expect(html).toContain('rgba(18, 25, 41, 0.55)');
     }
   });
 
-  it('素稿与渲染器成片保持同一套颜色（两边一起动）', () => {
+  it('瑞士风格与渲染器成片保持同一套颜色（两边一起动）', () => {
     expect(samePaletteAsVideo()).toBe(true);
   });
 });

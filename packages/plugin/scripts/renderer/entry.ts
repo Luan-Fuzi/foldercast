@@ -8,7 +8,7 @@
  * 时长用 `calculateMetadata` 写死成 `plan.composition.durationInFrames`：帧数在 CLI 里
  * 就算好了，浏览器只负责画。「同一份讲稿两次渲染逐帧一致」不依赖浏览器里的任何计算。
  */
-import { createElement as h, useMemo } from 'react';
+import { createElement as h, useMemo, type ReactElement } from 'react';
 import { AbsoluteFill, Audio, Composition, Sequence, continueRender, delayRender, registerRoot } from 'remotion';
 import type { Plan, PlanScene } from './plan.ts';
 import { TOKENS } from './styles.ts';
@@ -99,10 +99,11 @@ const CaptionBar = ({ scene, plan }: { scene: PlanScene; plan: Plan }) => {
   );
 };
 
-export const FoldercastVideo = ({ plan, base, audio }: FoldercastProps) => {
+export const FoldercastVideo = ({ plan, base, audio }: FoldercastProps): ReactElement => {
   const style: Record<string, unknown> = {
     ...plan.css,
     backgroundColor: 'var(--bg)',
+    color: 'var(--ink)',
     width: '100%',
     height: '100%',
   };

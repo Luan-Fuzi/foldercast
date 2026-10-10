@@ -5,6 +5,19 @@
 
 **形态：DSH 插件**（工具 + skill + 脚本），编排层是 DSH 主 agent。
 
+## 0.3.0（2026-10-11）
+
+本次重点是让创作偏好可配置、可查看：
+
+- 瑞士风格、编辑设计风格、科技风格共用于视频与默认 HTML，可查看交给 Agent 的风格指导。
+- 自定义风格支持名称和效果描述；基础视觉预设控制现有模板的配色与字体。
+- 创作与沟通设置提供受众、重点、深度和目标分钟数，作为 Agent 的规划参考。
+- 配音引擎和音色改为下拉选择，显示默认音色，补齐 MiMo 密钥配置说明。
+
+同时加入版本绑定的评审回执、逐场音频缓存和产物记录。详细改动与升级边界见[变更记录](CHANGELOG.md)。
+
+## 工作流程
+
 ```
 Agent（有 bash）：探目录 → 写 digest → 定大纲与讲稿 → 独立评审
 一个工具：校验与版本回执 →（显式要求）页面 / 配音 / 渲染
@@ -64,8 +77,10 @@ macOS 自带的 `sips`（图片缩放）也在此列：其他平台回退 ffmpeg
 
 ## 装进 DSH
 
+从 GitHub Release 安装已构建的 0.3.0 包：
+
 ```bash
-dsh plugin --profile <profile> add dsh-foldercast
+dsh plugin --profile <profile> add https://github.com/Luan-Fuzi/foldercast/releases/download/v0.3.0/dsh-foldercast-0.3.0.tgz
 ```
 
 装完在插件管理页看到「目录放映」，对话里说「把这个目录讲一遍」即触发。agent 按
@@ -81,10 +96,21 @@ skill 走：自己探目录 → 写 digest 与 `script.json` → 调 `foldercast
 [决策记录](docs/decisions/0002-tts-providers.md)）。**配音需要网络**，断网时只剩
 静音片（`voice` 不传即可）。
 
+### 设置与创作偏好
+
+设置窗口的「目录放映」页提供：
+
+- **创作与沟通**：沟通方式、受众、重点、深度、视频目标分钟数、导览页目标阅读分钟数和补充提示词。Agent 先利用上下文，只问影响取舍的缺项；规模和分钟数用于规划，不直接限制渲染。
+- **美术风格**：瑞士风格 / 编辑设计风格 / 科技风格，可展开查看交给 Agent 的创作指导。预设控制视频与默认 HTML 的配色和字体；提示词引导选材、场景与节拍。
+- **自定义风格**：填写可选名称和「想要的效果」，两者一起进入创作指导；基础视觉预设只控制实际画面参数，不附加它的内置创作原则。自由描述仍使用现有场景模板，不直接变成 CSS。
+- **配音与高级设置**：引擎、预置或自定义音色、MiMo 朗读风格、浏览器路径、并发数，以及 HTML 的独立风格。
+
+设置变化不会自动改写已有讲稿；新的创作指导需重新写稿、校验和评审后生效。HTML 与视频当前共用场景，不能独立自动生成两份不同长度的内容。字段、提示词传递、密钥配置和旧名称兼容说明见[插件使用说明](packages/plugin/README.md)。
+
 **改过 `src/` 之后要重启 DSH**（插件入口不热加载），否则旧代码会报「插件包不完整」。
 
 **发布前要构建**：Node 不允许在 `node_modules` 里剥离 TypeScript，分发的入口必须是 JS。
-`pnpm --filter dsh-foldercast prepack`（复制 schema + `tsc`）生成 `lib/` 与 `schemas/`，
+`pnpm --filter dsh-foldercast prepack`（复制 schema、编译 JS 与类型、构建设置页）生成 `lib/` 与 `schemas/`，
 两者都是构建产物、不入库。
 
 ---
@@ -95,10 +121,11 @@ skill 走：自己探目录 → 写 digest 与 `script.json` → 调 `foldercast
 
 ```bash
 pnpm render <目录>              # 讲稿 → mp4（默认静音；有效配音产物存在时带旁白）
+pnpm render <目录> --style 科技风格 # 指定视频美术预设（默认读讲稿 visual.style）
 pnpm render <目录> --still 3.5  # 出一张静帧，调画面用，不必整片重渲
 pnpm render <目录> --check      # 只校验讲稿并报时长分镜，不需要浏览器
 pnpm voice  <目录>              # 讲稿 → 逐场景音频 + 实测时长 + 整条音轨（--provider edge|mimo）
-pnpm page   <目录>              # 讲稿 → HTML 导览页（--style 素稿|杂志|夜幕）
+pnpm page   <目录>              # 讲稿 → HTML 导览页（--style 瑞士风格|编辑设计风格|科技风格）
 pnpm text   <文件>              # Office / PDF → Markdown 打到 stdout（agent 通读用）
 ```
 
@@ -127,15 +154,17 @@ subagent** 按 skill 的六条评审判据复核（编造 / 数字 / 重点 / �
 出片这一步用 [Remotion](https://www.remotion.dev/) 渲染画面。它**不是纯开源**，请按
 自家情况判断：
 
-| 你的情况 | 适用档位 | 价格（2026-10 复核） |
+| 你的情况 | 适用档位 | 价格（2026-10-11 复核） |
 |---|---|---|
 | 个人，或 ≤3 人的公司 | Free License | $0，含无限商业使用 |
-| 4 人以上公司，为自己组织做视频 | Creators | $25/月/座 |
-| **把 foldercast 嵌进自己的产品**对外提供 | Automators | **$0.01/次渲染，$100/月起** |
+| 需要 Company License，进行少量手工视频创作 | Creators | $25/月/座 |
+| 需要 Company License，进行批量渲染或开发自动化视频产品 | Automators | **$0.01/次渲染，$100/月起** |
 
-**foldercast 本身按 Free License 使用**（个人项目）。把它包进产品里卖，要按上表自行
-取得许可。渲染时 Remotion 会按其[遥测政策](https://www.remotion.dev/docs/telemetry)
-上报用量，可以用环境变量关掉。
+**foldercast 本身按 Free License 使用**（个人项目）。是否需要 Company License 取决于
+使用者是否符合免费许可条件；嵌入产品本身不意味着一律需要付费。免费许可的允许用途与
+限制见[官方许可](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md)，
+收费档位见[官方定价](https://www.remotion.dev/docs/license/pricing)。遥测行为受 Remotion
+版本与配置影响，见[遥测说明](https://www.remotion.dev/docs/telemetry)。
 
 出片还需要浏览器（Chrome / Chromium / Edge）：**我们不分发它**，用系统已装的，
 或让 Remotion 下载。
@@ -169,6 +198,8 @@ foldercast/
 ---
 
 ## 参与
+
+本次发布候选的功能与兼容说明见[变更记录](CHANGELOG.md)。
 
 提交前请跑：
 

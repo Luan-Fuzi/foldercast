@@ -565,6 +565,40 @@
       "items": {
         "$ref": "#/$defs/scene"
       }
+    },
+    "visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "共用美术预设；prompt 由模型落实为选材、场景和节拍，不直接执行为 CSS。",
+      "allOf": [
+        {
+          "if": { "properties": { "style": { "const": "自定义风格" } }, "required": ["style"] },
+          "then": { "required": ["prompt"], "properties": { "prompt": { "type": "string", "pattern": "\\S" } } }
+        }
+      ],
+      "properties": {
+        "style": {
+          "type": "string",
+          "enum": [
+            "瑞士风格",
+            "编辑设计风格",
+            "科技风格",
+            "自定义风格",
+            "素稿",
+            "杂志",
+            "夜幕"
+          ],
+          "description": "新讲稿使用瑞士风格 / 编辑设计风格 / 科技风格 / 自定义风格；后三个旧名称仅用于读取既有讲稿。"
+        },
+        "name": { "type": "string", "description": "自定义风格名称，模型创作时保留。" },
+        "baseStyle": {
+          "enum": ["瑞士风格", "编辑设计风格", "科技风格", "素稿", "杂志", "夜幕"],
+          "description": "自定义风格的基础视觉预设，控制实际配色与字体；缺省瑞士风格。"
+        },
+        "prompt": {
+          "type": "string"
+        }
+      }
     }
   }
 }

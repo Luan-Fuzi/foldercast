@@ -24,6 +24,12 @@
   相对源目录路径，必须真实存在，校验器逐条拦编造路径与编造摘录（excerpt 须是原文、
   带 `excerptStart` 行号）。校验器还查**密度比**（摘录按扫读打折计宽）、
   **摘录行数下限**与节拍-旁白对齐，file 占比过高提醒 `layout-monotony`。
+- 可选 `script.visual` 保存本次美术风格与提示词（0009、0011）：瑞士风格 / 编辑设计风格 / 科技风格共用于
+  视频与默认页面；提示词由写稿模型落实，不直接执行。设置默认值通过工具的
+  `visualPreferences` 返回，包含设计名称、内置 `stylePrompt` 与用户补充 `prompt`；
+  共用预设在 `scripts/contracts/visual.ts`。旧名称仅用于输入兼容，不改写旧讲稿。
+- 自定义风格（0012）保存 `visual.style: "自定义风格"`、`name`、非空 `prompt` 与
+  `baseStyle`。名称和效果交给模型，基础预设控制实际画面参数；未指定基础预设时用瑞士风格。
 - `<目录>/.foldercast/durations.json`：配音实测时长（`ffprobe`），程序产出、可重算；
   字数只用于字幕分配，不定时长。**节拍时刻对齐字幕**（第 i 拍随第 i 句旁白出现）。
 - 产出步骤不默认跑（0007）：`page` / `render` / `voice` 都要显式传参，校验只给结论
@@ -39,6 +45,9 @@
   渲染拒绝过期、缺少新版本记录或整条音轨不完整的 durations。旧音频无缓存记录时首次重配。
 - 页面与视频共享素材准备和场景数据；页面超图片内联预算时保留相对路径，不能保证单文件转发。Office / PDF 页图与视频封面引用准备产物，转发需保留相对位置。
 - 主 skill 保留工作流程，创作和评审详细参考在 `scripts/references/`。
+- 设置中的创作与沟通偏好通过 `creativePreferences` 交给模型（0010），共用类型在
+  `scripts/contracts/creative.ts`。受众、重点、深度和视频/阅读目标分钟数用于规划，
+  不直接控制渲染；模型采用的偏好、预算依据和省略范围记入 `digest.notes`。
 - 密钥只走 `VoiceEnv.secret(ref)`（来源优先级与引用名见
   [0002](docs/decisions/0002-tts-providers.md)）；值不进日志、报告与任何 JSON 产物。
 
@@ -51,9 +60,9 @@
 - 测试约定：CI 只测 runner 能证明的（契约与 mock，教训见 commit `4af655d`）；
   真实 TTS 合成、听感与目检在本地做，结论落 `docs/`。测试里的 fake provider 要带
   `requiresKey: false, capabilities: []`（接口必填字段）。
-- 装进 DSH：`dsh plugin --profile <profile> add dsh-foldercast`；**改过 `src/` 要重启
+- 装进 DSH：从 GitHub Release 安装构建好的 `.tgz`，具体命令见 README；**改过 `src/` 要重启
   DSH**（入口不热加载）。发布前 `pnpm --filter dsh-foldercast prepack`（分发入口必须是
   JS；`node_modules` 里禁止类型剥离）。
-- Remotion 双许可：本项目按 Free License（个人）使用；嵌入产品对外提供需另取许可
+- Remotion 双许可：本项目按 Free License（个人）使用；不符合免费许可条件时需 Company License
   （README 有价格表）。
 - 中断渲染后可能残留后台 Chrome（`pkill -f puppeteer_dev_chrome_profile` 清掉）。

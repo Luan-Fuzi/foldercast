@@ -27,6 +27,8 @@ import { highlightExcerpts } from './highlight.ts';
 import { renderStillFrame, renderVideo } from './render.ts';
 import { collectReferences, prepare, type PrepReport } from '../assets/prep.ts';
 import { beginOutput, captureRevision, finishOutput, type OutputContext } from '../contracts/revisions.ts';
+import { normalizeVisualStyle, renderStyleFor, STYLE_NAMES, type VisualStyleName } from '../contracts/visual.ts';
+import { isLight } from './styles.ts';
 
 const RENDERER_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -48,6 +50,7 @@ const USAGE = `把目录的讲稿渲染成 mp4（默认静音；配音产物存�
   --durations <文件> 配音时长表。默认 <工作根>/durations.json（有就用实测时长）
   --check           校验讲稿并算计划报时长，不打包、不渲染（不需要浏览器）
   --approved        正式产出：要求当前输入的评审回执；缺省生成工作草稿
+  --style <名称>    美术预设：瑞士风格 / 编辑设计风格 / 科技风格。缺省读讲稿 visual.style
   --json            以 JSON 输出结果（给 agent 与 CI 用）
   -h, --help        显示这段说明
 
@@ -67,6 +70,7 @@ type Options = {
   audio?: string;
   durations?: string;
   approved?: boolean;
+  style?: VisualStyleName;
 };
 
 function parseArgs(argv: string[]): Options | { error: string } {
@@ -97,6 +101,12 @@ function parseArgs(argv: string[]): Options | { error: string } {
       case '--json':
         options.json = true;
         break;
+      case '--style': {
+        const value = normalizeVisualStyle(argv[++i]);
+        if (value === undefined) return { error: `--style 必须是 ${STYLE_NAMES.join(' / ')}` };
+        options.style = value;
+        break;
+      }
       case '--no-embed':
         options.noEmbed = true;
         break;
@@ -244,7 +254,8 @@ async function main(): Promise<number> {
         scriptPath: script.path, expectedScript: script.value, approved: parsed.approved,
         outputPaths: [resolve(parsed.out ?? join(workRoot, 'out', parsed.still === undefined ? 'video.mp4' : 'still.png'))],
         settings: { width: script.value.video?.width, height: script.value.video?.height, fps: script.value.video?.fps,
-          still: parsed.still, frames: parsed.frames, concurrency: parsed.concurrency ?? 1, noEmbed: parsed.noEmbed },
+          still: parsed.still, frames: parsed.frames, concurrency: parsed.concurrency ?? 1, noEmbed: parsed.noEmbed,
+          style: parsed.style ?? renderStyleFor(script.value.visual) },
         dependencies: [
           ...(durations === undefined ? [] : [resolve(parsed.durations ?? join(workRoot, 'durations.json'))]),
           ...(audioDependency === undefined ? [] : [resolve(audioDependency)]),
@@ -269,6 +280,7 @@ async function main(): Promise<number> {
   try {
     plan = buildPlan({
       script: script.value,
+      style: parsed.style,
       ...(prep === undefined ? {} : { prep: prep.prepared }),
       // 图片在这里内联成 data URI：浏览器里读不了 `file://`，见 `embed.ts`。
       workRoot,
@@ -287,7 +299,7 @@ async function main(): Promise<number> {
   // excerpt 高亮在 Node 侧预算一次（shiki 异步且重，不进浏览器渲染循环）。
   // 失败不致命：查不到 id 的场景落回等宽纯文本。
   if (!parsed.check) {
-    plan = { ...plan, highlight: await highlightExcerpts(script.value) };
+    plan = { ...plan, highlight: await highlightExcerpts(script.value, !isLight(plan.tokens)) };
   }
 
   const warnings = plan.warnings;

@@ -11,6 +11,8 @@
  * 机器可读的 schema 在 `docs/specs/script.schema.json`。
  */
 
+import type { VisualSpec } from './visual.ts';
+
 /** 出片规格。缺省 1920×1080 @ 30fps。 */
 export type VideoSpec = {
   width?: number;
@@ -210,6 +212,8 @@ export type ScriptDocument = {
   };
   /** 整片标题，缺省用目录名。 */
   title?: string;
+  /** 共用美术预设与本次创作的美术提示词；提示词由模型落实到选材、场景和节拍。 */
+  visual?: VisualSpec;
   video?: VideoSpec;
   voice?: VoiceSpec;
   scenes: Scene[];

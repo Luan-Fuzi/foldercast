@@ -5,28 +5,28 @@
 
 foldercast 是 DSH 插件。给它一个人类可读的目录，Agent 理解内容、挑选证据、写成讲稿并独立评审；插件把讲稿生成 HTML 导览页，或带旁白的视频。代码仓库、文档资料、图片与 Office / PDF 都可以成为讲述素材。
 
-[安装与设置](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/usage.md) · [开发与 CLI](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/development.md) · [设计决策](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/decisions/0008-trusted-execution.md) · [变更记录](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/CHANGELOG.md)
+[安装与设置](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/usage.md) · [开发与 CLI](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/development.md) · [设计决策](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/decisions/0008-trusted-execution.md) · [变更记录](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/CHANGELOG.md)
 
 ## 看看实际效果
 
 下面的示例由 foldercast 解析自己的仓库生成，使用瑞士风格。截图来自实际渲染，HTML 和视频共用一份讲稿。
 
-[![foldercast 自解析视频封面](https://raw.githubusercontent.com/Luan-Fuzi/foldercast/v0.3.1-rc.1/docs/showcase/cover.png)](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/showcase/foldercast.mp4)
+[![foldercast 自解析视频封面](https://raw.githubusercontent.com/Luan-Fuzi/foldercast/v0.3.1/docs/showcase/cover.png)](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/showcase/foldercast.mp4)
 
-**[观看／下载 MP4](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/showcase/foldercast.mp4)** · **[下载 HTML 导览页](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/showcase/foldercast.html)** · [讲稿与生成说明](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/showcase/README.md)
+**[观看／下载 MP4](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/showcase/foldercast.mp4)** · **[下载 HTML 导览页](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/showcase/foldercast.html)** · [讲稿与生成说明](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/showcase/README.md)
 
 GitHub 文件页不会直接运行 HTML；下载后在浏览器打开即可阅读。本例不引用外部图片，可单文件保存和转发。
 
 | 工作流：从理解到产出 | 职责：创作与执行 |
 |---|---|
-| ![工作流视频画面](https://raw.githubusercontent.com/Luan-Fuzi/foldercast/v0.3.1-rc.1/docs/showcase/workflow.png) | ![模型与程序职责视频画面](https://raw.githubusercontent.com/Luan-Fuzi/foldercast/v0.3.1-rc.1/docs/showcase/roles.png) |
+| ![工作流视频画面](https://raw.githubusercontent.com/Luan-Fuzi/foldercast/v0.3.1/docs/showcase/workflow.png) | ![模型与程序职责视频画面](https://raw.githubusercontent.com/Luan-Fuzi/foldercast/v0.3.1/docs/showcase/roles.png) |
 
 ## 从哪里开始
 
-需要 DSH 和 Node `^22.19.0 || >=24.0.0`。0.3.1 正在进行候选版验收；候选版发布后，在 DSH 使用的 profile 中安装：
+需要 DSH 和 Node `^22.19.0 || >=24.0.0`。在 DSH 使用的 profile 中安装 0.3.1：
 
 ```bash
-dsh plugin --profile <profile> add dsh-foldercast@0.3.1-rc.1
+dsh plugin --profile <profile> add dsh-foldercast@0.3.1
 ```
 
 安装后重启 DSH，在对话中说明目录和讲述目标，例如：
@@ -37,7 +37,7 @@ dsh plugin --profile <profile> add dsh-foldercast@0.3.1-rc.1
 
 > 把这个资料目录整理成 HTML 导览页，突出核心观点和代表性文件。
 
-设置页可选择受众、重点、深度、目标分钟数、美术风格、配音引擎和音色。默认按需询问；已有上下文和当前要求优先。完整设置、MiMo 密钥和 Release 安装方式见[插件使用说明](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/usage.md)。
+设置页可选择受众、重点、深度、目标分钟数、美术风格、配音引擎和音色。默认按需询问；已有上下文和当前要求优先。完整设置、MiMo 密钥和 Release 安装方式见[插件使用说明](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/usage.md)。
 
 ## 它怎样讲清一个目录
 
@@ -46,7 +46,7 @@ dsh plugin --profile <profile> add dsh-foldercast@0.3.1-rc.1
 3. **校验与评审**：程序检查格式、引用和版本；独立 Agent 核查事实、数字、重点、遗漏、结构与表达。
 4. **生成产物**：评审通过后先生成 HTML；明确需要视频时，再配音、渲染 MP4。
 
-**模型负责理解、判断与创作；程序负责精确、重复、可复现和可验证的执行。** 机器校验和版本回执不能替代内容评审。[设计依据](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/decisions/0008-trusted-execution.md)
+**模型负责理解、判断与创作；程序负责精确、重复、可复现和可验证的执行。** 机器校验和版本回执不能替代内容评审。[设计依据](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/decisions/0008-trusted-execution.md)
 
 ## 输出与风格
 
@@ -61,8 +61,8 @@ dsh plugin --profile <profile> add dsh-foldercast@0.3.1-rc.1
 ## 使用前需要了解
 
 - **内容会进入模型上下文**。写稿流程要求避开 `.env`、`*.pem`、`credentials*` 等文件；使用前确认目录适合交给模型读取。
-- **依赖按输出需要**：视频需要 Chrome / Chromium / Edge；配音需要网络及 `ffmpeg` / `ffprobe`。Edge 默认免密钥，MiMo 需要 `MIMO_API_KEY`。缺少某步依赖会影响该步。[环境与 CLI](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/development.md)
+- **依赖按输出需要**：视频需要 Chrome / Chromium / Edge；配音需要网络及 `ffmpeg` / `ffprobe`。Edge 默认免密钥，MiMo 需要 `MIMO_API_KEY`。缺少某步依赖会影响该步。[环境与 CLI](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/development.md)
 - **HTML 转发**：图片超过内联预算时会保留相对路径，需一并转发素材；Office / PDF 页图和视频封面也需保留对应位置。
-- **许可**：foldercast 自有代码使用 [MIT](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/LICENSE)；Remotion、LibreOffice 与 FFmpeg 等第三方组件保留各自许可。[许可说明](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1-rc.1/docs/licensing.md)
+- **许可**：foldercast 自有代码使用 [MIT](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/LICENSE)；Remotion、LibreOffice 与 FFmpeg 等第三方组件保留各自许可。[许可说明](https://github.com/Luan-Fuzi/foldercast/blob/v0.3.1/docs/licensing.md)
 
 源码、示例与文档位于本仓库；问题和建议请提交到 [GitHub Issues](https://github.com/Luan-Fuzi/foldercast/issues)。

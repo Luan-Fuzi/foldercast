@@ -22,10 +22,10 @@ GitHub 文件页不会直接运行 HTML；下载后在浏览器打开即可阅�
 
 ## 从哪里开始
 
-需要 DSH 和 Node `^22.19.0 || >=24.0.0`。0.3.1 正在进行候选版验收；候选版发布后，在 DSH 使用的 profile 中安装：
+需要 DSH 和 Node `^22.19.0 || >=24.0.0`。在 DSH 使用的 profile 中安装 0.3.1：
 
 ```bash
-dsh plugin --profile <profile> add dsh-foldercast@0.3.1-rc.1
+dsh plugin --profile <profile> add dsh-foldercast@0.3.1
 ```
 
 安装后重启 DSH，在对话中说明目录和讲述目标，例如：

@@ -6,17 +6,17 @@
 
 ## 安装
 
-从 npm 安装公开发布的 0.3.1-rc.1 包：
+从 npm 安装公开发布的 0.3.1 包：
 
 ```bash
-dsh plugin --profile <profile> add dsh-foldercast@0.3.1-rc.1
+dsh plugin --profile <profile> add dsh-foldercast@0.3.1
 ```
 
 也可以从公开 GitHub Release 下载并安装同一版本的包：
 
 ```bash
-gh release download v0.3.1-rc.1 --repo Luan-Fuzi/foldercast --pattern dsh-foldercast-0.3.1-rc.1.tgz --dir ./foldercast-release
-dsh plugin --profile <profile> add "$(pwd)/foldercast-release/dsh-foldercast-0.3.1-rc.1.tgz"
+gh release download v0.3.1 --repo Luan-Fuzi/foldercast --pattern dsh-foldercast-0.3.1.tgz --dir ./foldercast-release
+dsh plugin --profile <profile> add "$(pwd)/foldercast-release/dsh-foldercast-0.3.1.tgz"
 ```
 
 装完在插件管理页能看到「目录放映」，对话里说「把这个目录讲一遍」就会触发 `foldercast_cast`。
@@ -127,7 +127,7 @@ DSH `0.2.0-rc.2` 的全新 profile 实测发现：首次安装因构建审批失
 
 ```bash
 dsh plugin --profile <profile> remove dsh-foldercast
-dsh plugin --profile <profile> add dsh-foldercast@0.3.1-rc.1
+dsh plugin --profile <profile> add dsh-foldercast@0.3.1
 ```
 
 随后重启该 profile。此恢复步骤在独立测试 profile 验证；已有使用记录和自定义配置的 profile 不属于本次验证范围。

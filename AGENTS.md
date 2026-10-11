@@ -60,7 +60,7 @@
 - 测试约定：CI 只测 runner 能证明的（契约与 mock，教训见 commit `4af655d`）；
   真实 TTS 合成、听感与目检在本地做，结论落 `docs/`。测试里的 fake provider 要带
   `requiresKey: false, capabilities: []`（接口必填字段）。
-- 装进 DSH：从 GitHub Release 安装构建好的 `.tgz`，具体命令见 README；**改过 `src/` 要重启
+- 装进 DSH：从 npm 安装 `dsh-foldercast`，也可安装 GitHub Release 的 `.tgz`，具体命令见 README；**改过 `src/` 要重启
   DSH**（入口不热加载）。发布前 `pnpm --filter dsh-foldercast prepack`（分发入口必须是
   JS；`node_modules` 里禁止类型剥离）。
 - Remotion 双许可：本项目按 Free License（个人）使用；不符合免费许可条件时需 Company License

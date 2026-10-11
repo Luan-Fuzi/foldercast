@@ -1,10 +1,11 @@
 /** 使用 pack job 的唯一 tarball；重跑必须与已发布字节匹配。 */
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const directory = resolve(process.argv[2] ?? 'release');
 const pack = JSON.parse(readFileSync(join(directory, 'pack.json'), 'utf8'))[0];
@@ -46,8 +47,24 @@ try {
   } else {
     assert(npmVersion.stderr.includes('E404'), `无法核实 npm 状态：${npmVersion.stderr}`);
     execFileSync('npm', ['publish', tarball, '--provenance', '--access', 'public', '--tag', version.includes('-') ? 'next' : 'latest'], { stdio: 'inherit' });
-    const published = execFileSync('npm', ['view', `${name}@${version}`, 'dist.integrity', '--json'], { encoding: 'utf8' });
-    assert.equal(JSON.parse(published), integrity, '发布后的 registry 字节身份不一致');
+    // npm 扫描完成后新版本才可见；只重复查询，不重复上传安装包。
+    const deadline = Date.now() + 20 * 60_000;
+    let waitMs = 1000;
+    for (;;) {
+      const published: SpawnSyncReturns<string> = spawnSync('npm', ['view', `${name}@${version}`, 'dist.integrity', '--json'], {
+        encoding: 'utf8', timeout: Math.max(1, Math.min(30_000, deadline - Date.now())),
+      });
+      if (published.status === 0) {
+        assert.equal(JSON.parse(published.stdout), integrity, '发布后的 registry 字节身份不一致');
+        break;
+      }
+      assert((published.stderr ?? '').includes('E404'), `无法核实已上传的 npm 包：${published.stderr || published.error?.message}`);
+      const remaining = deadline - Date.now();
+      assert(remaining > 0, 'npm 已接受上传，但 20 分钟后仍不可见。请检查 npm 处理状态，可见后重跑 publish job；不要重打包或再次上传。');
+      console.log(`npm 正在处理 ${name}@${version}；${Math.min(waitMs, remaining)}ms 后再次核对原包`);
+      await delay(Math.min(waitMs, remaining));
+      waitMs = Math.min(waitMs * 2, 15_000);
+    }
   }
 
   if (previous.status === 0) {

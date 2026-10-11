@@ -122,3 +122,12 @@ pnpm page <目录> --style 编辑设计风格
 同目录同时只能运行一个 foldercast 任务；第二个任务会明确返回占用说明。锁为 `.foldercast/execution.lock`。如果上次被强制退出，先确认该目录的任务进程已结束，再删除残留锁并重试。
 
 较新 DSH 使用 pnpm 的依赖构建审批。安装提示 `ERR_PNPM_IGNORED_BUILDS` 时，在同一个 profile 运行 `dsh plugin --profile <profile> approve-builds`，检查提示列出的依赖，再重跑原安装命令。本次全新测试 profile 列出 esbuild、koffi、msedge-tts 与 tesseract.js；其他环境以实际提示为准。
+
+DSH `0.2.0-rc.2` 的全新 profile 实测发现：首次安装因构建审批失败后，重试可以成功，但插件可能未加入加载列表。如果重启后仍看不到「目录放映」，检查该 profile 的 `package.json`：`dependencies` 有 `dsh-foldercast`，但 `dsh.profile.bundles` 没有它，即符合本次复现的情况。对于这次首次安装尚未使用的插件，在批准构建后移除并重新添加，已验证能恢复加载：
+
+```bash
+dsh plugin --profile <profile> remove dsh-foldercast
+dsh plugin --profile <profile> add dsh-foldercast@0.3.1-rc.1
+```
+
+随后重启该 profile。此恢复步骤在独立测试 profile 验证；已有使用记录和自定义配置的 profile 不属于本次验证范围。

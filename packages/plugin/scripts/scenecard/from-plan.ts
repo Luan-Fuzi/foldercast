@@ -7,6 +7,7 @@
  * 与展示算术（bytesLabel、L 区间、占比），不做统计、不猜内容。
  */
 import { isMarkdownFile } from '../contracts/script.ts';
+import { prepKindOf } from '../contracts/prep.ts';
 import type { Plan, PlanScene } from '../renderer/plan.ts';
 import { fitSize, humanBytes } from '../renderer/plan.ts';
 import type { SceneCard } from '../scenecard/card.ts';
@@ -68,7 +69,9 @@ export function cardOf(scene: PlanScene, plan: Plan): SceneCard {
         ...(highlightHtml === undefined || markdown ? {} : { highlightHtml: wrapCode(highlightHtml, codeSizePx) }),
         ...(markdown && highlightHtml !== undefined ? { highlightHtml, highlightIsMarkdown: true } : {}),
         ...(scene.media?.src === undefined ? {} : { shotSrc: scene.media.src }),
-        ...(scene.noteMissing === undefined ? {} : { noteMissing: scene.noteMissing }),
+        // 文本和源码的摘录就是画面，不把「无需转图」的内部诊断展示给观众。
+        ...(scene.noteMissing === undefined || (prepKindOf(scene.path) === undefined && scene.excerpt.length > 0)
+          ? {} : { noteMissing: scene.noteMissing }),
       };
     }
     case 'gallery':

@@ -1,0 +1,153 @@
+{
+  "digest": 2,
+  "source": {
+    "root": "/Users/scliang/work/foldercast",
+    "label": "foldercast"
+  },
+  "scale": {
+    "totalFiles": 267
+  },
+  "modules": [
+    {
+      "path": "packages/plugin/src",
+      "role": "DSH 入口、工具、skill、设置与编排",
+      "files": 14,
+      "keyFiles": [
+        "packages/plugin/src/index.ts",
+        "packages/plugin/src/cast.ts",
+        "packages/plugin/src/skill.ts"
+      ]
+    },
+    {
+      "path": "packages/plugin/scripts",
+      "role": "契约、素材、页面、配音、视频与创作参考",
+      "files": 84,
+      "keyFiles": [
+        "packages/plugin/scripts/page/main.ts",
+        "packages/plugin/scripts/voice/main.ts",
+        "packages/plugin/scripts/renderer/main.ts"
+      ]
+    },
+    {
+      "path": "docs/decisions",
+      "role": "项目设计决策与能力边界",
+      "files": 12,
+      "keyFiles": [
+        "docs/decisions/0008-trusted-execution.md",
+        "docs/decisions/0012-custom-style-direction.md"
+      ]
+    }
+  ],
+  "excerpts": [
+    {
+      "file": "packages/plugin/src/cast.ts",
+      "start": 2,
+      "lines": [
+        " * `foldercast_cast` 的编排：校验讲稿，并在**显式要求**时配音与出片。",
+        " *",
+        " * ## 边界",
+        " *",
+        " * - 工具不替模型探目录、不替模型写稿 —— 那是 agent 自己的事（它有 bash 与眼睛）。",
+        " *   这里只做 agent 干不了的事：跑确定性程序（校验、TTS 合成、逐帧渲染）。",
+        " * - 产出类步骤（页面 / 渲染 / 配音）都不默认跑：产出在评审之后，由编排层显式要求",
+        " *   （`page: true` / `render: true` / `voice: true`），否则只做校验。顺序由 skill 决定。",
+        " * - 编排层是模型，不是这个工具。"
+      ],
+      "why": "编排只执行显式请求的程序步骤，探目录和写稿由模型负责。"
+    },
+    {
+      "file": "packages/plugin/scripts/contracts/script.ts",
+      "start": 34,
+      "lines": [
+        "export const SCENE_TYPES = [",
+        "  'cover',",
+        "  'tree',",
+        "  'inventory',",
+        "  'file',",
+        "  'gallery',",
+        "  'clip',",
+        "  'document',",
+        "  'outro',",
+        "  'concept',",
+        "  'compare',",
+        "  'flow',",
+        "] as const;"
+      ],
+      "why": "现有十一种场景组成讲稿的画面词汇。"
+    },
+    {
+      "file": "packages/plugin/scripts/contracts/revisions.ts",
+      "start": 108,
+      "lines": [
+        "export function requireReview(target: string, revision: string): void {",
+        "  let receipt: ReviewReceipt | undefined;",
+        "  try { receipt = readJson<ReviewReceipt>(join(target, '.foldercast', 'review.json')); } catch { /* 损坏的回执不能放行。 */ }",
+        "  const report = join(target, '.foldercast', 'review.md');",
+        "  if (receipt?.review !== 1 || receipt.verdict !== 'passed' || receipt.revision !== revision ||",
+        "      !existsSync(report) || hashFile(report) !== receipt.reportHash) {",
+        "    throw new Error('当前版本没有有效的评审回执。完成独立评审后传 reviewRevision；工作草稿可传 draft: true（CLI 默认草稿）。');",
+        "  }",
+        "}",
+        "",
+        "export type OutputContext = {",
+        "  target: string;"
+      ],
+      "why": "正式产出校验版本回执与评审报告哈希。"
+    },
+    {
+      "file": "packages/plugin/scripts/voice/cache.ts",
+      "start": 8,
+      "lines": [
+        "export function synthesisHash(request: { text: string; provider: string; voice?: string; style?: string; format: string }): string {",
+        "  return hashValue({ cache: 1, ...request });",
+        "}",
+        "",
+        "export function loadAudioCache(workRoot: string): AudioCache {",
+        "  try { return JSON.parse(readFileSync(join(workRoot, 'audio', 'cache.json'), 'utf8')) as AudioCache; }",
+        "  catch { return {}; }",
+        "}",
+        ""
+      ],
+      "why": "逐场音频缓存的输入身份。"
+    },
+    {
+      "file": "packages/plugin/scripts/contracts/visual.ts",
+      "start": 127,
+      "lines": [
+        "export const VISUAL_STYLE_NAMES = ['瑞士风格', '编辑设计风格', '科技风格'] as const;",
+        "export type VisualStyleName = typeof VISUAL_STYLE_NAMES[number];",
+        "export const CUSTOM_VISUAL_STYLE = '自定义风格' as const;",
+        "export type VisualSelectionName = VisualStyleName | typeof CUSTOM_VISUAL_STYLE;",
+        "export const LEGACY_VISUAL_STYLE_NAMES = ['素稿', '杂志', '夜幕'] as const;",
+        "export const VISUAL_STYLE_INPUT_NAMES = [...VISUAL_STYLE_NAMES, ...LEGACY_VISUAL_STYLE_NAMES] as const;",
+        "export type VisualStyleInputName = typeof VISUAL_STYLE_INPUT_NAMES[number];"
+      ],
+      "why": "三套内置风格与自定义风格名称。"
+    },
+    {
+      "file": "packages/plugin/src/cast.ts",
+      "start": 107,
+      "lines": [
+        "  render?: boolean;",
+        "  /** 配音。**默认不配**：要跑云端 TTS 与 ffmpeg。 */",
+        "  voice?: boolean;",
+        "  /** 音色名（provider 各自的叫法）。缺省用默认中文音色。 */",
+        "  voiceName?: string;",
+        "  /** 已存在的音频重新合成。 */",
+        "  forceVoice?: boolean;"
+      ],
+      "why": "配音与渲染的可选参数；配音不默认执行，音色可显式指定。"
+    }
+  ],
+  "notes": [
+    "受众：首次接触项目的开发者与使用者。目标：理解目录放映的用途、职责分工、创作流程与实际输出。",
+    "内容预算：约两分钟视频和相同主线的短篇 HTML；按九个主题选材，配音后以实测时长为准，不截断音轨。",
+    "视觉：瑞士风格；用标题、流程、对比与一个真实代码块呈现关系。避免把整个首页截图当作讲解。",
+    "事实：产品代码与阶段程序位于 packages/plugin；DSH 主 Agent 是创作编排者，渲染器不读取 digest。",
+    "事实：默认 Edge 配音免密钥但需要网络；MiMo 需要密钥。正式产出需要当前评审回执，机器不解析报告结论。",
+    "事实：HTML 与视频共享场景；自定义描述用于模型创作，实际模板参数由基础预设控制。",
+    "省略：历史发布、逐项设置字段、测试夹具和其他未实施的渲染引擎计划；不把规划文档当成已实现能力。",
+    "计数口径：totalFiles 使用项目 countSourceFiles 的近似忽略规则，含隐藏文件及展示快照；modules.files 为各模块文件的递归计数，仅供事实库使用，不用于视频画面的重要性排序。",
+    "这是 0.3.0 的展示快照；源目录后续改动需重新校验和评审。"
+  ]
+}

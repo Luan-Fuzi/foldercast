@@ -52,3 +52,6 @@ packages/plugin/scripts/**/tests/fixtures/**/.foldercast/
 # 其他 agent 插件在本仓库留下的缓存标记（video2code / video-agent-kit 的 plugin_root）
 .v2c/
 .video_agent/
+
+# 仓库自解析的交付样片；其余视频与工作缓存仍忽略
+!docs/showcase/foldercast.mp4

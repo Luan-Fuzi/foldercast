@@ -9,6 +9,7 @@ import type { Prepared } from '../../contracts/prep.ts';
 import type { DurationsDocument } from '../../contracts/durations.ts';
 import type { ScriptDocument } from '../../contracts/script.ts';
 import { buildPlan, DEFAULT_VIDEO, defaultTitle } from '../plan.ts';
+import { cardOf } from '../../scenecard/from-plan.ts';
 
 function scriptOf(scenes: ScriptDocument['scenes'], extra: Partial<ScriptDocument> = {}): ScriptDocument {
   return {
@@ -110,6 +111,33 @@ describe('场景映射（自足式讲稿）', () => {
     expect(textOnly.media).toBeUndefined();
     expect(textOnly.excerpt).toEqual(['# 演示', '', '一段说明。']);
     expect(plan.warnings.join('\n')).toContain('README.md');
+  });
+
+  it('文本摘录直接展示，卡片不显示无需转图的诊断，计划仍保留诊断', () => {
+    const plan = buildPlan({ script: scriptOf([
+      { id: 'code', type: 'file', file: 'main.ts', excerpt: ['export const name = "demo";'], narration: '源码。' },
+      { id: 'doc', type: 'file', file: 'README.md', excerpt: ['# Demo'], narration: '文档。' },
+    ]) });
+    for (const scene of plan.scenes) {
+      const card = cardOf(scene, plan);
+      expect(card.kind).toBe('file');
+      if (card.kind !== 'file') throw new Error('不是 file');
+      expect(card.excerpt.length).toBeGreaterThan(0);
+      expect(card.noteMissing).toBeUndefined();
+    }
+    expect(plan.warnings.join('\n')).toContain('main.ts');
+  });
+
+  it('图片与 PDF 转图失败仍向观众显示提示，即使附有摘录', () => {
+    const plan = buildPlan({ script: scriptOf([
+      { id: 'image', type: 'file', file: 'image.png', excerpt: ['图片说明'], narration: '图片。' },
+      { id: 'pdf', type: 'file', file: 'report.pdf', excerpt: ['文档原文'], narration: '报告。' },
+    ]) });
+    for (const scene of plan.scenes) {
+      const card = cardOf(scene, plan);
+      if (card.kind !== 'file') throw new Error('不是 file');
+      expect(card.noteMissing).toBeTruthy();
+    }
   });
 
   it('gallery：prep 没有的条目跳过并警告，columns 按张数定', () => {

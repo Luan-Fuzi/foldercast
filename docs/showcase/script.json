@@ -1,0 +1,348 @@
+{
+  "foldercast": 2,
+  "source": {
+    "root": "/Users/scliang/work/foldercast",
+    "label": "foldercast"
+  },
+  "title": "foldercast · 让目录开口讲",
+  "visual": {
+    "style": "瑞士风格",
+    "prompt": "采用瑞士风格：纸白底、墨色字、赭红强调。面向首次访问者，以职责对比、创作流程和真实代码摘录讲清系统；每场一个主题，保持可读性，不装饰性堆叠数字。"
+  },
+  "video": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "targetDurationSec": 120
+  },
+  "voice": {
+    "voice": "zh-CN-XiaoxiaoNeural"
+  },
+  "scenes": [
+    {
+      "id": "cover",
+      "type": "cover",
+      "title": "让目录开口讲",
+      "subtitle": "foldercast · 从源文件到导览页与讲解视频",
+      "narration": "一个目录里，有代码，也有文档。第一次打开，往往不知道从哪里看。目录放映把这些内容，组织成可以阅读的导览，或带旁白的讲解视频。",
+      "beats": [
+        {
+          "points": [
+            "代码、文档与素材 → 一条讲述主线"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "HTML 导览页 / MP4 讲解视频"
+          ],
+          "enter": "reveal"
+        }
+      ]
+    },
+    {
+      "id": "purpose",
+      "type": "concept",
+      "title": "先讲清内容，再选择输出",
+      "statement": "目录是素材，讲稿是主线。",
+      "points": [
+        "代码仓库：解释用途、结构与关键流程",
+        "文档资料：组织观点、来源与代表性文件",
+        "图片、Office / PDF：作为讲述素材"
+      ],
+      "narration": "输入不只限于代码仓库。资料、图片和办公文档，也能成为素材。模型根据受众挑选重点，先写事实库，再写讲稿。渲染只消费讲稿。",
+      "beats": [
+        {
+          "points": [
+            "先确定观众需要理解什么"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "选材依据来自真实文件"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "事实库服务创作；讲稿服务渲染"
+          ],
+          "enter": "reveal"
+        }
+      ]
+    },
+    {
+      "id": "roles",
+      "type": "compare",
+      "title": "模型创作，程序执行",
+      "left": {
+        "label": "模型 · 理解与判断",
+        "lines": [
+          "探索目录，核对事实与来源",
+          "按受众选材，安排旁白与节拍",
+          "独立评审事实、重点与表达"
+        ]
+      },
+      "right": {
+        "label": "程序 · 精确执行",
+        "lines": [
+          "校验格式、路径与原文摘录",
+          "准备素材，配音并实测时长",
+          "生成页面和视频，记录输入输出"
+        ]
+      },
+      "narration": "这里有一条明确的分工。模型负责理解、判断和创作。程序负责精确执行，处理校验、素材、配音与渲染。机器检查通过，仍然需要内容评审。",
+      "beats": [
+        {
+          "points": [
+            "判断重点 → 模型"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "执行重复步骤 → 程序"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "校验与内容评审各有职责"
+          ],
+          "enter": "reveal"
+        }
+      ]
+    },
+    {
+      "id": "workflow",
+      "type": "flow",
+      "title": "从目录到成片",
+      "steps": [
+        {
+          "label": "探索",
+          "note": "目录与代表性文件"
+        },
+        {
+          "label": "事实库",
+          "note": "digest.json"
+        },
+        {
+          "label": "讲稿",
+          "note": "script.json"
+        },
+        {
+          "label": "校验与评审",
+          "note": "核查证据与版本"
+        },
+        {
+          "label": "HTML",
+          "note": "先生成导览页"
+        },
+        {
+          "label": "视频",
+          "note": "按需配音与渲染"
+        }
+      ],
+      "narration": "流程从探索目录开始。事实库保留来源，讲稿组织画面与旁白。经过校验和独立评审，先生成导览页。需要视频时，再配音和渲染。",
+      "beats": [
+        {
+          "points": [
+            "探索 → 事实库 → 讲稿"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "校验 → 独立评审 → 版本回执"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "HTML 优先；视频按需"
+          ],
+          "enter": "reveal"
+        }
+      ]
+    },
+    {
+      "id": "entry",
+      "type": "file",
+      "title": "工具只执行明确请求",
+      "file": "packages/plugin/src/cast.ts",
+      "excerptStart": 107,
+      "excerpt": [
+        "  render?: boolean;",
+        "  /** 配音。**默认不配**：要跑云端 TTS 与 ffmpeg。 */",
+        "  voice?: boolean;",
+        "  /** 音色名（provider 各自的叫法）。缺省用默认中文音色。 */",
+        "  voiceName?: string;",
+        "  /** 已存在的音频重新合成。 */",
+        "  forceVoice?: boolean;"
+      ],
+      "note": "CastOptions · 配音与渲染的可选参数",
+      "narration": "这些可选参数，控制配音和渲染。配音默认不执行，音色可以显式指定。工具不替模型探索目录，也不替模型写稿。只有明确要求，才执行页面、配音和渲染。",
+      "beats": [
+        {
+          "points": [
+            "render / voice：显式开启产出"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "默认不配音；音色可以显式指定"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "模型探索与写稿，工具执行产出"
+          ],
+          "enter": "reveal"
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "type": "concept",
+      "title": "评审绑定当前输入",
+      "statement": "改了输入，就要重新核查。",
+      "points": [
+        "回执绑定讲稿、事实库与引用证据的版本",
+        "正式产出核对 revision 和评审报告哈希",
+        "程序不解析报告结论，不证明内容正确"
+      ],
+      "narration": "评审通过后，回执绑定当前输入的版本。讲稿或引用证据变化，旧回执就不能沿用。程序检查版本和报告哈希，内容是否正确，仍由独立评审判断。",
+      "beats": [
+        {
+          "points": [
+            "讲稿 / digest / 引用证据"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "修改后重新校验与复评"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "版本一致 ≠ 事实正确"
+          ],
+          "enter": "reveal"
+        }
+      ]
+    },
+    {
+      "id": "outputs",
+      "type": "compare",
+      "title": "一份讲稿，两个出口",
+      "left": {
+        "label": "HTML · 按区块阅读",
+        "lines": [
+          "旁白、要点与来源直接可见",
+          "可以只生成页面",
+          "素材未内联时，转发需附素材"
+        ]
+      },
+      "right": {
+        "label": "视频 · 跟着节奏观看",
+        "lines": [
+          "节拍随字幕出现",
+          "配音后采用实测音频时长",
+          "音频按场景缓存，支持断点续跑"
+        ]
+      },
+      "narration": "同一份讲稿，有两个出口。页面按区块展开，适合随时阅读。视频用字幕和节拍推进，有配音时采用实测时长。两种输出共享场景内容与素材准备。",
+      "beats": [
+        {
+          "points": [
+            "同一主线：画面内容与旁白"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "页面展开阅读；视频按时间推进"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "输出形式不同，场景内容共用"
+          ],
+          "enter": "reveal"
+        }
+      ]
+    },
+    {
+      "id": "styles",
+      "type": "concept",
+      "title": "风格指导创作，也控制画面",
+      "statement": "三套预设，加上自己的描述。",
+      "points": [
+        "瑞士风格：浅底与清晰层级",
+        "编辑设计风格：暖纸底与衬线标题",
+        "科技风格：深底与蓝色强调",
+        "自定义描述指导选材；基础预设控制画面参数"
+      ],
+      "narration": "预设提供瑞士、编辑设计和科技三种风格。自定义描述可以指导选材与叙事，但画面仍使用现有模板。修改设置后，已有讲稿与产物不会自动更新。",
+      "beats": [
+        {
+          "points": [
+            "预设共享配色、字体与卡片观感"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "描述交给模型理解"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "新设置需要落实到讲稿"
+          ],
+          "enter": "reveal"
+        }
+      ]
+    },
+    {
+      "id": "outro",
+      "type": "outro",
+      "title": "从一个目录开始",
+      "subtitle": "foldercast · 目录放映",
+      "lines": [
+        "在 DSH 安装 dsh-foldercast",
+        "说明目录、受众与讲述重点",
+        "先阅读 HTML，再按需生成视频",
+        "确认目录适合进入模型上下文；配音需要网络"
+      ],
+      "narration": "使用时，在 DSH 安装目录放映。告诉它目录、受众和重点，可以先看页面，再决定是否出片。目录内容会进入模型上下文，配音需要网络。这就是目录放映的使用起点。",
+      "beats": [
+        {
+          "points": [
+            "安装 → 指定目录与目标"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "先看导览，再决定视频"
+          ],
+          "enter": "reveal"
+        },
+        {
+          "points": [
+            "真实内容，明确边界"
+          ],
+          "enter": "reveal"
+        }
+      ]
+    }
+  ]
+}

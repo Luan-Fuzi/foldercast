@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>foldercast · 让目录开口讲 · 目录导览</title>
+<style>
+:root {
+  --bg: #FAF8F4;
+  --panel: #FFFFFF;
+  --ink: #24221E;
+  --muted: #6F6A61;
+  --line: #E4DFD5;
+  --accent: #B4472A;
+  --accent-ink: #FFFFFF;
+  --track: #EFEBE2;
+  --code-bg: #F3EFE7;
+  --code-ink: #2A2620;
+  --hero-bg: #26231E;
+  --hero-ink: #F5F2EA;
+  --hero-muted: #A9A296;
+  --font-display: "PingFang SC", "Helvetica Neue", Helvetica, "Microsoft YaHei", sans-serif;
+  --font-body: "PingFang SC", "Helvetica Neue", Helvetica, "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", Menlo, Consolas, monospace;
+  --radius: 10px;
+  --space: 1;
+  --page-width: 960px;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.7;
+}
+.wrap { max-width: var(--page-width); margin: 0 auto; padding: 0 24px; }
+.mono, code { font-family: var(--font-mono); font-size: 0.92em; }
+.muted { color: var(--muted); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── 页头（cover 场景） ─────────────────────────────── */
+.hero { background: var(--hero-bg); color: var(--hero-ink); }
+.hero-inner { max-width: var(--page-width); margin: 0 auto; padding: calc(56px * var(--space)) 24px calc(44px * var(--space)); }
+.hero .kicker { margin: 0 0 10px; font-size: 12px; letter-spacing: 0.22em; color: var(--hero-muted); }
+.hero h1 { margin: 0; font-family: var(--font-display); font-size: 38px; line-height: 1.2; font-weight: 700; }
+.hero .subtitle { margin: 10px 0 0; font-size: 17px; color: var(--hero-muted); }
+.hero .lede { margin: 18px 0 0; max-width: 40em; font-size: 15px; color: var(--hero-ink); opacity: 0.86; border-left: 3px solid var(--accent); padding-left: 14px; }
+
+/* ── 目录（区块多时才有） ───────────────────────────── */
+.toc { border-bottom: 1px solid var(--line); background: var(--panel); }
+.toc ol { margin: 12px 0; padding: 0 0 0 1.4em; columns: 2; column-gap: 40px; font-size: 14px; }
+.toc li { margin: 2px 0; break-inside: avoid; }
+
+/* ── 区块间距（文档流；卡片内部见 scenecard 的 CARD_CSS） ── */
+main { display: block; padding: calc(8px * var(--space)) 0 32px; }
+.scene { margin: calc(44px * var(--space)) auto; }
+
+/* ── 页脚（边界自述） ───────────────────────────────── */
+.colophon { margin-top: calc(56px * var(--space)); border-top: 3px double var(--line); background: var(--panel); font-size: 13px; color: var(--muted); }
+.colophon .wrap { padding-top: 20px; padding-bottom: 40px; }
+.colophon p { margin: 6px 0; }
+.colophon .fine { font-size: 12px; }
+.colophon details { margin: 10px 0; }
+.colophon summary { cursor: pointer; color: var(--ink); }
+.colophon ul { margin: 8px 0; padding-left: 1.3em; }
+.colophon code { overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+  .toc ol { columns: 1; }
+}
+@media print {
+  .hero, .toc { background: none; color: inherit; border: none; }
+  .scene { break-inside: avoid; }
+}
+
+.scene { margin: 0; }
+.scene-head { display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px; }
+.scene-no { font-family: var(--font-mono); font-size: 20px; color: var(--accent); }
+.scene-type { margin: 0; font-size: 12px; letter-spacing: 0.18em; color: var(--muted); }
+.scene h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 24px; line-height: 1.3; font-weight: 700; }
+.quote { margin: 0 0 18px; padding: 10px 16px; border-left: 3px solid var(--accent); background: var(--panel); border-radius: 0 var(--radius) var(--radius) 0; color: var(--ink); }
+.quote::before { content: "旁白 · "; font-size: 12px; letter-spacing: 0.1em; color: var(--muted); }
+.points { margin: 0 0 14px; padding: 0 0 0 22px; color: var(--ink); }
+.points li { margin: 4px 0; }
+
+/* ── 正文区：page 单列文档流；video 正文 + 右侧要点栏 ── */
+.scene-body { display: block; }
+.card--video { width: 960px; height: 540px; overflow: hidden; box-sizing: border-box; padding: 56px 40px 104px; display: flex; flex-direction: column; }
+.card--video .scene-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 26px; }
+.card--video .scene-main { min-width: 0; min-height: 0; }
+.card--video .scene-main .bars { max-width: 640px; }
+.points-rail { display: flex; flex-direction: column; gap: 16px; justify-content: center; }
+.point-group { border-left: 3px solid var(--accent); padding-left: 12px; }
+.point-group ul { margin: 0; padding: 0 0 0 18px; }
+.point-group li { margin: 4px 0; font-size: 13.5px; line-height: 1.55; }
+
+/* ── 条形图（structure / inventory 共用） ──────────── */
+.bars { list-style: none; margin: 0; padding: 0; }
+.bar-row { display: grid; grid-template-columns: minmax(9em, 24%) 1fr auto; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+.bar-row:last-child { border-bottom: none; }
+.bar-label { overflow-wrap: anywhere; }
+.bar-track { position: relative; height: 14px; background: var(--track); border-radius: calc(var(--radius) / 2); overflow: hidden; }
+.bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: calc(var(--radius) / 2); }
+.bar-row.is-highlight .bar-label { color: var(--accent); font-weight: 600; }
+.bar-row.is-highlight .bar-fill { background: linear-gradient(90deg, var(--accent), var(--accent-ink) 140%); }
+.bar-value { white-space: nowrap; font-size: 13px; color: var(--muted); }
+.bar-note { grid-column: 1 / -1; margin: -2px 0 0; font-size: 12.5px; color: var(--muted); }
+.bars-total { margin: 10px 0 0; font-size: 13px; color: var(--muted); text-align: right; }
+
+/* proportion 节拍：按占比分段的堆叠条（一条色相，透明度分档——瑞士风不撒彩虹） */
+.proportion { display: flex; height: 18px; border-radius: calc(var(--radius) / 2); overflow: hidden; background: var(--track); margin-top: 12px; }
+.proportion span { height: 100%; background: var(--accent); }
+.card--video .proportion { height: 26px; }
+
+/* ── 论点 / 对比 / 流程（0005 WP3） ─────────────────── */
+.concept-statement { margin: 4px 0 10px; font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1.4; }
+.card--video .concept-statement { font-size: 27px; margin-top: 8px; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.compare-side { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+.compare-side.is-accent { border-top: 3px solid var(--accent); }
+.compare-label { margin: 0 0 8px; font-weight: 700; }
+.compare-lines { margin: 0; padding: 0 0 0 20px; }
+.compare-lines li { margin: 5px 0; }
+.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.flow-step { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.flow-no { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); font-size: 12px; font-family: var(--font-mono); display: flex; align-items: center; justify-content: center; }
+.flow-label { font-weight: 600; }
+.flow-note { font-size: 12.5px; color: var(--muted); }
+.card--video .flow-step { padding: 16px 18px; gap: 6px; }
+
+/* ── 卡片（file / clip / document） ─────────────────── */
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+.card + .card { margin-top: 14px; }
+.card-path { margin: 0; overflow-wrap: anywhere; font-weight: 600; }
+.card-note { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.card-range { margin-left: 10px; font-weight: 400; font-size: 12px; color: var(--muted); }
+.excerpt { margin: 12px 0 0; }
+.excerpt summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.excerpt pre { margin: 8px 0 0; padding: 14px 16px; background: var(--code-bg); color: var(--code-ink); border-radius: calc(var(--radius) / 2); overflow-x: auto; font-size: 13px; line-height: 1.6; }
+.shot { margin: 14px 0 0; }
+.shot img { display: block; max-width: 100%; height: auto; border-radius: calc(var(--radius) / 2); border: 1px solid var(--line); }
+.shot figcaption { margin-top: 6px; font-size: 12px; color: var(--muted); }
+
+/* video 的摘录面板：顶部对齐撑满（0005 WP1 的量），行号槽 + 来源区间 */
+.card--video .file-panel { display: flex; flex-direction: column; min-height: 0; }
+.excerpt-panel { flex: 1; min-height: 0; margin-top: 12px; display: flex; background: var(--code-bg); border-radius: calc(var(--radius) / 2); padding: 14px 16px; overflow: hidden; }
+.excerpt-gutter { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; padding-right: 14px; margin-right: 14px; border-right: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--muted); }
+.excerpt-code { min-width: 0; flex: 1; }
+.excerpt-code pre { margin: 0; padding: 0; background: transparent; color: var(--code-ink); font-family: var(--font-mono); font-size: 13px; line-height: 1.6; overflow: hidden; }
+.excerpt-code code { font-family: var(--font-mono); }
+.card--video .shot img { max-height: 300px; width: auto; max-width: 100%; margin: 0 auto; }
+
+/* Markdown 摘录（highlight.ts 产出的 fc-md 作用域），page 与 video 共用 */
+.fc-md { width: 100%; overflow: hidden; }
+.fc-md p { margin: 0 0 0.55em; }
+.fc-md p:last-child { margin-bottom: 0; }
+.fc-md h1, .fc-md h2, .fc-md h3, .fc-md h4 { font-family: var(--font-display); line-height: 1.25; margin: 0.2em 0 0.4em; }
+.fc-md h1 { font-size: 1.5em; }
+.fc-md h2 { font-size: 1.3em; }
+.fc-md h3, .fc-md h4 { font-size: 1.12em; }
+.fc-md strong { color: var(--accent); font-weight: 700; }
+.fc-md em { font-style: italic; }
+.fc-md code { font-family: var(--font-mono); background: var(--track); color: var(--accent); padding: 0.06em 0.35em; border-radius: 4px; }
+.fc-md pre { margin: 0 0 0.55em; padding: 0.55em 0.8em; background: var(--track); border-radius: 8px; overflow: hidden; }
+.fc-md pre code { background: transparent; padding: 0; color: var(--ink); }
+.fc-md ul, .fc-md ol { margin: 0 0 0.55em; padding-left: 1.3em; }
+.fc-md li { margin: 0.15em 0; }
+.fc-md blockquote { margin: 0 0 0.55em; padding-left: 0.9em; border-left: 3px solid var(--accent); color: var(--muted); }
+.fc-md a { color: var(--accent); text-decoration: none; }
+.card--video .excerpt-panel .fc-md { font-size: 14px; line-height: 1.65; }
+
+/* ── 图集网格 ───────────────────────────────────────── */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.card--video .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.cell { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.cell img { display: block; width: 100%; height: auto; }
+.cell figcaption { padding: 8px 12px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.cell-plain { padding: 14px 16px; }
+.cell-plain .kind { margin: 0 0 4px; font-size: 12px; letter-spacing: 0.14em; color: var(--accent); }
+.cell-plain p { margin: 0; font-size: 13px; }
+
+/* video 的 clip 封面与 document 页图 */
+.clip-poster { margin: 12px 0 0; text-align: center; }
+.clip-poster img { max-height: 300px; max-width: 100%; border-radius: calc(var(--radius) / 2); border: 1px solid var(--line); }
+.pages-row { display: flex; gap: 12px; margin-top: 12px; overflow: hidden; }
+.pages-row figure { margin: 0; min-width: 0; }
+.pages-row img { height: 260px; width: auto; border-radius: calc(var(--radius) / 2); border: 1px solid var(--line); display: block; }
+.card--page .pages-row { flex-wrap: wrap; overflow: visible; }
+.card--page .pages-row img { max-width: 100%; height: auto; max-height: 520px; }
+.pages-row figcaption { margin-top: 4px; font-size: 11px; color: var(--muted); text-align: center; }
+
+/* ── 封面（video）与小结 ─────────────────────────────── */
+.cover-kicker { margin: 0; font-size: 13px; letter-spacing: 0.22em; color: var(--accent); }
+.card--video .cover-title { margin: 14px 0 0; font-family: var(--font-display); font-size: 44px; line-height: 1.2; font-weight: 700; }
+.cover-subtitle { margin: 12px 0 0; font-size: 18px; color: var(--muted); }
+.cover-facts { display: flex; gap: 48px; margin-top: 40px; }
+.cover-facts .fact { display: flex; flex-direction: column; gap: 6px; }
+.cover-facts .fact-label { font-size: 12px; letter-spacing: 0.14em; color: var(--muted); }
+.cover-facts .fact-value { font-family: var(--font-display); font-size: 22px; }
+.outro { text-align: center; padding: calc(28px * var(--space)) 0 8px; }
+.outro h2 { font-family: var(--font-display); font-size: 30px; margin: 0; }
+.outro-subtitle { margin: 8px 0 0; color: var(--muted); font-size: 15px; }
+.outro-lines { list-style: none; margin: 18px auto 0; padding: 0; max-width: 36em; }
+.outro-lines li { padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 14.5px; }
+.outro-lines li:last-child { border-bottom: none; }
+.card--video .outro { padding: 0; }
+.card--video .outro h2 { font-size: 34px; }
+.card--video.card--video-outro { justify-content: center; }
+
+/* ── 节拍入场（变量缺省 1 = 直接可见；视频侧逐帧设置） ── */
+.scene [data-beat="0"]{opacity:var(--b0, 1);}
+.scene [data-beat="0"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b0, 1)) * 10px));}
+.scene [data-beat="0"][data-enter="slide"]{transform:translateX(calc((1 - var(--b0, 1)) * -22px));}
+.scene [data-beat="0"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b0, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="1"]{opacity:var(--b1, 1);}
+.scene [data-beat="1"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b1, 1)) * 10px));}
+.scene [data-beat="1"][data-enter="slide"]{transform:translateX(calc((1 - var(--b1, 1)) * -22px));}
+.scene [data-beat="1"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b1, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="2"]{opacity:var(--b2, 1);}
+.scene [data-beat="2"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b2, 1)) * 10px));}
+.scene [data-beat="2"][data-enter="slide"]{transform:translateX(calc((1 - var(--b2, 1)) * -22px));}
+.scene [data-beat="2"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b2, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="3"]{opacity:var(--b3, 1);}
+.scene [data-beat="3"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b3, 1)) * 10px));}
+.scene [data-beat="3"][data-enter="slide"]{transform:translateX(calc((1 - var(--b3, 1)) * -22px));}
+.scene [data-beat="3"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b3, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="4"]{opacity:var(--b4, 1);}
+.scene [data-beat="4"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b4, 1)) * 10px));}
+.scene [data-beat="4"][data-enter="slide"]{transform:translateX(calc((1 - var(--b4, 1)) * -22px));}
+.scene [data-beat="4"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b4, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="5"]{opacity:var(--b5, 1);}
+.scene [data-beat="5"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b5, 1)) * 10px));}
+.scene [data-beat="5"][data-enter="slide"]{transform:translateX(calc((1 - var(--b5, 1)) * -22px));}
+.scene [data-beat="5"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b5, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="6"]{opacity:var(--b6, 1);}
+.scene [data-beat="6"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b6, 1)) * 10px));}
+.scene [data-beat="6"][data-enter="slide"]{transform:translateX(calc((1 - var(--b6, 1)) * -22px));}
+.scene [data-beat="6"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b6, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="7"]{opacity:var(--b7, 1);}
+.scene [data-beat="7"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b7, 1)) * 10px));}
+.scene [data-beat="7"][data-enter="slide"]{transform:translateX(calc((1 - var(--b7, 1)) * -22px));}
+.scene [data-beat="7"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b7, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="8"]{opacity:var(--b8, 1);}
+.scene [data-beat="8"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b8, 1)) * 10px));}
+.scene [data-beat="8"][data-enter="slide"]{transform:translateX(calc((1 - var(--b8, 1)) * -22px));}
+.scene [data-beat="8"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b8, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="9"]{opacity:var(--b9, 1);}
+.scene [data-beat="9"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b9, 1)) * 10px));}
+.scene [data-beat="9"][data-enter="slide"]{transform:translateX(calc((1 - var(--b9, 1)) * -22px));}
+.scene [data-beat="9"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b9, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="10"]{opacity:var(--b10, 1);}
+.scene [data-beat="10"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b10, 1)) * 10px));}
+.scene [data-beat="10"][data-enter="slide"]{transform:translateX(calc((1 - var(--b10, 1)) * -22px));}
+.scene [data-beat="10"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b10, 1) * 0.04));transform-origin:left center;}
+.scene [data-beat="11"]{opacity:var(--b11, 1);}
+.scene [data-beat="11"][data-enter="reveal"]{transform:translateY(calc((1 - var(--b11, 1)) * 10px));}
+.scene [data-beat="11"][data-enter="slide"]{transform:translateX(calc((1 - var(--b11, 1)) * -22px));}
+.scene [data-beat="11"][data-enter="grow"]{transform:scale(calc(0.96 + var(--b11, 1) * 0.04));transform-origin:left center;}
+
+</style>
+</head>
+<body>
+<header class="hero">
+ <div class="hero-inner">
+  <p class="kicker">foldercast · 目录导览</p>
+  <h1>让目录开口讲</h1>
+  <p class="subtitle">foldercast · 从源文件到导览页与讲解视频</p>
+  <p class="lede">一个目录里，有代码，也有文档。第一次打开，往往不知道从哪里看。目录放映把这些内容，组织成可以阅读的导览，或带旁白的讲解视频。</p>
+ </div>
+</header>
+<nav class="toc">
+  <div class="wrap">
+    <ol>
+      <li><a href="#scene-purpose">先讲清内容，再选择输出</a></li>
+      <li><a href="#scene-roles">模型创作，程序执行</a></li>
+      <li><a href="#scene-workflow">从目录到成片</a></li>
+      <li><a href="#scene-entry">工具只执行明确请求</a></li>
+      <li><a href="#scene-review">评审绑定当前输入</a></li>
+      <li><a href="#scene-outputs">一份讲稿，两个出口</a></li>
+      <li><a href="#scene-styles">风格指导创作，也控制画面</a></li>
+      <li><a href="#scene-outro">从一个目录开始</a></li>    </ol>
+  </div>
+</nav>
+<main class="wrap">
+<section class="scene scene-concept card--page" id="scene-purpose">
+  <div class="scene-head">
+    <span class="scene-no">01</span>
+    <div>
+      <p class="scene-type">论点</p>
+      <h2>先讲清内容，再选择输出</h2>
+    </div>
+  </div>
+  <blockquote class="quote">输入不只限于代码仓库。资料、图片和办公文档，也能成为素材。模型根据受众挑选重点，先写事实库，再写讲稿。渲染只消费讲稿。</blockquote>
+  <div class="scene-body">
+    <div class="scene-main">
+    <p class="concept-statement">目录是素材，讲稿是主线。</p>    <ul class="compare-lines">
+      <li>代码仓库：解释用途、结构与关键流程</li>
+      <li>文档资料：组织观点、来源与代表性文件</li>
+      <li>图片、Office / PDF：作为讲述素材</li>
+      <li>先确定观众需要理解什么</li>
+      <li>选材依据来自真实文件</li>
+      <li>事实库服务创作；讲稿服务渲染</li>    </ul>
+    </div>  </div>
+</section>
+<section class="scene scene-compare card--page" id="scene-roles">
+  <div class="scene-head">
+    <span class="scene-no">02</span>
+    <div>
+      <p class="scene-type">对比</p>
+      <h2>模型创作，程序执行</h2>
+    </div>
+  </div>
+  <ul class="points">
+<li>判断重点 → 模型</li><li>执行重复步骤 → 程序</li><li>校验与内容评审各有职责</li>  </ul>
+  <blockquote class="quote">这里有一条明确的分工。模型负责理解、判断和创作。程序负责精确执行，处理校验、素材、配音与渲染。机器检查通过，仍然需要内容评审。</blockquote>
+  <div class="scene-body">
+    <div class="scene-main">
+    <div class="compare">
+    <div class="compare-side is-accent">
+      <p class="compare-label">模型 · 理解与判断</p>
+      <ul class="compare-lines">
+        <li>探索目录，核对事实与来源</li>
+        <li>按受众选材，安排旁白与节拍</li>
+        <li>独立评审事实、重点与表达</li>
+      </ul>
+    </div>
+    <div class="compare-side">
+      <p class="compare-label">程序 · 精确执行</p>
+      <ul class="compare-lines">
+        <li>校验格式、路径与原文摘录</li>
+        <li>准备素材，配音并实测时长</li>
+        <li>生成页面和视频，记录输入输出</li>
+      </ul>
+    </div>
+    </div>
+    </div>  </div>
+</section>
+<section class="scene scene-flow card--page" id="scene-workflow">
+  <div class="scene-head">
+    <span class="scene-no">03</span>
+    <div>
+      <p class="scene-type">流程</p>
+      <h2>从目录到成片</h2>
+    </div>
+  </div>
+  <ul class="points">
+<li>探索 → 事实库 → 讲稿</li><li>校验 → 独立评审 → 版本回执</li><li>HTML 优先；视频按需</li>  </ul>
+  <blockquote class="quote">流程从探索目录开始。事实库保留来源，讲稿组织画面与旁白。经过校验和独立评审，先生成导览页。需要视频时，再配音和渲染。</blockquote>
+  <div class="scene-body">
+    <div class="scene-main">
+    <ol class="flow">
+      <li class="flow-step">
+        <span class="flow-no">1</span>
+        <span class="flow-label">探索</span>
+        <span class="flow-note">目录与代表性文件</span>
+      </li>
+      <li class="flow-step">
+        <span class="flow-no">2</span>
+        <span class="flow-label">事实库</span>
+        <span class="flow-note">digest.json</span>
+      </li>
+      <li class="flow-step">
+        <span class="flow-no">3</span>
+        <span class="flow-label">讲稿</span>
+        <span class="flow-note">script.json</span>
+      </li>
+      <li class="flow-step">
+        <span class="flow-no">4</span>
+        <span class="flow-label">校验与评审</span>
+        <span class="flow-note">核查证据与版本</span>
+      </li>
+      <li class="flow-step">
+        <span class="flow-no">5</span>
+        <span class="flow-label">HTML</span>
+        <span class="flow-note">先生成导览页</span>
+      </li>
+      <li class="flow-step">
+        <span class="flow-no">6</span>
+        <span class="flow-label">视频</span>
+        <span class="flow-note">按需配音与渲染</span>
+      </li>    </ol>
+    </div>  </div>
+</section>
+<section class="scene scene-file card--page" id="scene-entry">
+  <div class="scene-head">
+    <span class="scene-no">04</span>
+    <div>
+      <p class="scene-type">文件</p>
+      <h2>工具只执行明确请求</h2>
+    </div>
+  </div>
+  <ul class="points">
+<li>render / voice：显式开启产出</li><li>默认不配音；音色可以显式指定</li><li>模型探索与写稿，工具执行产出</li>  </ul>
+  <blockquote class="quote">这些可选参数，控制配音和渲染。配音默认不执行，音色可以显式指定。工具不替模型探索目录，也不替模型写稿。只有明确要求，才执行页面、配音和渲染。</blockquote>
+  <div class="scene-body">
+    <div class="scene-main">
+  <div class="card file-panel">
+    <p class="card-path mono">packages/plugin/src/cast.ts</p>
+    <p class="card-note">CastOptions · 配音与渲染的可选参数</p>
+    <details class="excerpt" open>
+      <summary>摘录（7 行）</summary>
+      <div style="font-size:11px"><pre class="shiki github-light" style="margin:0;padding:0;background:transparent;overflow:visible;" tabindex="0"><code><span class="line"><span style="color:#24292E">  render</span><span style="color:#D73A49">?:</span><span style="color:#24292E"> boolean;</span></span>
+<span class="line"><span style="color:#6A737D">  /** 配音。**默认不配**：要跑云端 TTS 与 ffmpeg。 */</span></span>
+<span class="line"><span style="color:#24292E">  voice</span><span style="color:#D73A49">?:</span><span style="color:#24292E"> boolean;</span></span>
+<span class="line"><span style="color:#6A737D">  /** 音色名（provider 各自的叫法）。缺省用默认中文音色。 */</span></span>
+<span class="line"><span style="color:#24292E">  voiceName</span><span style="color:#D73A49">?:</span><span style="color:#24292E"> string;</span></span>
+<span class="line"><span style="color:#6A737D">  /** 已存在的音频重新合成。 */</span></span>
+<span class="line"><span style="color:#24292E">  forceVoice</span><span style="color:#D73A49">?:</span><span style="color:#24292E"> boolean;</span></span></code></pre></div>
+    </details>  </div>
+    </div>  </div>
+</section>
+<section class="scene scene-concept card--page" id="scene-review">
+  <div class="scene-head">
+    <span class="scene-no">05</span>
+    <div>
+      <p class="scene-type">论点</p>
+      <h2>评审绑定当前输入</h2>
+    </div>
+  </div>
+  <blockquote class="quote">评审通过后，回执绑定当前输入的版本。讲稿或引用证据变化，旧回执就不能沿用。程序检查版本和报告哈希，内容是否正确，仍由独立评审判断。</blockquote>
+  <div class="scene-body">
+    <div class="scene-main">
+    <p class="concept-statement">改了输入，就要重新核查。</p>    <ul class="compare-lines">
+      <li>回执绑定讲稿、事实库与引用证据的版本</li>
+      <li>正式产出核对 revision 和评审报告哈希</li>
+      <li>程序不解析报告结论，不证明内容正确</li>
+      <li>讲稿 / digest / 引用证据</li>
+      <li>修改后重新校验与复评</li>
+      <li>版本一致 ≠ 事实正确</li>    </ul>
+    </div>  </div>
+</section>
+<section class="scene scene-compare card--page" id="scene-outputs">
+  <div class="scene-head">
+    <span class="scene-no">06</span>
+    <div>
+      <p class="scene-type">对比</p>
+      <h2>一份讲稿，两个出口</h2>
+    </div>
+  </div>
+  <ul class="points">
+<li>同一主线：画面内容与旁白</li><li>页面展开阅读；视频按时间推进</li><li>输出形式不同，场景内容共用</li>  </ul>
+  <blockquote class="quote">同一份讲稿，有两个出口。页面按区块展开，适合随时阅读。视频用字幕和节拍推进，有配音时采用实测时长。两种输出共享场景内容与素材准备。</blockquote>
+  <div class="scene-body">
+    <div class="scene-main">
+    <div class="compare">
+    <div class="compare-side is-accent">
+      <p class="compare-label">HTML · 按区块阅读</p>
+      <ul class="compare-lines">
+        <li>旁白、要点与来源直接可见</li>
+        <li>可以只生成页面</li>
+        <li>素材未内联时，转发需附素材</li>
+      </ul>
+    </div>
+    <div class="compare-side">
+      <p class="compare-label">视频 · 跟着节奏观看</p>
+      <ul class="compare-lines">
+        <li>节拍随字幕出现</li>
+        <li>配音后采用实测音频时长</li>
+        <li>音频按场景缓存，支持断点续跑</li>
+      </ul>
+    </div>
+    </div>
+    </div>  </div>
+</section>
+<section class="scene scene-concept card--page" id="scene-styles">
+  <div class="scene-head">
+    <span class="scene-no">07</span>
+    <div>
+      <p class="scene-type">论点</p>
+      <h2>风格指导创作，也控制画面</h2>
+    </div>
+  </div>
+  <blockquote class="quote">预设提供瑞士、编辑设计和科技三种风格。自定义描述可以指导选材与叙事，但画面仍使用现有模板。修改设置后，已有讲稿与产物不会自动更新。</blockquote>
+  <div class="scene-body">
+    <div class="scene-main">
+    <p class="concept-statement">三套预设，加上自己的描述。</p>    <ul class="compare-lines">
+      <li>瑞士风格：浅底与清晰层级</li>
+      <li>编辑设计风格：暖纸底与衬线标题</li>
+      <li>科技风格：深底与蓝色强调</li>
+      <li>自定义描述指导选材；基础预设控制画面参数</li>
+      <li>预设共享配色、字体与卡片观感</li>
+      <li>描述交给模型理解</li>
+      <li>新设置需要落实到讲稿</li>    </ul>
+    </div>  </div>
+</section>
+<section class="scene scene-outro card--page card--video-outro" id="scene-outro">
+  <div class="outro">
+    <h2>从一个目录开始</h2>
+    <p class="outro-subtitle">foldercast · 目录放映</p>    <ul class="outro-lines">
+      <li>在 DSH 安装 dsh-foldercast</li>
+      <li>说明目录、受众与讲述重点</li>
+      <li>先阅读 HTML，再按需生成视频</li>
+      <li>确认目录适合进入模型上下文；配音需要网络</li>    </ul>
+  </div>
+  <blockquote class="quote">使用时，在 DSH 安装目录放映。告诉它目录、受众和重点，可以先看页面，再决定是否出片。目录内容会进入模型上下文，配音需要网络。这就是目录放映的使用起点。</blockquote></section>
+</main>
+<footer class="colophon">
+  <div class="wrap">
+    <p>本页由讲稿 <code>.foldercast/script.json</code> 生成（foldercast page）—— 同一份讲稿也渲染讲解视频，页面是它的文字版。</p>
+    <p class="fine">foldercast（/Users/scliang/work/foldercast）· 9 个区块 · 图片内联 0 张 · 生成于 2026-10-11T01:50:48.184Z</p>    <details>
+      <summary>引用的文件（1）</summary>
+      <ul>
+        <li><code>packages/plugin/src/cast.ts</code></li>      </ul>
+    </details>
+    <div class="notes">
+      <p>边界说明</p>
+      <ul>
+        <li>讲稿写了 targetDurationSec=120，各场景按比例缩放到共 3600 帧</li>
+        <li>file 场景 entry：packages/plugin/src/cast.ts 不是能转出画面的文件（图片 / 视频 / Office / PDF）（画面落到摘录文字）</li>      </ul>
+    </div>
+    <p class="fine">自包含静态页：无 JavaScript、无外部资源；未能内联的图片按相对路径引用，转发时需连同源文件。</p>
+  </div>
+</footer>
+</body>
+</html>

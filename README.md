@@ -1,218 +1,65 @@
 # foldercast · 目录放映
 
-把任意一个**人类可读的目录**变成一段讲解视频。不限于代码仓库——任何目录，只要里面的
-内容人能读懂，就能被讲成视频。
+**把一个目录，讲成一段视频或一页导览。**
 
-**形态：DSH 插件**（工具 + skill + 脚本），编排层是 DSH 主 agent。
+foldercast 是 DSH 插件。给它一个人类可读的目录，Agent 理解内容、挑选证据、写成讲稿并独立评审；插件把讲稿生成 HTML 导览页，或带旁白的视频。代码仓库、文档资料、图片与 Office / PDF 都可以成为讲述素材。
 
-## 0.3.0（2026-10-11）
+[安装与设置](packages/plugin/README.md) · [开发与 CLI](docs/development.md) · [设计决策](docs/decisions/0008-trusted-execution.md) · [变更记录](CHANGELOG.md)
 
-本次重点是让创作偏好可配置、可查看：
+## 看看实际效果
 
-- 瑞士风格、编辑设计风格、科技风格共用于视频与默认 HTML，可查看交给 Agent 的风格指导。
-- 自定义风格支持名称和效果描述；基础视觉预设控制现有模板的配色与字体。
-- 创作与沟通设置提供受众、重点、深度和目标分钟数，作为 Agent 的规划参考。
-- 配音引擎和音色改为下拉选择，显示默认音色，补齐 MiMo 密钥配置说明。
+下面的示例由 foldercast 解析自己的仓库生成，使用瑞士风格。截图来自实际渲染，HTML 和视频共用一份讲稿。
 
-同时加入版本绑定的评审回执、逐场音频缓存和产物记录。详细改动与升级边界见[变更记录](CHANGELOG.md)。
+[![foldercast 自解析视频封面](docs/showcase/cover.png)](docs/showcase/foldercast.mp4)
 
-## 工作流程
+**[观看／下载 MP4](docs/showcase/foldercast.mp4)** · **[下载 HTML 导览页](docs/showcase/foldercast.html)** · [讲稿与生成说明](docs/showcase/README.md)
 
-```
-Agent（有 bash）：探目录 → 写 digest → 定大纲与讲稿 → 独立评审
-一个工具：校验与版本回执 →（显式要求）页面 / 配音 / 渲染
-```
+GitHub 文件页不会直接运行 HTML；下载后在浏览器打开即可阅读。本例不引用外部图片，可单文件保存和转发。
 
-**模型负责理解、判断与创作；程序负责精确、重复、可复现和可验证的执行。** 选材与叙事由 agent 决定，程序处理契约校验、版本一致性、素材转换、配音与渲染。职责调整见 [0008](docs/decisions/0008-trusted-execution.md)，历史收缩依据见 [0001](docs/decisions/0001-minimal-agent-plugin.md)。
+| 工作流：从理解到产出 | 职责：创作与执行 |
+|---|---|
+| ![工作流视频画面](docs/showcase/workflow.png) | ![模型与程序职责视频画面](docs/showcase/roles.png) |
 
-**要说清的一件事**：foldercast 会读取目录里的文件内容用于理解，**这些内容会进入模型
-上下文**。这是功能本身，不是缺陷。写稿 skill 里有一条约束：不要打开密钥样的文件
-（`.env`、`*.pem`、`credentials*`），但请自行确认目录里没有不该外传的内容。
+## 从哪里开始
 
----
-
-## 管线
-
-```
-   ┌─────────────┐   ┌──────────────────┐   ┌───────────────┐   ┌──────────────┐
-   │ 探目录       │ ─► │ 知识压缩 digest   │ ─► │ 分镜 + 讲稿    │ ─► │ 校验 + 配音   │
-   │ bash + 眼睛  │   │ 事实富集（agent） │   │ script.json   │   │ + 渲染 + 页面 │
-   └─────────────┘   └──────────────────┘   └───────────────┘   └──────────────┘
-```
-
-主要文件落在 `<目录>/.foldercast/` 下：
-
-| 文件 | 是什么 | 性质 |
-|---|---|---|
-| `digest.json` | **知识压缩**——结构、盘点、摘录、值得讲的数字，深度随讲述目标调整的事实库 | agent 写，**富集** |
-| `script.json` | **讲稿**（`foldercast: 2`）——分镜、节拍（beats）、旁白；画面上的一切都写在里面 | agent 写，**创作** |
-| `review.md` / `review.json` | 独立评审报告与绑定输入版本的回执；程序不证明事实正确 | 模型报告 / 程序记录 |
-| `artifacts.json` | 产物输入版本与输出哈希 | 程序记录 |
-| `durations.json` | 配音产物——逐场景实测时长与字幕时序；**节拍时刻对齐字幕** | 程序产出，可重算 |
-
-**两阶段创作**（[0004](docs/decisions/0004-two-stage-authoring.md)）：先做知识压缩
-（digest，按知识结构组织），再按受众与目标写讲稿——「合适的画面密度」
-是从富集里选出来的。讲稿仍**自足**：渲染只读讲稿；引用的文件用相对源目录的路径，
-必须真实存在。校验器查契约、给出密度比提示（参考画面阅读量/旁白量 1.5–3）、抽查 digest 的
-计数。形状见 [script.schema.json](docs/specs/script.schema.json) 与
-[示例](examples/script.example.json)。
-
----
-
-## 环境与依赖
-
-缺依赖**不会炸**：每一步开工前先探测，缺什么就给对应平台的安装指引；讲稿校验
-（`--check`）在任何机器上都能跑。仓库内开发用 pnpm（版本由 `packageManager` 固定）。
-
-| 依赖 | 什么时候需要 | macOS | Windows | Linux |
-|---|---|---|---|---|
-| Node 22.19+ | 必需：阶段脚本用 TypeScript 直跑（类型剥离） | 官网安装包 / brew | 官网安装包 / winget | 发行版包管理器 / nvm |
-| 浏览器（Chrome / Chromium / Edge 任一） | 只有**出片**需要 | 装任一系统浏览器，或 `npx remotion browser ensure` 让 Remotion 下载（约 150–300 MB），或 `FOLDERCAST_BROWSER=<路径>` 指定 —— 三平台同样 | 同左 | 同左 |
-| ffmpeg / ffprobe | 配音、实测时长、视频封面；非 mac 平台的图片缩放也回退到它 | `brew install ffmpeg` | `winget install --id Gyan.FFmpeg`（或 `choco install ffmpeg`） | `apt install ffmpeg`（或发行版等价命令） |
-| `@deepseek-ai/libreoffice-kit`（提供 `dsoffice`） | 可选：Office / PDF 的逐页图与文本提取 | 随包以 optionalDependency 自动安装（公共 npm，三平台各有变体；Linux 落到 wasm 变体）。装不上只影响 office/pdf 素材，其余类型照常 | 同左 | 同左 |
-
-macOS 自带的 `sips`（图片缩放）也在此列：其他平台回退 ffmpeg。
-
----
-
-## 装进 DSH
-
-从 npm 安装公开发布的 0.3.0 包：
+需要 DSH 和 Node `^22.19.0 || >=24.0.0`。在 DSH 使用的 profile 中安装：
 
 ```bash
 dsh plugin --profile <profile> add dsh-foldercast@0.3.0
 ```
 
-GitHub 仓库保持私有。有仓库访问权限的用户也可以先登录 `gh`，下载 Release 后安装本地包：
+安装后重启 DSH，在对话中说明目录和讲述目标，例如：
 
-```bash
-gh release download v0.3.0 --repo Luan-Fuzi/foldercast --pattern dsh-foldercast-0.3.0.tgz --dir ./foldercast-release
-dsh plugin --profile <profile> add "$(pwd)/foldercast-release/dsh-foldercast-0.3.0.tgz"
-```
+> 把这个仓库讲给第一次接触它的开发者，重点解释用途和工作流。先生成 HTML 导览页，再生成带旁白的视频。
 
-装完在插件管理页看到「目录放映」，对话里说「把这个目录讲一遍」即触发。agent 按
-skill 走：自己探目录 → 写 digest 与 `script.json` → 调 `foldercast_cast` 校验（机器闸门，
-只给结论、不落产物）→ 起独立 subagent 评审（结论写 `review.md`）→ **评审通过后**传
-`reviewRevision: revision` 记录当前版本的评审回执，再传 `page: true` 产出 `page.html` 导览页，要成片再传
-`render: true`（要旁白同时传 `voice: true`）。产出顺序由 skill 驱动（0007）：默认先 HTML
-再视频；用户只要导览页就停在 HTML。正式产出检查回执版本与报告哈希，工具不解析报告的自然语言结论；传 `reviewRevision` 表示 agent 声明已通过评审。`draft: true` 可生成工作草稿。HTML 与视频共享场景内容与素材准备，输出形式不同；图片超出内联预算时保留相对路径，转发需要附被引用的素材并保留相对位置。Office / PDF 页图与视频封面的相对路径指向准备产物。
+也可以只要页面：
 
-**昂贵步骤默认不跑**：不出片就不传 `render`，只要静音片就不传 `voice`。
-渲染几分钟到几十分钟；配音走云端 TTS——默认 `edge`（免密钥），`mimo` 中文更自然但要
-`MIMO_API_KEY`（缺密钥时以退出码 4 结束并给配置办法，见
-[决策记录](docs/decisions/0002-tts-providers.md)）。**配音需要网络**，断网时只剩
-静音片（`voice` 不传即可）。
+> 把这个资料目录整理成 HTML 导览页，突出核心观点和代表性文件。
 
-### 设置与创作偏好
+设置页可选择受众、重点、深度、目标分钟数、美术风格、配音引擎和音色。默认按需询问；已有上下文和当前要求优先。完整设置、MiMo 密钥和 Release 安装方式见[插件使用说明](packages/plugin/README.md)。
 
-设置窗口的「目录放映」页提供：
+## 它怎样讲清一个目录
 
-- **创作与沟通**：沟通方式、受众、重点、深度、视频目标分钟数、导览页目标阅读分钟数和补充提示词。Agent 先利用上下文，只问影响取舍的缺项；规模和分钟数用于规划，不直接限制渲染。
-- **美术风格**：瑞士风格 / 编辑设计风格 / 科技风格，可展开查看交给 Agent 的创作指导。预设控制视频与默认 HTML 的配色和字体；提示词引导选材、场景与节拍。
-- **自定义风格**：填写可选名称和「想要的效果」，两者一起进入创作指导；基础视觉预设只控制实际画面参数，不附加它的内置创作原则。自由描述仍使用现有场景模板，不直接变成 CSS。
-- **配音与高级设置**：引擎、预置或自定义音色、MiMo 朗读风格、浏览器路径、并发数，以及 HTML 的独立风格。
+1. **理解内容**：Agent 查看目录和代表性文件，先写知识压缩 `digest.json`，保留来源与原文摘录。
+2. **组织讲述**：根据受众和目标写 `script.json`，选择流程、对比、观点、文件摘录等场景，安排旁白与节拍。
+3. **校验与评审**：程序检查格式、引用和版本；独立 Agent 核查事实、数字、重点、遗漏、结构与表达。
+4. **生成产物**：评审通过后先生成 HTML；明确需要视频时，再配音、渲染 MP4。
 
-设置变化不会自动改写已有讲稿；新的创作指导需重新写稿、校验和评审后生效。HTML 与视频当前共用场景，不能独立自动生成两份不同长度的内容。字段、提示词传递、密钥配置和旧名称兼容说明见[插件使用说明](packages/plugin/README.md)。
+**模型负责理解、判断与创作；程序负责精确、重复、可复现和可验证的执行。** 机器校验和版本回执不能替代内容评审。[设计依据](docs/decisions/0008-trusted-execution.md)
 
-**改过 `src/` 之后要重启 DSH**（插件入口不热加载），否则旧代码会报「插件包不完整」。
+## 输出与风格
 
-**发布前要构建**：Node 不允许在 `node_modules` 里剥离 TypeScript，分发的入口必须是 JS。
-`pnpm --filter dsh-foldercast prepack`（复制 schema、编译 JS 与类型、构建设置页）生成 `lib/` 与 `schemas/`，
-两者都是构建产物、不入库。
+| 输出 | 用途 |
+|---|---|
+| HTML 导览页 | 按区块阅读旁白、要点与来源；可以只生成页面 |
+| MP4 视频 | 节拍随字幕出现；有配音时采用实测音频时长 |
+| digest 与讲稿 | 保留事实库和创作输入，可修改后重新校验、评审与生成 |
 
----
+产物默认位于源目录的 `.foldercast/`。HTML 与视频共用场景内容和素材准备。支持瑞士风格、编辑设计风格、科技风格，也可用自定义描述指导选材和叙事；实际画面仍使用现有场景模板。设置变化不会自动改写讲稿或重做产物。
 
-## 脱离 DSH 直跑
+## 使用前需要了解
 
-以下入口都能独立跑（仓库内 Node 22.19+ 直接运行 TypeScript，不需要构建）：
-
-```bash
-pnpm render <目录>              # 讲稿 → mp4（默认静音；有效配音产物存在时带旁白）
-pnpm render <目录> --style 科技风格 # 指定视频美术预设（默认读讲稿 visual.style）
-pnpm render <目录> --still 3.5  # 出一张静帧，调画面用，不必整片重渲
-pnpm render <目录> --check      # 只校验讲稿并报时长分镜，不需要浏览器
-pnpm voice  <目录>              # 讲稿 → 逐场景音频 + 实测时长 + 整条音轨（--provider edge|mimo）
-pnpm page   <目录>              # 讲稿 → HTML 导览页（--style 瑞士风格|编辑设计风格|科技风格）
-pnpm text   <文件>              # Office / PDF → Markdown 打到 stdout（agent 通读用）
-```
-
-revision 对讲稿、digest 与直接引用文件计算内容哈希；引用目录使用文件名、大小和修改时间，digest 的文件总数抽查也参与。它不覆盖全部源文件正文或软件版本。产物状态 current 表示仍匹配登记时的输入与参数，不证明内容正确或适合新设置。
-
-产出 CLI 默认生成工作草稿，`--approved` 要求当前评审回执。`--check` 只校验，不要求回执。
-
-**时长以实测为准**：配音跑过之后，画面时间轴来自 `ffprobe` 实测的音频时长（不是
-字数预估）。同一份讲稿渲染两次**逐帧视觉一致**（差异上限为字形抗锯齿噪声，每帧 PSNR ≥ 45dB）；换音色会改变音轨、时长以及节拍时序。音频按每场旁白、provider、音色、风格、格式等输入判断缓存，逐场请求和音频哈希保存在 `audio/cache.json`，中断后可续跑。只改画面不需要重合成；改讲稿中的 voice 配置需重跑 voice，但实际请求相同的场景可复用。渲染拒绝过期、缺少新版本记录或整条音轨不完整的 durations。
-
-**旧项目迁移**：讲稿与 digest 的 schema 版本不变。旧 `review.md` 需重新评审并绑定当前回执；旧音频缺少逐场缓存记录，第一次重跑 voice 会重配。旧 durations 缺少新版本记录，不能直接用于渲染。
-
-**缺浏览器时**渲染脚本不会替你下载，而是打印三种办法（装 Chrome /
-`npx remotion browser ensure` / `FOLDERCAST_BROWSER=<路径>`）并以退出码 3 结束。
-**中断渲染之后**可能留下一个后台 Chrome 进程（`puppeteer_dev_chrome_profile-*`），
-杀掉它才不影响下一次渲染的可复现性：`pkill -f puppeteer_dev_chrome_profile`。
-
-**评审不是脚本**：写稿与评审都是模型在做。主 agent 按 skill 写讲稿，**另一个独立
-subagent** 按 skill 的六条评审判据复核（编造 / 数字 / 重点 / 遗漏 / 结构 / 语言），
-每条必须给证据，结论写到 `<目录>/.foldercast/review.md`。
-
----
-
-## 许可提示：Remotion 是双许可
-
-出片这一步用 [Remotion](https://www.remotion.dev/) 渲染画面。它**不是纯开源**，请按
-自家情况判断：
-
-| 你的情况 | 适用档位 | 价格（2026-10-11 复核） |
-|---|---|---|
-| 个人，或 ≤3 人的公司 | Free License | $0，含无限商业使用 |
-| 需要 Company License，进行少量手工视频创作 | Creators | $25/月/座 |
-| 需要 Company License，进行批量渲染或开发自动化视频产品 | Automators | **$0.01/次渲染，$100/月起** |
-
-**foldercast 本身按 Free License 使用**（个人项目）。是否需要 Company License 取决于
-使用者是否符合免费许可条件；嵌入产品本身不意味着一律需要付费。免费许可的允许用途与
-限制见[官方许可](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md)，
-收费档位见[官方定价](https://www.remotion.dev/docs/license/pricing)。遥测行为受 Remotion
-版本与配置影响，见[遥测说明](https://www.remotion.dev/docs/telemetry)。
-
-出片还需要浏览器（Chrome / Chromium / Edge）：**我们不分发它**，用系统已装的，
-或让 Remotion 下载。
-
----
-
-## 目录结构
-
-```
-foldercast/
-├── README.md              你在这里
-├── docs/
-│   ├── decisions/         决策记录（收缩的理由与取代关系）
-│   └── specs/             script.schema.json（讲稿契约，机器可读）
-├── packages/plugin/       DSH 插件（唯一的入口，也是全部代码）
-│   ├── src/               工具注册、skill、编排
-│   └── scripts/
-│       ├── contracts/     讲稿/时长契约的类型 + 字幕切分与时长分配，各阶段共用
-│       ├── assets/        prep（按需转换 + mtime 缓存）、text 提取、转换本体
-│       ├── renderer/      TypeScript + Remotion：讲稿 → mp4（含契约校验 check）
-│       ├── page/          TypeScript：共享场景数据 → HTML 导览页（三套风格预设）
-│       ├── voice/         TypeScript：讲稿 → 逐场景音频 + 实测时长（edge / mimo）
-│       └── references/    按需读取的场景与独立评审参考
-├── examples/              讲稿示例（已通过 schema 校验）
-└── scripts/               仓库工具（链接、JSON、示例 schema 检查）
-```
-
-**全 TypeScript，没有 Python。** 插件本体、prep、渲染器同栈，`script.json` 的类型
-定义三方共用。编排层是 DSH 主 agent，不是代码：模型通过工具或 CLI 执行阶段，程序检查产物依赖与版本。
-
----
-
-## 参与
-
-本次发布候选的功能与兼容说明见[变更记录](CHANGELOG.md)。
-
-提交前请跑：
-
-```bash
-pnpm install      # 首次，或依赖变更后
-pnpm typecheck    # TypeScript 类型检查
-pnpm run check    # 链接 + JSON + 示例 schema
-pnpm test         # 单元与集成测试（渲染用例会起无头 Chrome，串行跑）
-```
+- **内容会进入模型上下文**。写稿流程要求避开 `.env`、`*.pem`、`credentials*` 等文件；使用前确认目录适合交给模型读取。
+- **依赖按输出需要**：视频需要 Chrome / Chromium / Edge；配音需要网络及 `ffmpeg` / `ffprobe`。Edge 默认免密钥，MiMo 需要 `MIMO_API_KEY`。缺少某步依赖会影响该步。[环境与 CLI](docs/development.md)
+- **HTML 转发**：图片超过内联预算时会保留相对路径，需一并转发素材；Office / PDF 页图和视频封面也需保留对应位置。
+- **许可**：foldercast 使用 MIT；视频渲染所用 Remotion 有独立许可，使用者需按自身条件判断。[许可说明](docs/licensing.md)

@@ -1,0 +1,147 @@
+{
+  "showcase": 1,
+  "title": "foldercast · 让目录开口讲",
+  "generatedAt": "2026-10-11T02:00:38.109Z",
+  "pluginVersion": "0.3.0",
+  "sourceBaseCommit": "dba869f8021e997a9a17cecb4a3afd6d2197a9cd",
+  "revision": "bb48d63b6881b7cecb96b9363eb7ddf549f1be9d82de9f57d059bf5a39b97931",
+  "sourceNote": "基于 0.3.0 与本次仓库整理；源码摘录卡片不显示无需转图诊断。revision 包含生成机器的目录元数据与本机画面基线，不作为其他检出的回执。",
+  "scenes": 9,
+  "visualStyle": "瑞士风格",
+  "video": {
+    "renderConcurrency": 4,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationSec": 139.413,
+    "frames": 4182,
+    "videoCodec": "h264",
+    "audioCodec": "aac"
+  },
+  "voice": {
+    "provider": "edge",
+    "name": "zh-CN-XiaoxiaoNeural",
+    "audioDurationSec": 139.24
+  },
+  "page": {
+    "sections": 9,
+    "imagesInlined": 0,
+    "imagesLinked": 0,
+    "singleFile": true
+  },
+  "sceneTimings": [
+    {
+      "id": "cover",
+      "startSec": 0,
+      "endSec": 13.966666666666667
+    },
+    {
+      "id": "purpose",
+      "startSec": 13.966666666666667,
+      "endSec": 29
+    },
+    {
+      "id": "roles",
+      "startSec": 29,
+      "endSec": 44.2
+    },
+    {
+      "id": "workflow",
+      "startSec": 44.2,
+      "endSec": 58.6
+    },
+    {
+      "id": "entry",
+      "startSec": 58.6,
+      "endSec": 75.23333333333333
+    },
+    {
+      "id": "review",
+      "startSec": 75.23333333333333,
+      "endSec": 90.53333333333333
+    },
+    {
+      "id": "outputs",
+      "startSec": 90.53333333333333,
+      "endSec": 106.56666666666666
+    },
+    {
+      "id": "styles",
+      "startSec": 106.56666666666666,
+      "endSec": 121.96666666666667
+    },
+    {
+      "id": "outro",
+      "startSec": 121.96666666666667,
+      "endSec": 139.4
+    }
+  ],
+  "validation": {
+    "independentReview": "passed",
+    "outputMode": "approved",
+    "fullMediaDecode": "passed",
+    "audioListening": "未进行人工听感验收",
+    "visualInspection": "最终九个场景末段截图已目检；源码摘录完整可读",
+    "audioIntegrity": "九段音频哈希与场景顺序通过；完整音轨存在",
+    "typecheck": "passed",
+    "documentationChecks": "passed",
+    "tests": {
+      "files": 33,
+      "passed": 302,
+      "skipped": 2
+    },
+    "pageDesktop": {
+      "viewportWidth": 1440,
+      "bodyWidth": 1440,
+      "brokenAnchors": 0,
+      "externalImages": 0
+    },
+    "pageMobile": {
+      "viewportWidth": 390,
+      "bodyWidth": 418,
+      "note": "窄屏存在少量横向溢出，未作为移动适配通过"
+    }
+  },
+  "outputFiles": [
+    {
+      "path": "foldercast.html",
+      "bytes": 31353,
+      "sha256": "e71f6286eb5a8254e5d84fbfae25ec29c8da90d97415d060c177d05dc137a221"
+    },
+    {
+      "path": "foldercast.mp4",
+      "bytes": 9173197,
+      "sha256": "a1b3c098c1f49d2682d9f090c7388efb9fc4f63c95bd649b3feb68ff5b97324c"
+    },
+    {
+      "path": "cover.png",
+      "bytes": 187057,
+      "sha256": "00237c6160267b8e0251c370683180fbdcff90d4869e97bda3f9d27eb9b23048"
+    },
+    {
+      "path": "workflow.png",
+      "bytes": 253626,
+      "sha256": "7890abd7ea8fa3b03929112ec50ef11f0199fc9eef9597bca53343a54198a3e4"
+    },
+    {
+      "path": "roles.png",
+      "bytes": 299103,
+      "sha256": "c0e2b2f7ca56849a95e9b430380f9a2e6b4ad4aa3a2608e2ae6db508e9abc58a"
+    },
+    {
+      "path": "script.json",
+      "bytes": 10442,
+      "sha256": "85acbbea1eaba3f2b30f962cd368dc032634774b59b8f217356994a37621e685"
+    },
+    {
+      "path": "digest.json",
+      "bytes": 6810,
+      "sha256": "b1a12859067e97daf07baa59696b11c0e91f49b0cadd427d6c8a0fc975047b63"
+    },
+    {
+      "path": "review.md",
+      "bytes": 15291,
+      "sha256": "56601a5bf550613581b09bd5b477e7ac9a5f0b36234bf4da756d8e7f9a987f8c"
+    }
+  ]
+}

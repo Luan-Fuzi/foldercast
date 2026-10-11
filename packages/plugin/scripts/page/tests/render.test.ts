@@ -83,7 +83,9 @@ describe('自包含（三条硬约束）', () => {
     expect(html).toContain('.foldercast/script.json');
     expect(html).toContain('引用的文件（5）');
     expect(html).toContain('assets/ui.png：单张 200 KB 超过预算 160 KB');
-    expect(html).toContain('无 JavaScript、无外部资源');
+    expect(html).toContain('无 JavaScript、无远程资源');
+    expect(html).not.toContain('可以单文件保存和转发');
+    expect(html).not.toContain('/tmp/fixture');
     expect(html).toContain('2026-10-07T08:09:10.000Z');
   });
 

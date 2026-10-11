@@ -1,9 +1,10 @@
 /** 本地版本与产物记录。只核对输入身份，不判断评审的内容是否正确。 */
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { countSourceFiles, type DigestDocument } from './digest.ts';
 import type { ScriptDocument } from './script.ts';
+import { realPath, resolveReference, withinPath } from './paths.ts';
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -35,12 +36,13 @@ function writeJson(path: string, value: unknown): void {
 }
 
 /** 引用目录的文件名、大小与修改时间。排除本插件产物与依赖，不读文件正文。 */
-function directoryIdentity(path: string): unknown[] {
+function directoryIdentity(path: string, sourceRoot: string): unknown[] {
   const entries: unknown[] = [];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)) {
       if (['.foldercast', '.git', 'node_modules'].includes(entry.name)) continue;
       const child = join(dir, entry.name);
+      resolveReference(sourceRoot, relative(resolve(sourceRoot), child));
       if (entry.isDirectory()) walk(child);
       else {
         const stats = statSync(child);
@@ -77,10 +79,10 @@ export function captureRevision(target: string, scriptPath = join(target, '.fold
   const digest = readJson<DigestDocument>(join(target, '.foldercast', 'digest.json'));
   const paths = referencedPaths(script, digest);
   const sources = [...paths].sort().map((path) => {
-    const absolute = resolve(target, path);
+    const absolute = resolveReference(target, path);
     const stats = statSync(absolute, { throwIfNoEntry: false });
     return [path, stats === undefined ? 'missing' : stats.isDirectory()
-      ? hashValue(directoryIdentity(absolute)) : hashFile(absolute)];
+      ? hashValue(directoryIdentity(absolute, realPath(target))) : hashFile(absolute)];
   });
   const scriptHash = hashValue(script);
   const digestHash = digest === undefined ? undefined : hashValue(digest);
@@ -132,15 +134,14 @@ export function beginOutput(target: string, options: {
   const digest = readJson<DigestDocument>(join(target, '.foldercast', 'digest.json'));
   for (const output of options.outputPaths ?? []) {
     const within = (parent: string): boolean => {
-      const path = relative(resolve(parent), resolve(output)).replaceAll('\\', '/');
-      return path === '' || (path !== '..' && !path.startsWith('../') && !isAbsolute(path));
+      return withinPath(realPath(parent), realPath(output));
     };
     const touchesSource = script !== undefined && [...referencedPaths(script, digest)].some((path) => {
-      const absolute = resolve(target, path);
-      const excluded = relative(absolute, resolve(output)).split(/[\\/]/).some((part) => ['.foldercast', '.git', 'node_modules'].includes(part));
-      return resolve(output) === absolute || (statSync(absolute, { throwIfNoEntry: false })?.isDirectory() && within(absolute) && !excluded);
+      const absolute = resolveReference(target, path);
+      const excluded = relative(absolute, realPath(output)).split(/[\\/]/).some((part) => ['.foldercast', '.git', 'node_modules'].includes(part));
+      return realPath(output) === absolute || (statSync(absolute, { throwIfNoEntry: false })?.isDirectory() && within(absolute) && !excluded);
     });
-    if (resolve(output) === scriptPath || touchesSource ||
+    if (realPath(output) === realPath(scriptPath) || touchesSource ||
         (digest !== undefined && within(target) && !within(join(target, '.foldercast')))) {
       throw new Error('输出路径覆盖引用证据或改变源目录清单。请放在 .foldercast/out 中或源目录之外。');
     }

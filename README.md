@@ -4,7 +4,7 @@
 
 foldercast 是 DSH 插件。给它一个人类可读的目录，Agent 理解内容、挑选证据、写成讲稿并独立评审；插件把讲稿生成 HTML 导览页，或带旁白的视频。代码仓库、文档资料、图片与 Office / PDF 都可以成为讲述素材。
 
-[安装与设置](packages/plugin/README.md) · [开发与 CLI](docs/development.md) · [设计决策](docs/decisions/0008-trusted-execution.md) · [变更记录](CHANGELOG.md)
+[安装与设置](docs/usage.md) · [开发与 CLI](docs/development.md) · [设计决策](docs/decisions/0008-trusted-execution.md) · [变更记录](CHANGELOG.md)
 
 ## 看看实际效果
 
@@ -22,10 +22,10 @@ GitHub 文件页不会直接运行 HTML；下载后在浏览器打开即可阅�
 
 ## 从哪里开始
 
-需要 DSH 和 Node `^22.19.0 || >=24.0.0`。在 DSH 使用的 profile 中安装：
+需要 DSH 和 Node `^22.19.0 || >=24.0.0`。0.3.1 正在进行候选版验收；候选版发布后，在 DSH 使用的 profile 中安装：
 
 ```bash
-dsh plugin --profile <profile> add dsh-foldercast@0.3.0
+dsh plugin --profile <profile> add dsh-foldercast@0.3.1-rc.1
 ```
 
 安装后重启 DSH，在对话中说明目录和讲述目标，例如：
@@ -36,7 +36,7 @@ dsh plugin --profile <profile> add dsh-foldercast@0.3.0
 
 > 把这个资料目录整理成 HTML 导览页，突出核心观点和代表性文件。
 
-设置页可选择受众、重点、深度、目标分钟数、美术风格、配音引擎和音色。默认按需询问；已有上下文和当前要求优先。完整设置、MiMo 密钥和 Release 安装方式见[插件使用说明](packages/plugin/README.md)。
+设置页可选择受众、重点、深度、目标分钟数、美术风格、配音引擎和音色。默认按需询问；已有上下文和当前要求优先。完整设置、MiMo 密钥和 Release 安装方式见[插件使用说明](docs/usage.md)。
 
 ## 它怎样讲清一个目录
 
@@ -62,4 +62,6 @@ dsh plugin --profile <profile> add dsh-foldercast@0.3.0
 - **内容会进入模型上下文**。写稿流程要求避开 `.env`、`*.pem`、`credentials*` 等文件；使用前确认目录适合交给模型读取。
 - **依赖按输出需要**：视频需要 Chrome / Chromium / Edge；配音需要网络及 `ffmpeg` / `ffprobe`。Edge 默认免密钥，MiMo 需要 `MIMO_API_KEY`。缺少某步依赖会影响该步。[环境与 CLI](docs/development.md)
 - **HTML 转发**：图片超过内联预算时会保留相对路径，需一并转发素材；Office / PDF 页图和视频封面也需保留对应位置。
-- **许可**：foldercast 使用 MIT；视频渲染所用 Remotion 有独立许可，使用者需按自身条件判断。[许可说明](docs/licensing.md)
+- **许可**：foldercast 自有代码使用 [MIT](LICENSE)；Remotion、LibreOffice 与 FFmpeg 等第三方组件保留各自许可。[许可说明](docs/licensing.md)
+
+源码、示例与文档位于本仓库；问题和建议请提交到 [GitHub Issues](https://github.com/Luan-Fuzi/foldercast/issues)。

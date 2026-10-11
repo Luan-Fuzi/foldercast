@@ -48,6 +48,7 @@ a:hover { text-decoration: underline; }
 .hero-inner { max-width: var(--page-width); margin: 0 auto; padding: calc(56px * var(--space)) 24px calc(44px * var(--space)); }
 .hero .kicker { margin: 0 0 10px; font-size: 12px; letter-spacing: 0.22em; color: var(--hero-muted); }
 .hero h1 { margin: 0; font-family: var(--font-display); font-size: 38px; line-height: 1.2; font-weight: 700; }
+.hero,.hero-inner,.toc,.colophon { overflow-wrap: anywhere; min-width: 0; }
 .hero .subtitle { margin: 10px 0 0; font-size: 17px; color: var(--hero-muted); }
 .hero .lede { margin: 18px 0 0; max-width: 40em; font-size: 15px; color: var(--hero-ink); opacity: 0.86; border-left: 3px solid var(--accent); padding-left: 14px; }
 
@@ -192,6 +193,16 @@ main { display: block; padding: calc(8px * var(--space)) 0 32px; }
 .pages-row img { height: 260px; width: auto; border-radius: calc(var(--radius) / 2); border: 1px solid var(--line); display: block; }
 .card--page .pages-row { flex-wrap: wrap; overflow: visible; }
 .card--page .pages-row img { max-width: 100%; height: auto; max-height: 520px; }
+.card--page,.card--page .scene-main,.card--page .compare-side { min-width: 0; overflow-wrap: anywhere; }
+.card--page .compare { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.card--page .fc-md pre { overflow-x: auto; }
+/* 高亮器的内联 overflow:visible 用于视频；页面的代码块必须独立滚动。 */
+.card--page pre { max-width: 100%; overflow-x: auto !important; }
+@media(max-width:640px) {
+  .card--page .compare { grid-template-columns: minmax(0,1fr); }
+  .card--page .bar-row { grid-template-columns: minmax(0,1fr) minmax(24px,1fr) auto; gap: 8px; }
+  .card--page .grid { grid-template-columns: repeat(auto-fill,minmax(min(240px,100%),1fr)); }
+}
 .pages-row figcaption { margin-top: 4px; font-size: 11px; color: var(--muted); text-align: center; }
 
 /* ── 封面（video）与小结 ─────────────────────────────── */
@@ -502,18 +513,13 @@ main { display: block; padding: calc(8px * var(--space)) 0 32px; }
 <footer class="colophon">
   <div class="wrap">
     <p>本页由讲稿 <code>.foldercast/script.json</code> 生成（foldercast page）—— 同一份讲稿也渲染讲解视频，页面是它的文字版。</p>
-    <p class="fine">foldercast（/Users/scliang/work/foldercast）· 9 个区块 · 图片内联 0 张 · 生成于 2026-10-11T01:50:48.184Z</p>    <details>
+    <p class="fine">foldercast· 9 个区块 · 图片内联 0 张 · 生成于 2026-10-11T05:47:50.461Z</p>    <details>
       <summary>引用的文件（1）</summary>
       <ul>
         <li><code>packages/plugin/src/cast.ts</code></li>      </ul>
     </details>
-    <div class="notes">
-      <p>边界说明</p>
-      <ul>
-        <li>讲稿写了 targetDurationSec=120，各场景按比例缩放到共 3600 帧</li>
-        <li>file 场景 entry：packages/plugin/src/cast.ts 不是能转出画面的文件（图片 / 视频 / Office / PDF）（画面落到摘录文字）</li>      </ul>
-    </div>
-    <p class="fine">自包含静态页：无 JavaScript、无外部资源；未能内联的图片按相对路径引用，转发时需连同源文件。</p>
+
+    <p class="fine">自包含静态页：无 JavaScript、无外部资源，可以单文件保存和转发。</p>
   </div>
 </footer>
 </body>

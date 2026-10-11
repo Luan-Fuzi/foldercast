@@ -15,7 +15,8 @@
  * 报出来让写稿人确认。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+import { ReferencePathError, resolveReference } from './paths.ts';
 
 /** digest 契约版本。v2：excerpts 升级为块级摘录（0005 WP2）——密度从富集里选，先得有整块。 */
 export const DIGEST_VERSION = 2 as const;
@@ -69,7 +70,7 @@ export type DigestIssue = {
 
 /** 数源目录下的文件数，口径对齐 skill 教的 `rg --files`：尊重 .gitignore，排除 .foldercast。 */
 export function countSourceFiles(root: string): number {
-  const ignoreFile = join(root, '.gitignore');
+  const ignoreFile = resolveReference(root, '.gitignore');
   const anyDepth = new Set(['.foldercast', 'node_modules', '.git']);
   const rootOnly = new Set<string>();
   if (existsSync(ignoreFile)) {
@@ -125,28 +126,28 @@ export function checkDigest(doc: DigestDocument, root: string): DigestIssue[] {
     });
   }
 
-  const exists = (relative: string): boolean => {
-    const stats = statSync(resolve(root, relative), { throwIfNoEntry: false });
-    return stats !== undefined;
+  const exists = (reference: string, path: string, message: string): boolean => {
+    try {
+      if (statSync(resolveReference(root, reference), { throwIfNoEntry: false }) !== undefined) return true;
+      issues.push({ code: 'digest-path-missing', severity: 'blocker', message, path });
+      return false;
+    }
+    catch (error) {
+      if (!(error instanceof ReferencePathError)) throw error;
+      issues.push({ code: 'digest-path-outside-root', severity: 'blocker', message: error.message, path });
+      return false;
+    }
   };
 
   for (const [index, excerpt] of doc.excerpts.entries()) {
     const at = (field: string): string => `/excerpts/${String(index)}/${field}`;
-    if (!exists(excerpt.file)) {
-      issues.push({
-        code: 'digest-path-missing',
-        severity: 'blocker',
-        message: `digest 摘录引用的文件不存在：${excerpt.file}`,
-        path: at('file'),
-      });
-      continue;
-    }
+    if (!exists(excerpt.file, at('file'), `digest 摘录引用的文件不存在：${excerpt.file}`)) continue;
     // v2 块级摘录的真实性（与讲稿摘录同一哲学：必须是原文，行号要对得上）
     const nonEmpty = (excerpt.lines ?? []).filter((line) => line.trim() !== '');
     if (nonEmpty.length === 0) continue;
     let content: string | undefined;
     try {
-      content = readFileSync(resolve(root, excerpt.file), 'utf8');
+      content = readFileSync(resolveReference(root, excerpt.file), 'utf8');
     } catch {
       continue;
     }
@@ -174,24 +175,11 @@ export function checkDigest(doc: DigestDocument, root: string): DigestIssue[] {
   }
 
   for (const [index, module] of doc.modules.entries()) {
-    if (!exists(module.path)) {
-      issues.push({
-        code: 'digest-path-missing',
-        severity: 'blocker',
-        message: `digest 模块路径不存在：${module.path}`,
-        path: `/modules/${String(index)}/path`,
-      });
-      continue;
-    }
+    const modulePath = `/modules/${String(index)}/path`;
+    if (!exists(module.path, modulePath, `digest 模块路径不存在：${module.path}`)) continue;
     for (const key of module.keyFiles ?? []) {
-      if (!exists(key)) {
-        issues.push({
-          code: 'digest-path-missing',
-          severity: 'blocker',
-          message: `digest 关键文件不存在：${key}`,
-          path: `/modules/${String(index)}/keyFiles`,
-        });
-      }
+      const keyPath = `/modules/${String(index)}/keyFiles`;
+      exists(key, keyPath, `digest 关键文件不存在：${key}`);
     }
   }
 

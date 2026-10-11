@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
 
 const RENDERER_DIR = resolve(import.meta.dirname, '..');
@@ -98,7 +98,7 @@ describe('浏览器 bundle 的边界', () => {
   });
 
   it('内联的实现在 CLI 侧而不在入口侧（这条边界是有意为之）', () => {
-    const browserSide = reachableFrom(entry).map((file) => file.replace(`${RENDERER_DIR}/`, ''));
+    const browserSide = reachableFrom(entry).map((file) => relative(RENDERER_DIR, file).replaceAll('\\', '/'));
     expect(browserSide).toContain('plan.ts');
     expect(browserSide).not.toContain('embed-node.ts');
     expect(browserSide).not.toContain('load.ts');

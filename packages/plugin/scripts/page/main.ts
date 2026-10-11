@@ -13,6 +13,7 @@
  *
  * 退出码：0 成功；2 参数、讲稿有 blocker 或风格名不认识。
  */
+import { withExecutionLock } from '../contracts/execution.ts';
 import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { checkScript } from '../renderer/check.ts';
@@ -243,5 +244,15 @@ async function main(): Promise<number> {
   return 0;
 }
 
-const exitCode = await main();
+const exitCode = await (async (): Promise<number> => {
+  const parsed = parseArgs(process.argv.slice(2));
+  if ('error' in parsed || ('check' in parsed && parsed.check)) return main();
+  try { return await withExecutionLock(resolve(parsed.target || process.cwd()), main); }
+  catch (error) {
+    const message = (error as Error).message;
+    if (parsed.json) console.log(JSON.stringify({ ok: false, error: message }));
+    else console.error(message);
+    return 2;
+  }
+})();
 process.exitCode = exitCode;

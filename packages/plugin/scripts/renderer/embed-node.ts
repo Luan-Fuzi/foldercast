@@ -21,7 +21,8 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { extname, join, resolve } from 'node:path';
+import { extname, join } from 'node:path';
+import { resolveReference } from '../contracts/paths.ts';
 import type { EmbedTarget, Embedded } from './embed.ts';
 
 /** 能内联的图片类型。视频不在其列（`<video>` 不受 `<img>` 那条跨源限制约束）。 */
@@ -147,7 +148,7 @@ function scaleWithFfmpeg(source: string, width: number, quality: number): Buffer
  * 调用方应当保留原来的路径引用。
  */
 export function embedImage(target: EmbedTarget): Embedded | undefined {
-  const absolute = resolve(target.workRoot, target.path);
+  const absolute = resolveReference(target.workRoot, target.path);
   if (!existsSync(absolute) || !isImagePath(target.path)) return undefined;
 
   const stat = statSync(absolute);

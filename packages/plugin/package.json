@@ -1,6 +1,6 @@
 {
   "name": "dsh-foldercast",
-  "version": "0.3.0",
+  "version": "0.3.1-rc.1",
   "type": "module",
   "description": "把任意人类可读的目录变成讲解视频：讲稿校验、按需素材转换、配音与渲染随包分发。",
   "license": "MIT",
@@ -30,7 +30,9 @@
     "schemas",
     "locale",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "dsh": {
     "bundle": {
@@ -52,16 +54,16 @@
     "voice": "node scripts/voice/main.ts",
     "text": "node scripts/assets/text.ts",
     "sync-schemas": "node scripts/tools/sync-schemas.ts",
-    "prepack": "node scripts/tools/sync-schemas.ts && pnpm run build && pnpm run build:client",
+    "prepack": "node scripts/tools/sync-readme.ts && node scripts/tools/sync-schemas.ts && pnpm run build && pnpm run build:client",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:client": "node scripts/tools/build-client.mjs"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.18.4",
-    "@remotion/bundler": "^4",
-    "@remotion/cli": "^4",
-    "@remotion/renderer": "^4",
+    "@remotion/bundler": "4.0.532",
+    "@remotion/cli": "4.0.532",
+    "@remotion/renderer": "4.0.532",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "ignore": "^7.0.5",
@@ -71,7 +73,7 @@
     "officeparser": "^8.1.0",
     "react": "^19",
     "react-dom": "^19",
-    "remotion": "^4",
+    "remotion": "4.0.532",
     "shiki": "^4.5.0"
   },
   "optionalDependencies": {
@@ -81,5 +83,15 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "esbuild": "^0.28.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Luan-Fuzi/foldercast.git",
+    "directory": "packages/plugin"
+  },
+  "homepage": "https://github.com/Luan-Fuzi/foldercast#readme",
+  "bugs": {
+    "url": "https://github.com/Luan-Fuzi/foldercast/issues"
+  },
+  "author": "Luan_Fuzi"
 }

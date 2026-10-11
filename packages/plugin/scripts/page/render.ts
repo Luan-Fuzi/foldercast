@@ -83,6 +83,7 @@ a:hover { text-decoration: underline; }
 .hero-inner { max-width: var(--page-width); margin: 0 auto; padding: calc(56px * var(--space)) 24px calc(44px * var(--space)); }
 .hero .kicker { margin: 0 0 10px; font-size: 12px; letter-spacing: 0.22em; color: var(--hero-muted); }
 .hero h1 { margin: 0; font-family: var(--font-display); font-size: 38px; line-height: 1.2; font-weight: 700; }
+.hero,.hero-inner,.toc,.colophon { overflow-wrap: anywhere; min-width: 0; }
 .hero .subtitle { margin: 10px 0 0; font-size: 17px; color: var(--hero-muted); }
 .hero .lede { margin: 18px 0 0; max-width: 40em; font-size: 15px; color: var(--hero-ink); opacity: 0.86; border-left: 3px solid var(--accent); padding-left: 14px; }
 
@@ -190,9 +191,9 @@ function renderColophon(input: RenderInput): string {
   return `<footer class="colophon">
   <div class="wrap">
     <p>本页由讲稿 <code>${escapeHtml(scriptRef)}</code> 生成（foldercast page）—— 同一份讲稿也渲染讲解视频，页面是它的文字版。</p>
-    <p class="fine">${escapeHtml(model.label)}（${escapeHtml(model.sourceRoot)}）· ${String(countSections(model))} 个区块 · 图片内联 ${String(inlined)} 张 · 生成于 ${escapeHtml(generatedAt)}</p>${refs}
+    <p class="fine">${escapeHtml(model.label)}· ${String(countSections(model))} 个区块 · 图片内联 ${String(inlined)} 张 · 生成于 ${escapeHtml(generatedAt)}</p>${refs}
 ${noteBlock}
-${skipped}    <p class="fine">自包含静态页：无 JavaScript、无外部资源；未能内联的图片按相对路径引用，转发时需连同源文件。</p>
+${skipped}    <p class="fine">${[...images.values()].some((image) => !image.inlined) ? '静态页：无 JavaScript、无远程资源；部分图片按相对路径引用，转发时需附带对应素材并保留相对位置。' : '自包含静态页：无 JavaScript、无外部资源，可以单文件保存和转发。'}</p>
   </div>
 </footer>`;
 }

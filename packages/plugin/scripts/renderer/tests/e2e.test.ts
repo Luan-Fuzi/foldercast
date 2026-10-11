@@ -71,7 +71,7 @@ function fixtureScript(): ScriptDocument {
         title: '结构',
         entries: [
           { path: 'src', files: 1, bytes: 1024, highlight: true },
-          { path: '(根目录)', files: 2, bytes: 1024 },
+          { path: '.', files: 2, bytes: 1024 },
         ],
         narration: '结构很简单，源码在 src 下。',
         beats: [{ points: ['src 一个源码文件', '根目录两个散文件', '数字写死，夹具自足'], enter: 'reveal' }],

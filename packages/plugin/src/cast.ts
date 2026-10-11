@@ -9,6 +9,7 @@
  *   （`page: true` / `render: true` / `voice: true`），否则只做校验。顺序由 skill 决定。
  * - 编排层是模型，不是这个工具。
  */
+import { withExecutionLock } from '../scripts/contracts/execution.ts';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import type { FoldercastSettings } from './config.ts';
@@ -218,6 +219,10 @@ function browserGuidance(result: RunResult): string | undefined {
  * 中间步骤失败不算致命，已经得出的校验结论照常交回去。
  */
 export async function cast(options: CastOptions): Promise<CastResult> {
+  return withExecutionLock(resolve(options.target), () => castUnlocked(options));
+}
+
+async function castUnlocked(options: CastOptions): Promise<CastResult> {
   const target = resolve(options.target);
   const label = basename(target);
   const workRoot = workRootFor(target);

@@ -66,7 +66,7 @@ describe('随包代码的依赖都已声明', () => {
   const files = [
     ...globSync('scripts/**/*.ts', { cwd: PACKAGE_ROOT }),
     ...globSync('src/**/*.ts', { cwd: PACKAGE_ROOT }),
-  ].filter((file) => !file.includes('/tests/'));
+  ].map((file) => file.replaceAll('\\', '/')).filter((file) => !file.includes('/tests/'));
 
   it('扫到了源文件（不是空跑）', () => {
     expect(files.length).toBeGreaterThan(20);

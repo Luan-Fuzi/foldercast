@@ -157,7 +157,7 @@ describe('CLI 边界', () => {
   });
 
   it('旧 --style 杂志 生效，报告用设计名称；--out 指到别处也落盘', () => {
-    const custom = join(root, 'custom', 'intro.html');
+    const custom = join(workRoot, 'custom', 'intro.html');
     const result = runPage([root, '--style', '杂志', '--out', custom, '--json']);
     expect(result.status).toBe(0);
     const report = JSON.parse(result.stdout) as { style: string; outputPath: string };

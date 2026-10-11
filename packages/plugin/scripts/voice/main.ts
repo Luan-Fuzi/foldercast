@@ -10,6 +10,7 @@
  *
  * 退出码：0 成功；2 参数、讲稿或环境有问题；4 缺密钥（引导里写清三种配置办法）。
  */
+import { withExecutionLock } from '../contracts/execution.ts';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { EXIT_CREDENTIAL_MISSING, type TtsProvider } from '../contracts/durations.ts';
@@ -258,5 +259,15 @@ function printReport(report: SynthReport, json: boolean): void {
   console.log(lines.join('\n'));
 }
 
-const exitCode = await main();
+const exitCode = await (async (): Promise<number> => {
+  const parsed = parseArgs(process.argv.slice(2));
+  if ('error' in parsed || ('check' in parsed && parsed.check)) return main();
+  try { return await withExecutionLock(resolve(parsed.target || process.cwd()), main); }
+  catch (error) {
+    const message = (error as Error).message;
+    if (parsed.json) console.log(JSON.stringify({ ok: false, error: message }));
+    else console.error(message);
+    return 2;
+  }
+})();
 process.exitCode = exitCode;

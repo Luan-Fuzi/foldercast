@@ -13,6 +13,7 @@
  *
  * 素材是**按需**的：讲稿引用什么就转换什么（缩略图 / 封面 / 逐页图），按 mtime 缓存。
  */
+import { withExecutionLock } from '../contracts/execution.ts';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -514,7 +515,17 @@ function printReport(report: RenderReport, json: boolean, scaled: boolean): void
   console.log(lines.join('\n'));
 }
 
-const exitCode = await main();
+const exitCode = await (async (): Promise<number> => {
+  const parsed = parseArgs(process.argv.slice(2));
+  if ('error' in parsed || ('check' in parsed && parsed.check)) return main();
+  try { return await withExecutionLock(resolve(parsed.target || process.cwd()), main); }
+  catch (error) {
+    const message = (error as Error).message;
+    if (parsed.json) console.log(JSON.stringify({ ok: false, error: message }));
+    else console.error(message);
+    return 2;
+  }
+})();
 process.exitCode = exitCode;
 
 export { buildPlan, workRootOf, sourceDirOf };

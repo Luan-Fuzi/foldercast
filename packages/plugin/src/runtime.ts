@@ -10,7 +10,8 @@
  * 分析、素材、校验都以子进程跑，不在 harness 进程内 import：遍历几万个文件、起
  * LibreOffice 引擎都不该占宿主进程（INTEGRATION §一）。
  */
-import { spawn } from 'node:child_process';
+import { executionEnv } from '../scripts/contracts/execution.ts';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -325,7 +326,7 @@ export type RunOptions = {
   /** 工作目录，默认包根。 */
   cwd?: string;
   /**
-   * 追加给子进程的环境变量。**只用来传凭据**（配音阶段的 TTS 密钥）：值不进命令行
+   * 追加给子进程的环境变量（TTS 凭据、浏览器路径等）：值不进命令行
    * （命令行会进日志与进程列表），也不进报告 —— 报告里只有引用名（C6）。
    */
   env?: Record<string, string>;
@@ -354,7 +355,11 @@ function tail(text: string, limit: number): string {
  * 故障，那种情况让 Promise 拒绝，由工具层抛出。
  */
 export function runStage(stage: StageName, options: RunOptions): Promise<RunResult> {
-  const entry = stageEntryPath(stage);
+  return runProcess(stageEntryPath(stage), options, stage);
+}
+
+/** 执行 Node 子进程；取消和超时必须清理整个进程组。 */
+export function runProcess(entry: string, options: RunOptions, stage = 'process'): Promise<RunResult> {
   const started = Date.now();
   const outputLimit = options.json === true ? OUTPUT_JSON_LIMIT : OUTPUT_TAIL;
 
@@ -379,7 +384,8 @@ export function runStage(stage: StageName, options: RunOptions): Promise<RunResu
       child = spawn(process.execPath, [entry, ...options.args], {
         cwd: options.cwd ?? PACKAGE_ROOT,
         stdio: ['ignore', 'pipe', 'pipe'],
-        ...(options.env === undefined ? {} : { env: { ...process.env, ...options.env } }),
+        detached: process.platform !== 'win32',
+        env: { ...process.env, ...executionEnv(), ...options.env },
       });
     } catch (error) {
       rejectPromise(new Error(`无法启动 ${stage} 阶段：${(error as Error).message}`));
@@ -392,15 +398,59 @@ export function runStage(stage: StageName, options: RunOptions): Promise<RunResu
     let cancelled = false;
     let timedOut = false;
 
-    child.stdout?.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString();
+    let stdoutOverflow = false;
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => {
+      const next = stdout + chunk;
+      stdoutOverflow ||= next.length > outputLimit;
+      stdout = next.slice(-outputLimit);
     });
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
+    child.stderr?.on('data', (chunk: string) => {
+      stderr = (stderr + chunk).slice(-OUTPUT_TAIL);
     });
 
+    let escalation: ReturnType<typeof setTimeout> | undefined;
+    const ownedGroups = new Set<number>();
+    const ownedProcesses = new Set<number>();
+    const rememberTree = (): void => {
+      if (child.pid === undefined || process.platform === 'win32') return;
+      ownedGroups.add(child.pid);
+      // Remotion 的 Chrome 自己另建进程组；先记下后代，再终止父进程，避免变成孤儿后失去归属。
+      try {
+        const rows = execFileSync('ps', ['-e', '-o', 'pid=,ppid=,pgid='], { encoding: 'utf8', timeout: 1000 })
+          .trim().split('\n').map((line) => line.trim().split(/\s+/).map(Number));
+        ownedProcesses.add(child.pid);
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const [pid, parent] of rows) {
+            if (pid !== undefined && parent !== undefined && ownedProcesses.has(parent) && !ownedProcesses.has(pid)) {
+              ownedProcesses.add(pid); changed = true;
+            }
+          }
+        }
+        for (const [pid, , group] of rows) {
+          if (pid !== undefined && group !== undefined && ownedProcesses.has(pid) && ownedProcesses.has(group)) ownedGroups.add(group);
+        }
+      } catch { /* ps 不可用时仍终止原进程组；阶段的退出处理器负责其浏览器。 */ }
+    };
+    const killTree = (force: boolean): void => {
+      if (child.pid === undefined) return;
+      if (process.platform === 'win32') {
+        const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+        killer.on('error', () => { child.kill(force ? 'SIGKILL' : 'SIGTERM'); });
+      } else {
+        const signal = force ? 'SIGKILL' : 'SIGTERM';
+        for (const group of ownedGroups) { try { process.kill(-group, signal); } catch { /* 已结束。 */ } }
+        for (const pid of ownedProcesses) { try { process.kill(pid, signal); } catch { /* 已结束。 */ } }
+      }
+    };
     const kill = (): void => {
-      if (!child.killed) child.kill('SIGTERM');
+      if (escalation !== undefined) return;
+      rememberTree();
+      killTree(false);
+      escalation = setTimeout(() => killTree(true), 1000);
     };
 
     const timer = setTimeout(() => {
@@ -418,6 +468,7 @@ export function runStage(stage: StageName, options: RunOptions): Promise<RunResu
 
     const cleanup = (): void => {
       clearTimeout(timer);
+      if (escalation !== undefined) { clearTimeout(escalation); killTree(true); }
       options.signal?.removeEventListener('abort', onAbort);
     };
 
@@ -439,7 +490,7 @@ export function runStage(stage: StageName, options: RunOptions): Promise<RunResu
 
       const ms = Date.now() - started;
       const base: RunResult = {
-        ok: code === 0 && !cancelled && !timedOut,
+        ok: code === 0 && !cancelled && !timedOut && !(options.json === true && stdoutOverflow),
         exitCode: code,
         signal,
         stdout: tail(stdout, outputLimit),
@@ -456,6 +507,10 @@ export function runStage(stage: StageName, options: RunOptions): Promise<RunResu
           ...base,
           error: `${stage} 阶段超过 ${String(Math.round(options.timeoutMs / 1000))} 秒仍未结束，已终止。大目录可以先用 --limit 分次跑素材阶段。`,
         });
+        return;
+      }
+      if (options.json === true && stdoutOverflow) {
+        resolvePromise({ ...base, error: `${stage} 阶段的 JSON 输出超过 ${String(OUTPUT_JSON_LIMIT)} 字符，无法完整解析。` });
         return;
       }
       if (!base.ok) {

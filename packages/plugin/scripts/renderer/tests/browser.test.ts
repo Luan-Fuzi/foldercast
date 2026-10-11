@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { existsSync, statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import { guidanceFor, headlessShellRoots, resolveBrowser } from '../browser.ts';
 
 describe('浏览器解析', () => {
@@ -77,7 +78,7 @@ describe('浏览器解析', () => {
   it('Headless Shell 的落点按平台给，且是绝对路径', () => {
     const roots = headlessShellRoots();
     expect(roots.length).toBeGreaterThan(0);
-    for (const root of roots) expect(root.startsWith('/')).toBe(true);
+    for (const root of roots) expect(isAbsolute(root)).toBe(true);
   });
 
   it('判据是「可执行位 + 是文件」，不是「路径存在」', () => {

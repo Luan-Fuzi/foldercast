@@ -8,6 +8,7 @@
  * 收缩时删掉了：agent 自己探目录，引用什么转什么。
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { resolveReference } from '../contracts/paths.ts';
 import { join, resolve } from 'node:path';
 import { prepKindOf, type Prepared, type PrepKind, type PrepProduct } from '../contracts/prep.ts';
 import type { ScriptDocument } from '../contracts/script.ts';
@@ -70,7 +71,7 @@ function cacheHit(entry: CacheEntry | undefined, workRoot: string): Prepared | u
   const paths = [entry.prepared.markdown, ...entry.prepared.products.map((product) => product.path)];
   for (const relative of paths) {
     if (relative === undefined) continue;
-    if (!existsSync(resolve(workRoot, relative))) return undefined;
+    if (!existsSync(resolveReference(workRoot, relative))) return undefined;
   }
   return entry.prepared;
 }
@@ -96,7 +97,7 @@ export async function prepare(
   let cached = 0;
 
   for (const ref of refs) {
-    const absolute = resolve(root, ref.source);
+    const absolute = resolveReference(root, ref.source);
     const stats = statSync(absolute, { throwIfNoEntry: false });
     if (stats === undefined) {
       prepared.set(ref.source, { kind: ref.kind, source: ref.source, products: [], error: '源文件不存在' });

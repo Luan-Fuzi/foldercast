@@ -191,7 +191,7 @@ describe('execute：没有讲稿时只报环境与目录', () => {
 
     expect(value?.ok).toBe(true);
     expect(value?.target).toBe(source);
-    expect(value?.label).toBe(source.split('/').pop());
+    expect(value?.label).toBe(source.split(/[\\/]/).pop());
     expect(value?.ran).toEqual([]);
     expect(value?.creativePreferences).toEqual({ dialogue: '按需询问', depth: '自动判断' });
     expect(value?.visualPreferences).toMatchObject({ style: '瑞士风格',

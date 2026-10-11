@@ -27,7 +27,9 @@
     "sections": 9,
     "imagesInlined": 0,
     "imagesLinked": 0,
-    "singleFile": true
+    "singleFile": true,
+    "renderingVersion": "0.3.1-rc.1",
+    "note": "仅使用原 0.3.0 讲稿快照重做页面排版；视频、创作评审与 revision 保留原记录。"
   },
   "sceneTimings": [
     {
@@ -93,20 +95,19 @@
     "pageDesktop": {
       "viewportWidth": 1440,
       "bodyWidth": 1440,
-      "brokenAnchors": 0,
-      "externalImages": 0
+      "brokenAnchors": 0
     },
     "pageMobile": {
       "viewportWidth": 390,
-      "bodyWidth": 418,
-      "note": "窄屏存在少量横向溢出，未作为移动适配通过"
+      "bodyWidth": 390,
+      "note": "代码区块独立滚动；另测 320px、768px 无整页溢出。"
     }
   },
   "outputFiles": [
     {
       "path": "foldercast.html",
-      "bytes": 31353,
-      "sha256": "e71f6286eb5a8254e5d84fbfae25ec29c8da90d97415d060c177d05dc137a221"
+      "bytes": 31683,
+      "sha256": "45dcd8e731f7495730d30064a2015e0e800efbed8f57a566192be1d7d7b56fb0"
     },
     {
       "path": "foldercast.mp4",

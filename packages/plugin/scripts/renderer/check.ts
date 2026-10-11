@@ -21,6 +21,7 @@ import {
   type Scene,
 } from '../contracts/script.ts';
 import { checkDigest, type DigestDocument } from '../contracts/digest.ts';
+import { ReferencePathError, resolveReference } from '../contracts/paths.ts';
 import { prepKindOf } from '../contracts/prep.ts';
 import { splitSubtitles, textWidth, validateSubtitles } from '../contracts/subtitles.ts';
 import { estimateSceneSec } from './estimate.ts';
@@ -172,8 +173,7 @@ export async function checkScript(script: ScriptDocument, root: string): Promise
       }
     }
 
-    pushPathChecks(scene, root, push);
-    pushExcerptChecks(scene, root, push);
+    if (pushPathChecks(scene, root, push)) pushExcerptChecks(scene, root, push);
     pushSubtitleCheck(scene, push);
     pushBeatChecks(scene, push, at);
   }
@@ -358,11 +358,8 @@ function pushBeatChecks(scene: Scene, push: (issue: Issue) => void, at: (field: 
   }
 }
 
-function pushPathChecks(scene: Scene, root: string, push: (issue: Issue) => void): void {  const exists = (relative: string | undefined): boolean => {
-    if (relative === undefined) return false;
-    const stats = statSync(resolve(root, relative), { throwIfNoEntry: false });
-    return stats !== undefined && stats.isFile();
-  };
+function pushPathChecks(scene: Scene, root: string, push: (issue: Issue) => void): boolean {
+  let valid = true;
   const missing = (relative: string, where: string): void => {
     push({
       code: 'path-missing',
@@ -373,11 +370,21 @@ function pushPathChecks(scene: Scene, root: string, push: (issue: Issue) => void
     });
   };
 
-  if (scene.file !== undefined && !exists(scene.file)) missing(scene.file, 'file');
-  if (scene.source !== undefined && !exists(scene.source)) missing(scene.source, scene.type);
-  for (const item of scene.items ?? []) {
-    if (!exists(item)) missing(item, 'gallery');
-  }
+  const check = (reference: string, where: string, directory = false): void => {
+    try {
+      const stats = statSync(resolveReference(root, reference), { throwIfNoEntry: false });
+      if (stats === undefined || (!directory && !stats.isFile())) { valid = false; missing(reference, where); }
+    } catch (error) {
+      if (!(error instanceof ReferencePathError)) throw error;
+      valid = false;
+      push({ code: 'path-outside-root', severity: 'blocker', message: error.message, sceneId: scene.id,
+        fix: '使用源目录内的相对路径；目录外素材请先放入源目录。' });
+    }
+  };
+  if (scene.file !== undefined) check(scene.file, 'file');
+  if (scene.source !== undefined) check(scene.source, scene.type);
+  for (const item of scene.items ?? []) check(item, 'gallery');
+  for (const entry of scene.entries ?? []) check(entry.path, 'tree', true);
 
   if (scene.type === 'gallery') {
     for (const item of scene.items ?? []) {
@@ -405,6 +412,7 @@ function pushPathChecks(scene: Scene, root: string, push: (issue: Issue) => void
       });
     }
   }
+  return valid;
 }
 
 function pushSubtitleCheck(scene: Scene, push: (issue: Issue) => void): void {
@@ -448,9 +456,10 @@ function pushExcerptChecks(scene: Scene, root: string, push: (issue: Issue) => v
 
   let content: string | undefined;
   try {
-    const size = statSync(resolve(root, scene.file), { throwIfNoEntry: false })?.size ?? 0;
+    const absolute = resolveReference(root, scene.file);
+    const size = statSync(absolute, { throwIfNoEntry: false })?.size ?? 0;
     if (size > EXCERPT_VERIFY_MAX_BYTES) return;
-    content = readFileSync(resolve(root, scene.file), 'utf8');
+    content = readFileSync(absolute, 'utf8');
   } catch {
     return; // 路径存在性由 path 检查兜底；读不了的不做内容比对
   }

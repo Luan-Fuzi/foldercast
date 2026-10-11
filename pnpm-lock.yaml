@@ -33,13 +33,13 @@ importers:
         specifier: ~3.18.4
         version: 3.18.4
       '@remotion/bundler':
-        specifier: ^4
+        specifier: 4.0.532
         version: 4.0.532(@swc/helpers@0.5.23)(postcss@8.5.28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@remotion/cli':
-        specifier: ^4
+        specifier: 4.0.532
         version: 4.0.532(@swc/helpers@0.5.23)(postcss@8.5.28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@5.9.3)
       '@remotion/renderer':
-        specifier: ^4
+        specifier: 4.0.532
         version: 4.0.532(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       ajv:
         specifier: ^8.20.0
@@ -69,7 +69,7 @@ importers:
         specifier: ^19
         version: 19.3.0(react@19.3.0)
       remotion:
-        specifier: ^4
+        specifier: 4.0.532
         version: 4.0.532(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       shiki:
         specifier: ^4.5.0
@@ -3295,7 +3295,7 @@ snapshots:
 
   '@svgr/hast-util-to-babel-ast@8.0.0':
     dependencies:
-      '@babel/types': 7.24.0
+      '@babel/types': 7.29.8
       entities: 4.5.0
 
   '@svgr/plugin-jsx@8.1.0(@svgr/core@8.1.0(typescript@5.9.3))':

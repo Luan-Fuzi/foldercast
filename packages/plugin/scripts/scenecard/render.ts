@@ -160,6 +160,16 @@ export const CARD_CSS = `
 .pages-row img { height: 260px; width: auto; border-radius: calc(var(--radius) / 2); border: 1px solid var(--line); display: block; }
 .card--page .pages-row { flex-wrap: wrap; overflow: visible; }
 .card--page .pages-row img { max-width: 100%; height: auto; max-height: 520px; }
+.card--page,.card--page .scene-main,.card--page .compare-side { min-width: 0; overflow-wrap: anywhere; }
+.card--page .compare { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.card--page .fc-md pre { overflow-x: auto; }
+/* 高亮器的内联 overflow:visible 用于视频；页面的代码块必须独立滚动。 */
+.card--page pre { max-width: 100%; overflow-x: auto !important; }
+@media(max-width:640px) {
+  .card--page .compare { grid-template-columns: minmax(0,1fr); }
+  .card--page .bar-row { grid-template-columns: minmax(0,1fr) minmax(24px,1fr) auto; gap: 8px; }
+  .card--page .grid { grid-template-columns: repeat(auto-fill,minmax(min(240px,100%),1fr)); }
+}
 .pages-row figcaption { margin-top: 4px; font-size: 11px; color: var(--muted); text-align: center; }
 
 /* ── 封面（video）与小结 ─────────────────────────────── */

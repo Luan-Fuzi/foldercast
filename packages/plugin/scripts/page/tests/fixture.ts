@@ -27,10 +27,10 @@ export function fullScript(root: string): ScriptDocument {
         entries: [
           { path: 'src', files: 9, bytes: 40000, highlight: true },
           { path: 'docs', files: 3, bytes: 180000 },
-          { path: '(根目录)', files: 3 },
+          { path: '.', files: 3 },
         ],
         narration: '代码在 src，文档在 docs，根目录还有一点配置。',
-        beats: [{ points: ['src 是主体，九个文件', 'docs 三份文档，占了大头体积'], enter: 'reveal' }],
+        beats: [{ points: ['src 是主体，九个文件', 'docs 三份文档，占了大头体积', '根目录保留配置'], enter: 'reveal' }],
       },
       {
         id: 'kinds',
